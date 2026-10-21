@@ -240,7 +240,7 @@
             {% if entry.kind is defined %}
             {% if entry.kind == 'day' %}
             <tr class="row-group row-group--day"><td colspan="13">
-                <span>Closed {{ entry.day.strftime('%a %b %-d, %Y') }}</span>
+                <span>Closed {{ entry.day.strftime('%a %b') }} {{ entry.day.day }}, {{ entry.day.year }}</span>
                 <span class="row-group__badges"><span class="pill">{{ entry.count }} trade{{ 's' if entry.count != 1 }}</span><span class="pill {{ 'pill--ok' if entry.pl >= 0 else 'pill--bad' }}">{{ entry.pl | money }}</span></span>
                 <span class="row-group__select"><button type="button" class="link" data-select-group="day-{{ entry.day }}">Select day</button></span>
             </td></tr>

@@ -15,7 +15,7 @@ cp .env.example .env      # edit if needed
 uv run optionsjourney
 ```
 
-Then open <http://127.0.0.1:2026>. Or run `uv run optionsjourney-menubar` for the menu bar app (decision 0008): it runs the same app in the background with a status icon, and opens the browser. The first run installs Python 3.14 and the dependencies into `.venv/`.
+Then open <http://127.0.0.1:2026>. Or run `uv run optionsjourney-menubar` for the menu bar app (decision 0008): it runs the same app in the background with a status icon, and opens the browser. The first run installs Python 3.14 and the dependencies into `.venv/`. Both log to the console and to `logs/optionsjourney.log` in the data folder (`optionsjourney/logs.py`), and both start the same background jobs (`services/background.start_all`). Users install with `scripts/install-mac.sh` or `install-windows.ps1`, which copy the app to a fixed folder (decision 0094); `OJ_INSTALL_DIR=<folder>` installs somewhere else for testing.
 
 ## Test and lint
 

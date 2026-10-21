@@ -116,6 +116,7 @@ Documentation is a first-class part of this project. A feature isn't done until 
 | [0091](decisions/0091-after-hours-marks-from-the-last-real-quote.md) | After hours, an option with no market is priced at its last real mark | Accepted |
 | [0092](decisions/0092-stocks-performance-from-daily-saves.md) | Stocks performance comes from daily saves of holdings and closes, after each close | Accepted |
 | [0093](decisions/0093-public-release-license-and-disclaimer.md) | Public releases: PolyForm Noncommercial, a trading disclaimer, and a separate public repo | Accepted |
+| [0094](decisions/0094-install-to-a-fixed-folder-with-logs.md) | The installer puts the app in a fixed folder; logs go to a file | Accepted |
 
 ## Writing a new decision
 

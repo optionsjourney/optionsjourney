@@ -51,7 +51,7 @@ optionsjourney/
 │   │       ├── js/trade/     The Trade page: Tracker2's chain helpers and ticket logic (copied), the inline chain panel, and the page's own code
 │   │       └── vendor/       Their libraries: Lightweight Charts, Socket.IO client, Tailwind;
 │   │                         vendor/fonts/ holds the charts' IBM Plex fonts
-│   └── launcher/             Menu bar / tray app: runs the web app in the background, status icon, start at login, keep awake
+│   └── launcher/             Menu bar / tray app: runs the web app in the background, status icon, start at login, keep awake, show app folder, open logs, restart
 │
 ├── tests/                    Mirrors src/optionsjourney/ (tests/core/, tests/brokers/, …)
 │   ├── web/routes/           Page tests by area (manual bots: test_automation_manual.py)

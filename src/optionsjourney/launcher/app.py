@@ -11,9 +11,11 @@ from datetime import UTC, datetime
 from PIL import Image, ImageDraw
 from werkzeug.serving import make_server
 
+from optionsjourney import logs
 from optionsjourney.config import HOST, ConfigError, load_settings
+from optionsjourney.launcher import places
 from optionsjourney.launcher.awake import Awake, in_market_hours
-from optionsjourney.launcher.login_item import login_item
+from optionsjourney.launcher.login_item import launch_command, login_item
 from optionsjourney.launcher.menu import status_lines
 
 logger = logging.getLogger(__name__)
@@ -41,9 +43,7 @@ def _icon_image() -> Image.Image:
 
 
 def main() -> None:
-    logging.basicConfig(
-        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
-    )
+    logs.start_console()
     from optionsjourney.services.economic_events import quiet_http_logs  # noqa: PLC0415
 
     quiet_http_logs()  # httpx logs request URLs, FRED's key included
@@ -51,32 +51,21 @@ def main() -> None:
         settings = load_settings()
     except ConfigError as e:
         sys.exit(f"Settings problem: {e}")
+    logs.start_file(settings.data_dir)
 
     import pystray  # noqa: PLC0415 -- only the menu bar app needs it
 
     from optionsjourney.app import create_app  # noqa: PLC0415
-    from optionsjourney.services import (  # noqa: PLC0415
-        backups,
-        bot_loops,
-        expiry_settle,
-        pl_day,
-        stock_history,
-    )
+    from optionsjourney.services import background  # noqa: PLC0415
     from optionsjourney.services import settings as saved  # noqa: PLC0415
     from optionsjourney.services.alerts import system_alerts  # noqa: PLC0415
-    from optionsjourney.services.user_alerts import start_alert_checker  # noqa: PLC0415
 
     app = create_app(settings)
     services = app.extensions["optionsjourney"]
     url = f"http://{HOST}:{settings.port}"
     server = make_server(settings.bind_host, settings.port, app, threaded=True)
     threading.Thread(target=server.serve_forever, name="web", daemon=True).start()
-    backups.start_scheduler(settings.database_path, services.session_factory)
-    start_alert_checker(services)
-    pl_day.start(services)
-    stock_history.start(services)
-    expiry_settle.start(services)
-    bot_loops.start(services)
+    background.start_all(settings.database_path, services)
     logger.info("OptionsJourney is running at %s", url)
 
     login = login_item()
@@ -102,6 +91,13 @@ def main() -> None:
         notify.wait_idle(5)  # alerts still queued get a few seconds to go out
         server.shutdown()
 
+    def restart(icon, item):
+        """Quits, then starts a fresh copy once the port is free (decision 0094)."""
+        logger.info("Restarting from the menu")
+        quit_app(icon, item)
+        server.server_close()
+        places.start_again(launch_command(), places.app_folder())
+
     def items():
         for line in status_lines(state["alerts"]):
             yield pystray.MenuItem(line, None, enabled=False)
@@ -119,6 +115,14 @@ def main() -> None:
             checked=lambda item: keep_awake_on(),
         )
         yield pystray.Menu.SEPARATOR
+        yield pystray.MenuItem(
+            f"Show app in {'Finder' if sys.platform == 'darwin' else 'Explorer'}",
+            lambda: places.open_folder(places.app_folder()),
+        )
+        yield pystray.MenuItem(
+            "Open logs", lambda: places.open_folder(logs.log_dir(settings.data_dir))
+        )
+        yield pystray.MenuItem("Restart OptionsJourney", restart)
         yield pystray.MenuItem("Quit OptionsJourney", quit_app)
 
     icon = pystray.Icon("OptionsJourney", _icon_image(), "OptionsJourney", pystray.Menu(items))

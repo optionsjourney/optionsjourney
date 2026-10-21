@@ -4,6 +4,22 @@ Notable changes to OptionsJourney. The format follows [Keep a Changelog](https:/
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-21
+
+Fixes from testing on a fresh Windows PC.
+
+### Changed
+- The installer puts the app in a fixed folder (`AppData\Local\Programs\OptionsJourney` on Windows, with a Start menu entry; `~/Applications/OptionsJourney` on a Mac, with an OptionsJourney app for Spotlight and Launchpad). Running a newer installer updates it; your data is kept.
+- On Windows the app runs without a console window.
+
+### Added
+- A log file (`logs/optionsjourney.log` in the data folder), and **Show app in Finder/Explorer**, **Open logs** and **Restart OptionsJourney** in the OJ menu.
+- A "Something went wrong" page that says what to do, instead of a bare server error.
+
+### Fixed
+- On Windows, the Journal failed with a server error once a trade had closed.
+- The menu bar app now syncs on its own, like `uv run optionsjourney` did.
+
 ## [0.1.0] - 2026-10-21
 
 The first public release.

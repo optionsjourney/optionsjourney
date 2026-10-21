@@ -2,14 +2,20 @@
 
 import plistlib
 import sys
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 LABEL = "com.optionsjourney.app"
 
 
-def launch_command() -> list[str]:
-    """How the login item starts the menu bar app."""
-    return [sys.executable, "-m", "optionsjourney.launcher"]
+def launch_command(executable: str | None = None, platform: str | None = None) -> list[str]:
+    """How the login item (and Restart) start the menu bar app. On Windows, pythonw.exe:
+    python.exe would open a console window that stops the app when closed (decision 0094)."""
+    python = executable or sys.executable
+    if (platform or sys.platform) == "win32":
+        path = PureWindowsPath(python)
+        if path.name.lower() == "python.exe":
+            python = str(path.with_name("pythonw.exe"))
+    return [python, "-m", "optionsjourney.launcher"]
 
 
 class MacLoginItem:

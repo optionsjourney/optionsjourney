@@ -16,7 +16,7 @@ How to…
 - [Adjust a bot's trade before the close](how-to-adjust-before-the-close.md): close part, move the stop or target, take an exit off, or roll a leg
 - [Get alerts on your phone](how-to-phone-alerts.md)
 - [Update the app](updating.md)
-- [Fix a problem](troubleshooting.md): a missing trade, a bot that didn't enter, "Needs a look", Schwab's login, P/L Day's ≈, an exit that didn't fill, nothing syncing
+- [Fix a problem](troubleshooting.md): a missing trade, a bot that didn't enter, "Needs a look", Schwab's login, P/L Day's ≈, an exit that didn't fill, nothing syncing, "Something went wrong"
 
 Ready:
 - [Installing OptionsJourney](installing.md)

@@ -213,7 +213,7 @@ def _check_missed_sessions(deps, stops: list[_Stop], today) -> None:
             continue  # each missed day is said once, however often the app restarts
         said.setdefault(str(bot_id), []).extend(d.isoformat() for d in days)
         _write_missed_said(deps, said, today)
-        when = ", ".join(day.strftime("%a %b %-d") for day in days)
+        when = ", ".join(f"{day:%a %b} {day.day}" for day in days)  # no %-d: Windows refuses it
         names = " and ".join(filter(None, (", ".join(groups[:-1]), groups[-1])))
         bot_exits._alert(
             deps,

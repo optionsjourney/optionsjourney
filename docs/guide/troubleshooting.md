@@ -84,3 +84,8 @@ Logging in to Schwab from this app on another computer, or from another program 
 - **If you started the app from the menu bar icon, press Sync now.** For now, the menu bar copy doesn't run the timed sync or the sync after a fill.
 
 **What to check:** press **Sync now** in the Journal: the line it shows says how each broker did. **Transactions → Last sync** shows each account's last good sync and the problem that stopped the last one.
+
+## A page says "Something went wrong"
+**The reason:** the app hit an error it didn't expect. Your data is safe, and nothing is sent to your broker because of it.
+
+**What to do:** go back and try again. If it keeps happening, choose **Restart OptionsJourney** in the OJ menu. Still stuck? Choose **Open logs** in the same menu and send `optionsjourney.log` to [hello@optionsjourney.com](mailto:hello@optionsjourney.com), with the line the error page shows.

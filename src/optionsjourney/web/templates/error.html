@@ -1,0 +1,27 @@
+{# The page for an unexpected error (decision 0094). Standalone, not base.html: whatever
+   broke may be something base.html needs. #}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Something went wrong · OptionsJourney</title>
+    <style>
+        body { font-family: system-ui, sans-serif; background: #111827; color: #e5e7eb; margin: 0; padding: 3rem 1rem; }
+        main { max-width: 40rem; margin: 0 auto; line-height: 1.5; }
+        a { color: #93c5fd; }
+        code { background: #1f2937; padding: 0.1rem 0.3rem; border-radius: 4px; word-break: break-all; }
+    </style>
+</head>
+<body>
+<main>
+    <h1>Something went wrong</h1>
+    <p>This page hit an error. Your data is safe: nothing was sent to your broker because of it.</p>
+    <ol>
+        <li><a href="/">Go back to the journal</a> and try again.</li>
+        <li>If it keeps happening, use <strong>Restart OptionsJourney</strong> in the OJ menu (menu bar on a Mac, the tray on Windows).</li>
+        <li>Still stuck? Choose <strong>Open logs</strong> in the same menu and send the file <code>{{ log_name }}</code> to <a href="mailto:hello@optionsjourney.com">hello@optionsjourney.com</a>{% if error %}, with this: <code>{{ error }}</code>{% endif %}.</li>
+    </ol>
+</main>
+</body>
+</html>

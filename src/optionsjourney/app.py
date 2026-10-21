@@ -6,10 +6,11 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from flask import Flask, url_for
+from flask import Flask, jsonify, render_template, request, url_for
 from sqlalchemy import Engine
 from sqlalchemy.orm import sessionmaker
 
+from optionsjourney import logs
 from optionsjourney.brokers import guard
 from optionsjourney.brokers.credentials import CredentialProvider, provider_for
 from optionsjourney.brokers.schwab import SchwabClient
@@ -157,6 +158,16 @@ def create_app(
     app.register_blueprint(help_pages.bp)
 
     sockets.register(app)
+
+    @app.errorhandler(500)
+    def unexpected_error(e):
+        """Plain words and what to do next instead of a bare 500 (decision 0094). Flask
+        has already logged the traceback, which goes to the log file."""
+        cause = getattr(e, "original_exception", None) or e
+        error = f"{type(cause).__name__} on {request.path}"
+        if request.path.startswith("/api/"):
+            return jsonify(error="Something went wrong. Restart OptionsJourney from its menu."), 500
+        return render_template("error.html", error=error, log_name=logs.LOG_NAME), 500
 
     @app.template_global()
     def asset_url(filename: str) -> str:
