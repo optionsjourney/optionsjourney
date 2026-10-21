@@ -1,0 +1,20 @@
+{#- The ⓘ tips on a manual bot's rule types, written once for the manual bot form and the
+    Manage this trade form (#230). `prefix` makes the ids unique to the page. -#}
+{% from "_tooltip.html" import info, tip_text %}
+{% macro rule_tip(kind, prefix) -%}
+{%- if kind == 'target' -%}
+{{ info(prefix ~ '-profit-target', "Closes the trade once it has made this much. In %, that is a share of what the trade took in (or cost) when it filled: 50 on a 2.00 credit closes it at a cost of 1.00. In $, it is the profit per contract, as an option price: 0.75 closes that same credit at 1.25. Leave it empty for no profit target.", 'Profit target', more='/help/automation#manual-bots') }}
+{%- elif kind == 'stop' -%}
+{{ info(prefix ~ '-stop-loss', "Closes the trade once it has lost this much. In %, that is a share of what the trade took in (or cost) when it filled: 100 means losing as much as the trade took in. In $, it is the loss per contract, as an option price. Leave it empty for no stop. Futures trades don't get a stop.", 'Stop loss', more='/help/automation#manual-bots') }}
+{%- elif kind == 'exit' -%}
+{{ info(prefix ~ '-exit-time', "Closes whatever is still open at this time (New York) on the day that many days before expiration. 0 days is the expiration day. With several expirations it counts from the nearest. Futures trades don't get an exit time.", 'Exit time', more='/help/automation#manual-bots') }}
+{%- elif kind == 'alerts' -%}
+{{ info(prefix ~ '-alerts', "Alerts only; they never close the trade. P&L % goes off when the trade's profit or loss reaches that share of what it took in (or cost) when it filled. Near a short strike goes off when the trade's underlying comes within that many points of a strike you sold. A trade that took in or cost under $50 in all gets no P&L % alert. Futures trades don't get alerts.", 'Alerts', more='/help/automation#default-alerts') }}
+{%- endif -%}
+{%- endmacro %}
+
+{#- The "Hand this trade to a bot…" button with its tip, written once for the Manage panel and the
+    trade page (#230). `id` makes the tip's id unique to the page. -#}
+{% macro hand_to_bot_button(id, href) -%}
+<span class="tip"><a class="button button--quiet" href="{{ href }}" aria-describedby="tip-{{ id }}">Hand this trade to a bot…</a>{{ tip_text(id, "A bot takes over this trade and manages its exits as if it had opened it. The next page shows exactly what it would place, and nothing happens until you confirm.", more='/help/automation#handing-a-trade-you-opened-to-a-bot') }}</span>
+{%- endmacro %}

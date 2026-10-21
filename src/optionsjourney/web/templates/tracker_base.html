@@ -1,0 +1,35 @@
+{#- Base for the pages ported from Tracker2 as they are (Charts and Trade): its
+    Tailwind dark look and Socket.IO, with this app's navigation. -#}
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}OptionsJourney{% endblock %}</title>
+    {% include '_icons.html' %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/nav.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tooltips.css') }}">
+    <script type="module" src="{{ url_for('static', filename='js/tooltips.js') }}"></script>
+    <script src="{{ url_for('static', filename='vendor/tailwindcss-play.js') }}"></script>
+    <script>tailwind.config = { darkMode: 'class' }</script>
+    <script src="{{ url_for('static', filename='vendor/socket.io-4.7.4.min.js') }}"></script>
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+    {% if gateway_mode %}
+    <div class="bg-amber-500 text-black text-center text-xs font-semibold py-1" role="status">DEVELOPMENT · no trading · broker data borrowed from the Tracker2 server</div>
+    {% endif %}
+    {% include '_trading_banners.html' %}
+    {% block nav %}
+    {% include '_nav.html' %}
+    {% endblock %}
+    <main class="{% block main_width %}container mx-auto{% endblock %} {% block main_pad %}px-4 py-6{% endblock %}">
+        {% block content %}{% endblock %}
+    </main>
+    {% block footer %}
+    {% include '_footer.html' %}
+    {% endblock %}
+    {% block scripts %}{% endblock %}
+    <script type="module" src="{{ url_for('static', filename='js/trade_toasts.js') }}"></script>
+</body>
+</html>

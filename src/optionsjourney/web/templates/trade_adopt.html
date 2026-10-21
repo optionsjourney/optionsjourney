@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% from "_tooltip.html" import info %}
+{% block title %}Hand to a bot · OptionsJourney{% endblock %}
+
+{% block content %}
+<p><a class="link" href="{{ url_for('journal.trade_page', key=key, back=back) }}">← Back to the trade</a></p>
+
+<div class="page-header">
+    <div>
+        <h1>Hand to a bot: {{ trade.name }}</h1>
+        <div class="muted small">Opened {{ trade.opened_at | market_time }}</div>
+    </div>
+</div>
+
+<section class="card">
+    <p>A bot can take over a trade you opened yourself and manage it as if it had opened it: its stops, profit targets, timed close and the rest, and the trade shows the bot's badge in the journal. You see exactly what it will place before anything happens.</p>
+    {% if trade.problem %}
+    <p class="notice notice--warning">{{ trade.problem }}</p>
+    {% else %}
+    <div class="table-scroll"><table class="table table--compact">
+        <thead><tr><th>Option</th><th>Side</th><th>Contracts</th><th>Fill {{ info('adopt-fill', "The price this option filled at in your opening order (the average, if it filled in pieces). The bot's stops and targets are worked out from these prices.", 'Fill') }}</th></tr></thead>
+        <tbody>
+        {% for leg in trade.legs %}
+        <tr><td>{{ leg.symbol }}</td><td>{{ 'short' if leg.side == 'sell' else 'long' }}</td><td>{{ leg.quantity }}</td><td>{{ leg.price }}</td></tr>
+        {% endfor %}
+        </tbody>
+    </table></div>
+
+    {% set usable = offered | selectattr(1, 'none') | list %}
+    {% if usable %}
+    <form class="inline-form section-gap" method="post" action="{{ url_for('journal.adopt_check', key=key) }}">
+        <input type="hidden" name="back" value="{{ back }}">
+        <label>Bot
+            <select name="bot">
+                {% for bot, _ in usable %}
+                <option value="{{ bot.id }}" {{ 'selected' if found and found.bot and found.bot.id == bot.id }}>{{ bot.name }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <button class="button" type="submit">Check</button>
+    </form>
+    <p class="muted small">Check reads your broker and the live prices. It places nothing.</p>
+    {% else %}
+    <p class="notice notice--warning section-gap">No bot on this account can take it.</p>
+    {% endif %}
+    {% set refused = offered | rejectattr(1, 'none') | list %}
+    {% if refused %}
+    <details class="section-gap"><summary class="small">Bots that can't take it, and why</summary>
+        <ul class="small">{% for bot, why in refused %}<li>{{ bot.name }}: {{ why }}</li>{% endfor %}</ul>
+    </details>
+    {% endif %}
+    {% endif %}
+</section>
+
+{% if found %}
+<section class="card section-gap" id="check">
+    <h2 class="card__title">{% if found.bot %}What {{ found.bot.name }} would place{% else %}The check{% endif %}</h2>
+    {% if not found.ok %}
+    <p class="notice notice--warning">{{ found.message }}</p>
+    {% endif %}
+    {% if found.sides %}
+    <p class="small">{{ found.matched.contracts }} unit(s) at {{ found.matched.credit | premium }}.</p>
+    <div class="table-scroll"><table class="table table--compact">
+        <thead><tr><th>Group {{ info('adopt-group', "The bot sets a stop and a target for each group of legs. This shows which of your legs fall in each of the bot's groups.", 'Group', more='/help/automation#handing-a-trade-you-opened-to-a-bot') }}</th><th>Stop</th><th>Now</th><th>Profit target (closes the group at) {{ info('adopt-profit-target', "The price at which the bot closes the group to take its profit, worked out from the bot's target and your fill prices. None means this group gets no profit target.", 'Profit target', more='/help/automation#handing-a-trade-you-opened-to-a-bot') }}</th></tr></thead>
+        <tbody>
+        {% for side in found.sides %}
+        <tr>
+            <td>{{ side.name }}<div class="muted small">{% for leg in side.legs %}{{ leg.side.value }} {% if leg.ratio > 1 %}{{ leg.ratio }}x {% endif %}{{ leg.symbol | trim }}{% if not loop.last %} / {% endif %}{% endfor %}</div>
+                <div class="muted small">Rests at the broker: {% if side.rests == 'stop' %}its stop{% elif side.rests == 'target' %}its profit target{% else %}nothing{% endif %}</div>
+                {% if side.stop and side.watched %}<div class="muted small">Stop watched by the app on the group's P&amp;L, while the app is running and the computer is awake</div>
+                {% elif side.stop and side.app_held %}<div class="muted small">Stop held by the app on its short, while the app is running and the computer is awake</div>{% endif %}
+                {% for note in side.notes %}<div class="notice notice--warning small">{{ note }}</div>{% endfor %}</td>
+            <td>{% if side.stop %}{% if side.watched %}P&amp;L {{ side.stop.trigger }}{% elif side.app_held %}{{ side.stop.trigger }} (the app closes the group){% else %}{{ side.stop.trigger }} (buys back the short){% endif %}<div class="muted small">{{ how.get(side.position, '') }}</div>{% else %}none{% endif %}</td>
+            <td>{% if side.position in found.asks %}{% if side.watched %}P&amp;L {{ found.asks[side.position] }}{% else %}ask {{ found.asks[side.position] }}{% endif %}{% else %}—{% endif %}</td>
+            <td>{% if side.target is not none and not side.target_problem %}{{ side.target }}{% else %}none{% endif %}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table></div>
+    {% endif %}
+    {% if found.warnings %}
+    <ul class="small">{% for w in found.warnings %}<li>{{ w }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% if found.ok %}
+    <form method="post" action="{{ url_for('journal.adopt_confirm', key=key) }}"
+          onsubmit='return confirm({{ ("Hand this trade to " ~ found.bot.name ~ "? It places the stops shown and manages the trade from now on.") | tojson }})'>
+        <input type="hidden" name="bot" value="{{ found.bot.id }}">
+        <input type="hidden" name="fingerprint" value="{{ found.fingerprint }}">
+        <input type="hidden" name="back" value="{{ back }}">
+        <button class="button" type="submit">Hand to {{ found.bot.name }}</button>
+    </form>
+    <p class="muted small">Everything is checked again when you press it. If a price or the trade changed, nothing happens and you check again.</p>
+    {% endif %}
+</section>
+{% endif %}
+{% endblock %}

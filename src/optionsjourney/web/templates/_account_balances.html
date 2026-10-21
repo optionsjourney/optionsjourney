@@ -1,0 +1,67 @@
+{% from "_tooltip.html" import info %}
+{# The parts of the Accounts page that /accounts/live refreshes (#74). Each
+   keeps its id so accounts.js can swap in the fresh copy. #}
+
+{% macro total_stat(total, has_balances, pending) %}
+<div class="stat" id="accounts-total">
+    <div class="stat__label">Total net liquidating value</div>
+    <div class="stat__value">{{ (total if has_balances or not pending else none) | money }}</div>
+</div>
+{% endmacro %}
+
+{% macro broker_cards(brokers, pending) %}
+<div id="accounts-cards">
+    {% if pending %}<p class="muted small">Getting fresh balances from your brokers…</p>{% endif %}
+
+    {% for broker in brokers %}
+    {% set n = loop.index %}
+    <section class="card">
+        <h2 class="card__title">
+            {{ broker.broker }}
+            {% if broker.as_of %}<span class="muted small">As of {{ broker.as_of | market_time }}</span>{% endif %}
+        </h2>
+
+        {% if broker.problem %}
+        <p class="notice notice--warning">{{ broker.problem }}</p>
+        {% endif %}
+
+        {% if broker.summaries %}
+        <div class="table-scroll"><table class="table table--balances">
+            <thead>
+                <tr>
+                    <th>Account</th>
+                    <th class="num">Net liquidating value {{ info('accounts-net-liq-' ~ n, "The account's value as your broker reports it, with open positions at their current prices. The total at the top adds up every account that has a balance.", 'Net liquidating value') }}</th>
+                    <th class="num">Cash</th>
+                    <th class="num">Buying power {{ info('accounts-buying-power-' ~ n, "What your broker says you have available for new trades. The app doesn't work it out: on TastyTrade it's the derivative buying power, on Schwab the buying power Schwab reports.", 'Buying power') }}</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for summary in broker.summaries %}
+                <tr>
+                    <td>
+                        <div>{{ summary.account.display_name }}</div>
+                        <div class="muted small">{{ summary.account.masked_number }}</div>
+                        {% if summary.balance and summary.error %}
+                        <div class="muted small">Couldn't refresh: {{ summary.error }} Showing the balance from {{ summary.as_of | market_time }}.</div>
+                        {% endif %}
+                    </td>
+                    {% if summary.balance %}
+                    <td class="num">{{ summary.balance.net_liquidating_value | money }}</td>
+                    <td class="num">{{ summary.balance.cash | money }}</td>
+                    <td class="num">{{ summary.balance.buying_power | money }}</td>
+                    {% else %}
+                    <td class="num muted" colspan="3">{{ summary.error }}</td>
+                    {% endif %}
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table></div>
+        {% elif pending %}
+        <p class="muted">Loading balances…</p>
+        {% elif not broker.problem %}
+        <p class="muted">No accounts found.</p>
+        {% endif %}
+    </section>
+    {% endfor %}
+</div>
+{% endmacro %}

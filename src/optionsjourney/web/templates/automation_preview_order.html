@@ -1,0 +1,53 @@
+{% extends "tracker_base.html" %}
+{# Preview order: the order a bot would send now, checked with its broker, never sent and
+   saved as no run. The risk graph is the journal's panel (_risk_graph_panel.html). #}
+{% from "_tooltip.html" import info %}
+{% block title %}Preview order · OptionsJourney{% endblock %}
+{% block content %}
+<div class="flex items-center justify-between mb-3">
+    <h1 class="text-xl font-semibold">Preview order: {{ bot.name }}</h1>
+    <a class="text-sm underline" href="{{ url_for('automation.bot_page', bot_id=bot.id) }}">Back to the bot</a>
+</div>
+<section id="preview-order" class="mb-4 p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm">
+    <p class="mb-2">
+        {% if result.ok %}<strong class="text-green-600 dark:text-green-400">Your broker accepted it.</strong>
+        {% else %}<strong class="text-red-500 dark:text-red-400">Not accepted.</strong>{% endif %}
+        {{ result.reason }}
+    </p>
+    <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">Nothing was sent and no run was saved. {% if bot.live %}This bot is Live; a scheduled entry would send this order.{% else %}This bot is on Paper; a scheduled entry would pretend-fill it at the mid.{% endif %}</p>
+    {% if result.legs %}
+    <table class="text-sm mb-3">
+        <thead><tr class="text-left text-xs text-gray-500 dark:text-gray-400"><th class="pr-4">Side</th><th class="pr-4">Contract</th><th class="pr-4">Ratio</th><th class="text-right">Mid</th></tr></thead>
+        <tbody>
+        {% for leg in result.legs %}
+        <tr><td class="pr-4">{{ leg.side | capitalize }}</td><td class="pr-4">{{ leg.strike }} {{ leg.right | capitalize }}{% if leg.expiration %} {{ leg.expiration[5:] }}{% endif %}</td><td class="pr-4">{{ leg.ratio }}</td><td class="text-right">{{ leg.mid }}</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% endif %}
+    <dl class="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+        {% if result.price is not none %}<dt class="text-gray-500 dark:text-gray-400">Price</dt><dd>{{ result.price | premium }}{% if result.price > 0 %} credit{% else %} debit{% endif %}</dd>{% endif %}
+        {% if result.contracts %}<dt class="text-gray-500 dark:text-gray-400">Contracts</dt><dd>{{ result.contracts }}</dd>{% endif %}
+        {% if result.buying_power is not none %}<dt class="text-gray-500 dark:text-gray-400">Buying power change {{ info('preview-buying-power', "How much buying power your broker says this order would use, taken from its check of the order. Schwab's check doesn't report it, so a Schwab bot shows no row here.", 'Buying power change', more='/help/automation#preview-order') }}</dt><dd>${{ result.buying_power }}</dd>{% endif %}
+        {% if result.exits %}<dt class="text-gray-500 dark:text-gray-400">Exits {{ info('preview-exits', "Each group's stop and profit target as prices on this order, and which one would rest at your broker. Nothing has been placed.", 'Exits', more='/help/automation#preview-order') }}</dt><dd id="preview-exits"><ul>{% for line in result.exits %}<li>{{ line }}</li>{% endfor %}</ul></dd>{% endif %}
+    </dl>
+</section>
+{% if result.graph %}
+<div id="risk-graph" data-preview="1"
+     class="flex flex-col bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg">
+    {% include '_risk_graph_panel.html' %}
+</div>
+<script id="preview-graph" type="application/json">{{ result.graph | tojson }}</script>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if result.graph %}
+<script type="module">
+  import { toModelerLeg, buildPayoffFns, expiryMs, strikeIncrement, curveStats } from "{{ url_for('static', filename='js/modeler/pricing.js') }}";
+  import { renderPayoffChart } from "{{ url_for('static', filename='js/modeler/render.js') }}";
+  window.__modeler = { toModelerLeg, buildPayoffFns, expiryMs, renderPayoffChart, strikeIncrement, curveStats };
+</script>
+<script src="{{ url_for('static', filename='js/risk_graph.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/preview_order_graph.js') }}"></script>
+{% endif %}
+{% endblock %}

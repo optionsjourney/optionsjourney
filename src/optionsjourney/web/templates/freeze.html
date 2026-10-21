@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% from "_tooltip.html" import info %}
+{% block title %}Freeze all orders · OptionsJourney{% endblock %}
+
+{% block content %}
+<section class="card freeze">
+    <h1>Freeze all orders? {{ info('freeze', "Freeze is the strongest of the two switches: it includes No new trades. While it's on the app sends nothing and doesn't watch your trades. If the app can't tell whether a switch is on, it acts as if Freeze is on.", 'Freeze all orders', more='/help/pausing-trading#freeze-all-orders') }}</h1>
+    <ul>
+        <li>Orders already at your broker stay there and can still fill (stops you placed, resting limits).</li>
+        <li>The app stops watching your open trades: <strong>no new stops, no re-arming, no profit targets, no time exits, no closes.</strong></li>
+        <li>Your trades stay open. Manage them in your broker's app until you unfreeze.</li>
+    </ul>
+    <form method="post" action="{{ url_for('orders.switch', name='freeze') }}">
+        <input type="hidden" name="on" value="1">
+        <input type="hidden" name="next" value="/journal">
+        <button class="button button--danger" type="submit">Freeze</button>
+        <a class="button button--quiet" href="{{ url_for('journal.journal_page') }}">Cancel</a>
+    </form>
+</section>
+{% endblock %}

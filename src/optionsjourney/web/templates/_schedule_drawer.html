@@ -1,0 +1,35 @@
+{#- The schedule drawer (#195; Tracker2's _schedule_drawer.html, in this app's styles): what the
+    armed bots do on a day. Opened by any [data-schedule-open] button; schedule_drawer.js reads
+    GET /automation/schedule?date= and fills it. -#}
+<div id="schedule-drawer" class="drawer hidden" role="dialog" aria-modal="true" aria-labelledby="schedule-title"
+     data-schedule-url="{{ url_for('automation.schedule_day') }}" data-skip-url="{{ url_for('automation.skip_day', bot_id=0) }}">
+    <div data-schedule-backdrop class="drawer__backdrop opacity-0"></div>
+    <div data-schedule-panel class="drawer__panel drawer__panel--narrow translate-x-full">
+        <div class="schedule-drawer__head">
+            <div class="drawer__header schedule-drawer__title">
+                <div>
+                    <h3 id="schedule-title">Today&#39;s schedule</h3>
+                    <p id="schedule-subtitle" class="muted small"></p>
+                </div>
+                <button data-schedule-close type="button" class="drawer__close" title="Close" aria-label="Close">✕</button>
+            </div>
+            <div class="schedule-drawer__nav">
+                <button id="schedule-prev" type="button" class="button button--quiet" title="Previous weekday" aria-label="Previous weekday">‹</button>
+                <input id="schedule-date" type="date" aria-label="Day">
+                <button id="schedule-next" type="button" class="button button--quiet" title="Next weekday" aria-label="Next weekday">›</button>
+                <button id="schedule-today" type="button" class="link schedule-drawer__today" hidden>Today</button>
+            </div>
+            <div class="tabs schedule-drawer__tabs" role="tablist" aria-label="Which bots">
+                <button type="button" class="tabs__tab" role="tab" data-schedule-mode="all">All <span class="muted" data-schedule-mode-count></span></button>
+                <button type="button" class="tabs__tab" role="tab" data-schedule-mode="live">Live <span class="muted" data-schedule-mode-count></span></button>
+                <button type="button" class="tabs__tab" role="tab" data-schedule-mode="paper">Paper <span class="muted" data-schedule-mode-count></span></button>
+            </div>
+            <div id="schedule-counts" class="schedule-drawer__counts"></div>
+        </div>
+        <div id="schedule-body" class="drawer__body" aria-live="polite"></div>
+    </div>
+</div>
+<script type="module">
+    import { installScheduleDrawer } from "{{ url_for('static', filename='js/schedule_drawer.js') }}";
+    installScheduleDrawer(document, window);
+</script>

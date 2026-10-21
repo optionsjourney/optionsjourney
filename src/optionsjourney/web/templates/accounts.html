@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% from "_account_balances.html" import total_stat, broker_cards %}
+{% block title %}Accounts · OptionsJourney{% endblock %}
+
+{% block content %}
+<div class="page-header" id="accounts" data-live-url="{{ url_for('accounts.live_balances') }}">
+    <h1>Accounts <a class="link small" href="{{ url_for('accounts.values_page') }}">Account values over time →</a></h1>
+    {{ total_stat(total, has_balances, pending) }}
+</div>
+
+{{ broker_cards(brokers, pending) }}
+<script src="{{ url_for('static', filename='js/accounts.js') }}" defer></script>
+{% endblock %}

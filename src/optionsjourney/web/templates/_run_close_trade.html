@@ -1,0 +1,6 @@
+{#- Close the whole trade (or this side of it): the Manage card on the run page, the Manage panel's footer (#174) -#}
+<form class="inline-form close-trade" method="post" action="{{ url_for('automation.close_trade', run_id=run.id) }}">{% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
+    {% if half_groups %}<input type="hidden" name="groups" value="{{ half_groups | join(',') }}">{% endif %}
+    <select name="order_type" aria-label="Order type"><option value="limit">Limit</option><option value="market">Market (0DTE)</option></select>
+    <button class="button button--stop" type="submit" title="Every open group{{ ' of this side' if half_groups }}, one after another. It stops at the first that doesn't close, and the rest keep their stop and target.">{{ 'Close this side' if half_groups else 'Close entire trade' }}</button>
+</form>

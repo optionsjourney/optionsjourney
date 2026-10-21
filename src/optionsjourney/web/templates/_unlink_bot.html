@@ -1,0 +1,10 @@
+{#- #177: a trade matched to a bot by hand (no bot run) can be taken off it. Shared by the
+    Manage panel and the trade page; `next_url` brings the caller back. -#}
+<section class="card">
+    <form method="post" action="{{ url_for('journal.unlink_bot', key=entry.position.key, back=back) }}"
+          onsubmit='return confirm({{ ("Unlink this trade from " ~ entry.bot.name ~ "? It comes out of that bot's record and loses its tag.") | tojson }})'>
+        {% if next_url is defined and next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}
+        <button class="button button--quiet" type="submit">Unlink from {{ entry.bot.name }}</button>
+    </form>
+    <p class="muted small section-gap">Matched to this bot by Match trades, not placed by it. Unlinking takes it out of the bot's record and takes off the bot's tag.</p>
+</section>

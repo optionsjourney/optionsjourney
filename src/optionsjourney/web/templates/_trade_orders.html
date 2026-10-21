@@ -1,0 +1,19 @@
+{#- A trade's broker orders, from its own fills: the Manage panel's list for a trade no bot
+    run placed (a bot run's trade shows the run's steps instead). -#}
+{% set orders = [] %}{% for event in p.events %}{% for order in event.orders %}{% set _ = orders.append((event, order)) %}{% endfor %}{% endfor %}
+{% if orders %}
+<details class="card" open>
+    <summary><strong>Broker orders ({{ orders | length }})</strong></summary>
+    <table class="table table--nested">
+        <tr><th>Time</th><th>Order #</th><th>For</th><th>Legs</th></tr>
+        {% for event, order in orders %}
+        <tr>
+            <td class="nowrap muted small">{{ order.executed_at | market_time }}</td>
+            <td class="small">{{ order.order_id or '—' }}</td>
+            <td class="small">{{ event.kind.value | title }}</td>
+            <td class="small">{% for leg in order.legs %}<div>{{ order.leg_label(leg) }}</div>{% endfor %}</td>
+        </tr>
+        {% endfor %}
+    </table>
+</details>
+{% endif %}

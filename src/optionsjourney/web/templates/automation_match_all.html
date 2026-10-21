@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% from "_macros.html" import account_cell %}
+{% from "_tooltip.html" import info %}
+{% block title %}Match all bots · OptionsJourney{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Match all bots</h1>
+    <div class="inline-form">
+        <a class="button button--quiet" href="{{ url_for('automation.automation_page') }}">Back to Automation</a>
+    </div>
+</div>
+<p class="muted">Trades in your journal that no bot is linked to yet, each listed under the live bot it looks most like: same account, underlying and legs, and opened at one of the bot's entry times when it has them. Ticked ones are linked to their bot and get its tag, so the journal shows the bot's name and they count in its record. Nothing changes until you press Match selected.</p>
+
+{% if undo %}
+<form method="post" action="{{ url_for('automation.match_all_undo') }}" class="inline-form">
+    <span class="small">Matched the wrong ones?</span>
+    <button class="button button--quiet" type="submit">Undo</button>
+</form>
+{% endif %}
+
+{% if found is none %}
+<section class="card"><p class="notice notice--warning small">The journal couldn't be read right now. Try again in a moment.</p></section>
+{% elif not found.groups %}
+<section class="card"><p class="muted">No trades to match: every trade that looks like one of your live bots' is already linked to a bot.</p></section>
+{% else %}
+<form method="post" action="{{ url_for('automation.match_all_save') }}">
+    {% for group in found.groups %}
+    <section class="card section-gap">
+        <h2 class="card__title"><a class="link" href="{{ url_for('automation.match_page', bot_id=group.bot.id) }}">{{ group.bot.name }}</a> ({{ group.candidates | length }})</h2>
+        <div class="table-scroll"><table class="table table--compact">
+            <thead><tr><th></th><th>Trade</th><th>Opened</th><th>Account</th><th>Why it matches {{ info('match-all-why-' ~ loop.index, "What the trade has in common with this bot: the same legs, then, if the bot has entry times, that it opened within 2 minutes of one, and, if it trades chosen days, that day. Also matches means another bot fits it as well, and it starts unticked.", 'Why it matches', more='/help/automation#match-all-bots') }}</th></tr></thead>
+            <tbody>
+            {% for c in group.candidates %}
+            {% set e = c.entry %}
+            <tr>
+                <td><input type="checkbox" name="key" value="{{ group.bot.id }}:{{ e.position.key }}" aria-label="Match {{ e.name }} to {{ group.bot.name }}"{% if c.ticked %} checked{% endif %}></td>
+                <td>{{ e.name }}{% if e.tags %} <span class="muted small">({{ e.tags | map(attribute='name') | join(', ') }})</span>{% endif %}</td>
+                <td>{{ e.position.opened_at | market_time }}</td>
+                <td class="small">{{ account_cell(found.accounts, e.position.broker, e.position.account_number) }}</td>
+                <td class="small">{{ c.match.reason }}{% if not c.match.strong %} <span class="muted">(a guess: check it)</span>{% endif %}{% if c.also %} <span class="muted">· also matches {{ c.also | join(', ') }}: tick it only if it's this bot's</span>{% endif %}{% if c.splits %} <span class="muted">· will be split into put and call spreads</span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table></div>
+    </section>
+    {% endfor %}
+    <button class="button" type="submit">Match selected</button>
+</form>
+{% endif %}
+{% endblock %}

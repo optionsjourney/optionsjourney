@@ -1,0 +1,15 @@
+{# "+ New tag" under a bot's Tag picker (#108, Tracker2's initNewStrategy; a tag since
+   decision 0072): makes a journal tag, or finds the one with that name, and picks it
+   without leaving the form. Hidden until new_tag.js shows it; the name box has no
+   name, so the bot form never sends it. #}
+<div class="new-tag" data-url="{{ url_for('automation.new_journal_tag') }}" data-select="tag_id" hidden>
+    <button type="button" class="link-button" data-open>+ New tag</button>
+    <div class="inline-form" data-form hidden>
+        <input type="text" maxlength="60" placeholder="Tag name" aria-label="New tag name" data-name>
+        <button type="button" class="button button--quiet" data-create>Create</button>
+        <button type="button" class="button button--quiet" data-cancel>Cancel</button>
+    </div>
+    <p class="notice notice--warning small" data-error hidden></p>
+    <p class="muted small" data-form-hint hidden>It's added to Journal → Tags too, where you can rename it later.</p>
+</div>
+<script type="module" src="{{ url_for('static', filename='js/new_tag.js') }}"></script>

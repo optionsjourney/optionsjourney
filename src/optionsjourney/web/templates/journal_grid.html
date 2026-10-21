@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% from "_macros.html" import account_cell %}
+{% from "_tooltip.html" import info %}
+{% block title %}Risk graphs · OptionsJourney{% endblock %}
+{% block main_class %}main--wide{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Risk graphs</h1>
+    <a class="link" href="{{ url_for('journal.journal_page', **filters.to_args()) }}">← Back to the journal</a>
+</div>
+<p class="muted small">
+    Each open trade{{ ' the filters pick' if filters.to_args() }}. Tick trades to see them in one risk graph together, with their totals.
+    {% if more %}Showing the newest {{ trades | length }}; {{ more }} more. Narrow the filters to see others.{% endif %}
+</p>
+{% if not trades %}
+<p class="card muted">No open option trades{{ ' match the filters' if filters.to_args() }}.</p>
+{% else %}
+{% set ticked = trades[:graphed] | map(attribute='position.key') | list %}
+{% set href = '/risk-graph?trade=' ~ (ticked | map('urlencode') | join(',')) %}
+<section class="card grid-overview" id="grid-overview" data-url="{{ url_for('journal.open_pl', **filters.to_args()) }}">
+    <div class="grid-overview__totals">
+        <button type="button" class="grid-overview__toggle" id="grid-table-toggle" aria-controls="grid-table" aria-expanded="true" title="Hide the trades"><span class="grid-overview__caret" aria-hidden="true">▸</span> Total open P/L</button>
+        <strong class="grid-overview__total" id="grid-total">—</strong>
+        <span class="muted small" id="grid-total-note"></span>
+        <span class="grid-overview__accounts" id="grid-accounts"></span>
+    </div>
+    <div class="table-scroll" id="grid-table">
+        <table class="table table--compact">
+            <thead><tr>
+                <th><input type="checkbox" id="grid-check-all" title="Tick all / none" aria-label="Tick all or none"{% if trades | length <= graphed %} checked{% endif %}></th>
+                <th>Trade</th><th>Account</th><th>Opened</th><th class="num">Premium {{ info('grid-premium', "The cash the trade took in (cr) or paid (db) to open it, rolls included.", 'Premium', more='/help/journal#reading-a-trade') }}</th><th class="num">Open P/L {{ info('grid-open-pl', "The trade's profit or loss now, at your broker's live prices. It stays empty until a price comes in.", 'Open P/L') }}</th>
+            </tr></thead>
+            <tbody>
+                {% for entry in trades %}
+                {% set p = entry.position %}
+                {% set account = view.accounts.get((p.broker, p.account_number)) %}
+                <tr class="grid-row" data-grid-key="{{ p.key }}" data-account="{{ (account.display_name ~ ' ' ~ account.masked_number) if account else p.broker }}" data-premium="{{ row_details(p).premium }}">
+                    <td><input type="checkbox" class="grid-check" value="{{ p.key }}"{% if p.key in ticked %} checked{% endif %} aria-label="Graph {{ entry.name }}"></td>
+                    <td><a class="link" href="{{ url_for('journal.trade_page', key=p.key) }}">{{ entry.name }}</a>{% if entry.bot %} <span class="muted small">{{ entry.bot.name }}</span>{% endif %}</td>
+                    <td>{{ account_cell(view.accounts, p.broker, p.account_number) }}</td>
+                    <td class="nowrap">{{ p.opened_at | market_time }}</td>
+                    <td class="num">{{ row_details(p).premium | money }}</td>
+                    <td class="num" data-grid-pl></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+<section class="risk-grid__card grid-graph section-gap">
+    <div class="risk-grid__head">
+        <strong id="grid-graph-title">Risk graph{% if ticked | length > 1 %} · {{ ticked | length }} trades together{% endif %}</strong>
+        <a class="link" id="grid-graph-open" href="{{ href }}" title="Open it large">⤢</a>
+    </div>
+    <p class="muted grid-graph__empty" id="grid-graph-empty" hidden>Tick trades in the table to graph them together.</p>
+    <iframe id="grid-graph" title="Risk graph of the ticked trades" src="{{ href }}&embed=1"></iframe>
+</section>
+<script type="module" src="{{ url_for('static', filename='js/journal_grid.js') }}"></script>
+{% endif %}
+{% include "_risk_drawer.html" %}
+{% endblock %}

@@ -1,0 +1,6 @@
+{# A run's picked strikes by side: "5910C/5985C · 5690P/5615P"; a leg held past today
+   shows its expiration's month and day (slice 14): "5690P 10-20/5690P 10-27". Expects `run`. #}
+{%- for group, legs in run.legs | groupby('group') -%}
+{%- if not loop.first %} · {% endif -%}
+{%- for leg in legs -%}{%- if not loop.first %}/{% endif %}{{ leg.strike }}{{ leg.right[0] | upper }}{% if leg.dte and leg.expiration %} {{ leg.expiration[5:] }}{% endif %}{%- endfor -%}
+{%- endfor -%}

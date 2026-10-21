@@ -1,0 +1,59 @@
+{# The summary at the top of a saved bot's page (Tracker2's config and stat cards) #}
+{% macro signed(value, per_lot=false) %}{% if value is none %}<span class="muted">—</span>{% else %}<span class="{{ 'positive' if value > 0 else 'negative' if value < 0 }}">{{ value | money }}</span>{% if per_lot %}<span class="muted small"> / lot</span>{% endif %}{% endif %}{% endmacro %}
+<section class="bot-summary section-gap" id="summary">
+    <div class="bot-summary__cards">
+        <div class="stat-tile"><div class="stat__label">Underlying</div>
+            <div class="stat__value">{{ stored.underlying }}</div>
+            <div class="muted small">{{ summary.account }}</div></div>
+        <div class="stat-tile"><div class="stat__label">Legs</div>
+            {% for line in summary.legs %}<div class="small">{{ line }}</div>{% else %}<div class="muted small">No legs</div>{% endfor %}</div>
+        <div class="stat-tile"><div class="stat__label">Entry</div>
+            {% for line in summary.entry %}<div class="small">{{ line }}</div>{% endfor %}</div>
+        <div class="stat-tile"><div class="stat__label">Exit</div>
+            {% for line in summary.exit %}<div class="small">{{ line }}</div>{% else %}<div class="muted small">No exits</div>{% endfor %}</div>
+        <div class="stat-tile"><div class="stat__label">Execution</div>
+            {% for phase, lines in summary.execution %}<div class="small"><strong>{{ phase }}</strong></div>{% for line in lines %}<div class="small">{{ line }}</div>{% endfor %}{% endfor %}</div>
+    </div>
+    {% set st = summary.stats %}
+    {% if st is none %}
+    <p class="notice notice--warning small">The bot's record couldn't be read right now.</p>
+    {% elif st.paper %}
+    <div class="stats">
+        <div class="stat-tile"><div class="stat__label">Closed P/L <span class="badge badge--preview">paper</span></div><div class="stat__value">{{ signed(st.paper.pl) }}</div></div>
+        <div class="stat-tile"><div class="stat__label">Win rate</div><div class="stat__value">{{ st.paper.win_rate | percent if st.paper.win_rate is not none else '—' }}</div></div>
+        <div class="stat-tile"><div class="stat__label">Trades | Winners</div><div class="stat__value">{{ st.closed }} | {{ st.paper.wins }}</div></div>
+    </div>
+    {% else %}
+    {% set s = st.summary %}
+    <div class="stats">
+        <div class="stat-tile"><div class="stat__label">Open trades</div><div class="stat__value">{{ s.trades - st.closed }}</div></div>
+        <div class="stat-tile"><div class="stat__label">Closed P/L</div><div class="stat__value">{{ signed(s.closed_pl) }}</div></div>
+        <div class="stat-tile"><div class="stat__label">Win rate</div><div class="stat__value">{{ s.win_rate | percent if s.win_rate is not none else '—' }}</div></div>
+    </div>
+    <div class="stats">
+        <div class="stat-tile"><div class="stat__label">Avg per trade</div><div class="stat__value">{{ signed(s.avg_per_lot, true) }}</div></div>
+        <div class="stat-tile"><div class="stat__label">Avg winner</div><div class="stat__value">{{ signed(s.avg_winner_per_lot, true) }}</div></div>
+        <div class="stat-tile"><div class="stat__label">Avg loser</div><div class="stat__value">{{ signed(s.avg_loser_per_lot, true) }}</div></div>
+        <div class="stat-tile"><div class="stat__label">Max winner</div><div class="stat__value">{{ signed(s.max_winner_per_lot, true) }}</div></div>
+        <div class="stat-tile"><div class="stat__label">Max loser</div><div class="stat__value">{{ signed(s.max_loser_per_lot, true) }}</div></div>
+        <div class="stat-tile"><div class="stat__label">Trades | Winners</div><div class="stat__value">{{ st.closed }} | {{ s.winners }}</div></div>
+    </div>
+    {% endif %}
+    {% if summary.graph %}
+    {# #208 (Tracker2 f52ae8a0, ca044d27): the running total of its closed trades, one
+       point per trade from $0, folded until opened (bot_pl_graph.js remembers which). #}
+    <details class="bot-graph" id="pl-graph">
+        <summary class="bot-graph__title">P/L graph</summary>
+        <p class="muted small">Closed trades added up one by one, oldest first, starting from $0.</p>
+        <figure class="chart" data-line-chart="pl-graph-data" data-x="trade"
+                data-tooltip='[["Total", "cumulative", "signed"], ["This trade", "pl", "signed"]]'>
+            <svg class="chart__plot" data-series="cumulative" data-mark="end" role="img" aria-label="The bot's total P/L after each closed trade"></svg>
+            <div class="chart__tooltip" role="status" hidden></div>
+        </figure>
+    </details>
+    <script type="application/json" id="pl-graph-data">{{ summary.graph | tojson }}</script>
+    <script src="{{ url_for('static', filename='js/line_chart.js') }}" defer></script>
+    <script type="module" src="{{ url_for('static', filename='js/bot_pl_graph.js') }}"></script>
+    {% endif %}
+    <p class="small"><a class="link" href="{{ url_for('automation.record_page', bot_id=stored.id) }}">See its trades</a></p>
+</section>

@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Confirm · OptionsJourney{% endblock %}
+
+{% block content %}
+<div class="page-header"><h1>{{ heading }}</h1></div>
+<section class="card">
+    <p>{{ sentence }}</p>
+    <form class="inline-form" method="post" action="{{ action }}">
+        {% for name, value in fields %}<input type="hidden" name="{{ name }}" value="{{ value }}">
+        {% endfor %}<input type="hidden" name="confirm" value="1">
+        <button class="button" type="submit">Confirm</button>
+        <a class="button button--quiet" href="{{ back }}">Back</a>
+    </form>
+</section>
+{% endblock %}

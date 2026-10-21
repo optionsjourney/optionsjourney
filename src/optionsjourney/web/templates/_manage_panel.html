@@ -1,0 +1,65 @@
+{#- The journal's Manage panel (#174, Tracker2's manage-bot drawer), fetched by the row's gear
+    from journal.panel. It is made of the run page's and the manage page's own sections, so
+    each piece is written once; their forms post to the same routes with `next_url`, which
+    brings the journal back with this panel open. -#}
+{% from "_manual_rule_tips.html" import hand_to_bot_button %}
+{% set p = entry.position %}
+<div class="manage-panel" data-panel-key="{{ p.key }}">
+{% if panel_run %}
+    <h3 class="manage-panel__title" data-panel-title>Manage: {{ entry.bot.name }}</h3>
+    {% for e in exits if e.kind in ('target', 'timed', 'close') and e.state == 'firing' %}
+    <div class="notice notice--warning" id="panel-closing">
+        <strong>Closing:</strong> {{ kinds.get(e.id, e.kind) }}{% if e.cancel_requested_at %} (cancel asked){% else %}
+        {% include "_run_cancel_close.html" %}{% endif %}
+    </div>
+    {% endfor %}
+    <section class="card">
+        <h4 class="manage-panel__subtitle">Run summary</h4>
+        {% include "_run_facts.html" %}
+        {% if run.broker_order_id %}<p class="muted small">Broker order {{ run.broker_order_id }}</p>{% endif %}
+    </section>
+    {% include "_run_steps.html" %}
+    {% if sides and not closed %}
+    {% include "_run_manage.html" %}
+    {% include "_run_settings.html" %}
+    {% endif %}
+    <div class="manage-panel__bar">
+        <p class="manage-panel__links">
+            {% if analyzable and not closed %}<a class="link" href="{{ url_for('risk_graph.risk_graph_page', trade=p.key) }}" title="See it on the risk graph, to plan a roll">Risk graph (roll)</a> · {% endif %}
+            <a class="link" href="{{ url_for('automation.run_page', run_id=run.id) }}">Open full page</a> ·
+            <a class="link" href="{{ url_for('journal.trade_page', key=p.key, back=back) }}">Edit name, tags and notes</a>
+        </p>
+        {% if sides and not closed and not run.paper %}{% include "_run_close_trade.html" %}{% endif %}
+    </div>
+{% else %}
+    <h3 class="manage-panel__title" data-panel-title>Manage: {{ entry.name }}</h3>
+    {% if closed %}
+    <section class="card">
+        <dl class="run-facts">
+            <dt>Opened</dt><dd>{{ p.opened_at | market_time }}</dd>
+            {% if p.closed_at %}<dt>Closed</dt><dd>{{ p.closed_at | market_time }}</dd>{% endif %}
+            <dt>Entry price</dt><dd>{{ p.entry_price | premium }}</dd>
+            <dt>Exit price</dt><dd>{{ p.exit_price | premium }}</dd>
+            <dt>P/L</dt><dd>{{ p.realized_pl | money }}</dd>
+        </dl>
+        <p class="muted small">This trade is closed: there's nothing left to manage.</p>
+    </section>
+    {% elif panel_rules %}
+    {% include "_manage_rules.html" %}
+    {% endif %}
+    {% include "_trade_orders.html" %}
+    {% if adopt is not none %}
+    <section class="card">
+        {% if adopt %}
+        {{ hand_to_bot_button('manage-hand-to-bot', url_for('journal.adopt_page', key=p.split_from or p.key, back=back)) }}
+        <p class="muted small section-gap">A bot then manages its exits as if it had opened it. You see what it will place first.</p>
+        {% else %}<p class="muted small">{{ which_trades }}</p>{% endif %}
+    </section>
+    {% endif %}
+    {% if entry.bot and entry.bot.matched %}
+    {% include "_unlink_bot.html" %}
+    {% endif %}
+    {% if not closed and not panel_rules and adopt is none %}<p class="muted small">Only an open options trade can be given exit rules here.</p>{% endif %}
+    <p class="manage-panel__footer"><a class="link" href="{{ url_for('journal.trade_page', key=p.key, back=back) }}">Edit name, tags and notes</a></p>
+{% endif %}
+</div>

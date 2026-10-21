@@ -1,0 +1,3 @@
+{% from "_account_balances.html" import total_stat, broker_cards %}
+{{ total_stat(total, has_balances, pending) }}
+{{ broker_cards(brokers, pending) }}

@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% from "_tooltip.html" import info %}
+{% block title %}Order log · OptionsJourney{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Order log</h1>
+</div>
+<p class="muted">Every order the app previewed, sent, replaced, cancelled or refused, newest first.</p>
+<form class="filters" method="get">
+    <select name="account" aria-label="Account">
+        <option value="">All accounts</option>
+        {% for broker, number in accounts %}
+        <option value="{{ number }}" {{ 'selected' if filters.account == number }}>{{ broker_names.get(broker, broker) }} ••{{ number[-4:] }}</option>
+        {% endfor %}
+    </select>
+    <select name="origin" aria-label="From">
+        <option value="">Everyone</option>
+        {% for value, label in [('bot', 'Bots'), ('managed', 'Managed trades'), ('you', 'You')] %}
+        <option value="{{ value }}" {{ 'selected' if filters.origin == value }}>{{ label }}</option>
+        {% endfor %}
+    </select>
+    <select name="action" aria-label="What">
+        <option value="">Anything</option>
+        {% for value in ['preview', 'send', 'replace', 'cancel', 'refuse'] %}
+        <option value="{{ value }}" {{ 'selected' if filters.action == value }}>{{ value | title }}</option>
+        {% endfor %}
+    </select>
+    <button class="button button--quiet" type="submit">Show</button>
+</form>
+{% if not rows %}
+<p class="muted">No orders yet.</p>
+{% else %}
+<div class="table-scroll"><table class="table">
+    <thead><tr><th>When</th><th>Account</th><th>From {{ info('orders-from', "Who asked for the order: a bot, a trade the app is managing for you (its stops, targets and closes), or you.", 'From') }}</th><th>What {{ info('orders-what', "Preview: checked with your broker, not sent. Send: the app tried to send an order to your broker. Replace: a working order was changed. Cancel: a working order was pulled. Refuse: the app wouldn't send it, and the Result says why.", 'What', more='/help/pausing-trading#the-order-log') }}</th><th>Qty</th><th>Price</th><th>Result {{ info('orders-result', "What came of it: Sent, Replaced, a reason it was refused, or what your broker said. Unclear: check your broker means the app sent an order and never heard back, so it can't know if it went through. That row is red until the app finds the order, your broker shows no such order a minute or more later that same day, or you press Clear, and until then no new order goes out on that account for the same options. Look at your broker before you clear it.", 'Result', more='/help/pausing-trading#unclear-check-your-broker') }}</th><th></th></tr></thead>
+    <tbody>
+    {% for row in rows %}
+    {% set needs_clearing = row.result.startswith(unclear) and not row.cleared_at %}
+    <tr class="{{ 'row--problem' if needs_clearing }}">
+        <td>{{ row.created_at | market_time }}</td>
+        <td>{{ broker_names.get(row.broker, row.broker) }} ••{{ row.account_number[-4:] }}</td>
+        <td>{{ row.origin }}</td>
+        <td>{{ row.action }}{% if row.opening %} (open){% elif row.quantity %} (close){% endif %}</td>
+        <td>{{ row.quantity or '' }}</td>
+        <td>{{ row.price if row.price is not none else '' }}</td>
+        <td>{{ row.result }}{% if row.broker_order_id %} <span class="muted small">#{{ row.broker_order_id }}</span>{% endif %}</td>
+        <td>{% if needs_clearing %}
+            <form method="post" action="{{ url_for('orders.clear', log_id=row.id) }}"><button class="button button--quiet" type="submit">Clear</button></form>
+        {% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table></div>
+{% endif %}
+{% endblock %}

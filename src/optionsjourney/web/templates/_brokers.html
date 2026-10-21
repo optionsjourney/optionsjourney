@@ -1,0 +1,141 @@
+{# The TastyTrade and Schwab connect cards, shared by Settings -> Brokers and
+   the setup wizard. `next` is where to come back to after each step
+   (a path in this app), or none for Settings. Each broker is a row: its
+   name and a status pill, and its buttons on the right (#73). #}
+{% from "_tooltip.html" import tip_text %}
+
+{% macro tastytrade_card(brokers, next=none) %}
+    {% set connected = brokers.connected('tastytrade') %}
+    <div class="broker">
+        <div class="broker__head">
+            <h3 class="broker__name">TastyTrade</h3>
+            <span class="tip tip--start">
+                <span class="pill {{ 'pill--ok' if connected }}" tabindex="0" aria-describedby="tip-tastytrade-status">{{ 'Connected' if connected else 'Not connected' }}</span>
+                {{ tip_text('tastytrade-status', "Your TastyTrade login is kept in this computer's keychain. Syncs and live prices use it." if connected else "Follow the steps below. Your login is checked with TastyTrade before it's kept.") }}
+            </span>
+            {% if connected %}
+            <form class="broker__actions" method="post" action="{{ url_for('settings.disconnect', broker='tastytrade', next=next) }}"
+                  onsubmit='return confirm({{ "Disconnect TastyTrade? Its login is removed from this computer; your trades stay." | tojson }})'>
+                <span class="tip tip--end">
+                    <button class="button button--danger-text" type="submit" aria-describedby="tip-tastytrade-disconnect">Disconnect</button>
+                    {{ tip_text('tastytrade-disconnect', 'Removes your TastyTrade login from this computer. Your trades stay in the journal.') }}
+                </span>
+            </form>
+            {% endif %}
+        </div>
+        {% if not connected %}
+        <ol class="muted small steps">
+            <li>On tastytrade.com, open <strong>My Profile → API → OAuth Applications</strong> and create an application (any name; tick the <em>read</em> and <em>trade</em> scopes).</li>
+            <li>Copy its <strong>client secret</strong>, then use <strong>Create Grant</strong> to get a <strong>refresh token</strong>.</li>
+            <li>Paste both here. They're checked with TastyTrade before they're kept.</li>
+        </ol>
+        <form class="form" method="post" action="{{ url_for('settings.connect_tastytrade') }}" autocomplete="off">
+            {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+            <label>Client secret <input type="password" name="client_secret" required></label>
+            <label>Refresh token <input type="password" name="refresh_token" required></label>
+            <label class="check"><input type="checkbox" name="sandbox"> This is a sandbox (test) account</label>
+            <button class="button" type="submit">Connect TastyTrade</button>
+        </form>
+        {% endif %}
+    </div>
+
+{% endmacro %}
+
+{% macro schwab_card(brokers, next=none) %}
+    {% set schwab = brokers.store.get('schwab') or {} %}
+    {% set connected = brokers.connected('schwab') %}
+    {% set schwab_expires = brokers.schwab_login_expires_at() %}
+    {% set due = schwab_expires | login_due if connected else '' %}
+    <div class="broker">
+        <div class="broker__head">
+            <h3 class="broker__name">Schwab</h3>
+            <span class="tip tip--start">
+                {% if not connected %}
+                <span class="pill" tabindex="0" aria-describedby="tip-schwab-status">Not connected</span>
+                {{ tip_text('schwab-status', "Waiting for you to log in to Schwab and paste the address, below." if schwab.app_key else "Follow the steps below. Schwab takes a few days to approve a new developer app.") }}
+                {% elif due == 'problem' %}
+                <span class="pill pill--bad" tabindex="0" aria-describedby="tip-schwab-status">Log in again</span>
+                {{ tip_text('schwab-status', "Schwab's 7-day login ran out at " ~ (schwab_expires | market_time) ~ ", so Schwab accounts aren't syncing. Click Reconnect Schwab.") }}
+                {% elif due == 'warning' %}
+                <span class="pill pill--warn" tabindex="0" aria-describedby="tip-schwab-status">Log in again soon</span>
+                {{ tip_text('schwab-status', "Schwab's login runs out at " ~ (schwab_expires | market_time) ~ ". Click Reconnect Schwab before then to keep it syncing.") }}
+                {% else %}
+                <span class="pill pill--ok" tabindex="0" aria-describedby="tip-schwab-status">Connected</span>
+                {{ tip_text('schwab-status', "Logged in until " ~ (schwab_expires | market_time) ~ ". Schwab asks for a new login every 7 days; the app reminds you a day before.") }}
+                {% endif %}
+            </span>
+            {% if connected %}
+            <div class="broker__actions">
+                <form method="post" action="{{ url_for('settings.start_schwab') }}" target="schwab-login"
+                      onsubmit="window.open('', 'schwab-login', 'popup,width=560,height=760'); document.getElementById('schwab-finish').open = true;">
+                    {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+                    <span class="tip tip--end">
+                        <button class="button" type="submit" aria-describedby="tip-schwab-reconnect">Reconnect Schwab</button>
+                        {{ tip_text('schwab-reconnect', "Opens Schwab's login in its own window. Afterwards, paste the address of the page Schwab sends you to.") }}
+                    </span>
+                </form>
+                <form method="post" action="{{ url_for('settings.disconnect', broker='schwab', next=next) }}"
+                      onsubmit='return confirm({{ "Disconnect Schwab? Its login is removed from this computer; your trades stay." | tojson }})'>
+                    <span class="tip tip--end">
+                        <button class="button button--danger-text" type="submit" aria-describedby="tip-schwab-disconnect">Disconnect</button>
+                        {{ tip_text('schwab-disconnect', 'Removes your Schwab login from this computer. Your trades stay in the journal.') }}
+                    </span>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+        {% if connected %}
+        <p class="muted small">Logged in until {{ schwab_expires | market_time }}. Schwab asks for a new login every 7 days.</p>
+        {% endif %}
+        {% if schwab.app_key %}
+        {# While connected this stays folded until Reconnect opens it #}
+        <details class="broker__finish" id="schwab-finish" {{ 'open' if not connected }}>
+            <summary class="link small">Paste the address after logging in</summary>
+            <p class="muted small">After logging in, Schwab sends you to {{ schwab.callback_url }}, which shows an error page; that's expected. Schwab's login opens in its own window. <strong>Paste the address</strong> of that page here straight away (its code only lasts about 30 seconds), then close that window.</p>
+            <form class="form" method="post" action="{{ url_for('settings.finish_schwab') }}" autocomplete="off">
+            {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+                <label>Address after logging in <input type="text" name="redirected_url" required placeholder="{{ schwab.callback_url }}/?code=…"></label>
+                <div class="inline-form">
+                    <button class="button" type="submit">Finish connecting</button>
+                    <a class="link small" href="{{ brokers.schwab_login_url(schwab.app_key, schwab.callback_url) }}" target="schwab-login" rel="noopener"
+                       onclick="window.open(this.href, 'schwab-login', 'popup,width=560,height=760'); return false;">Log in to Schwab again (opens a window)</a>
+                </div>
+            </form>
+            {% if not connected %}
+            <details class="section-gap">
+                <summary class="link">Change the app's details</summary>
+                <p class="muted small">The callback URL must match the one on Schwab's site exactly, including any port (e.g. <code>https://127.0.0.1:8080</code>). Leave the secret blank to keep the saved one.</p>
+                <form class="form" method="post" action="{{ url_for('settings.start_schwab') }}" autocomplete="off" target="schwab-login" onsubmit="window.open('', 'schwab-login', 'popup,width=560,height=760'); setTimeout(() => location.reload(), 1500)">
+            {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+                    <label>App key <input type="text" name="app_key" value="{{ schwab.app_key }}" required></label>
+                    <label>Secret <input type="password" name="app_secret" placeholder="(unchanged)"></label>
+                    <label>Callback URL <input type="text" name="callback_url" value="{{ schwab.callback_url }}" required></label>
+                    <button class="button" type="submit">Save and log in to Schwab</button>
+                </form>
+            </details>
+            <form class="section-gap" method="post" action="{{ url_for('settings.disconnect', broker='schwab', next=next) }}"
+                  onsubmit='return confirm({{ "Start over? The saved Schwab app details are removed from this computer." | tojson }})'>
+                <span class="tip tip--start">
+                    <button class="button button--quiet" type="submit" aria-describedby="tip-schwab-start-over">Start over</button>
+                    {{ tip_text('schwab-start-over', "Removes the saved Schwab app details from this computer, so you can enter them again.") }}
+                </span>
+            </form>
+            {% endif %}
+        </details>
+        {% endif %}
+        {% if not schwab.app_key %}
+        <ol class="muted small steps">
+            <li>On developer.schwab.com, create an app for the <strong>Accounts and Trading</strong> and <strong>Market Data</strong> products, with the callback URL <code>https://127.0.0.1</code>. Schwab takes a few days to approve it.</li>
+            <li>Once it's <em>Ready For Use</em>, copy its <strong>App Key</strong> and <strong>Secret</strong> here and click <strong>Log in to Schwab</strong>.</li>
+            <li>Log in and approve your accounts. You land on an error page at 127.0.0.1; paste its address below the form that appears.</li>
+        </ol>
+        <form class="form" method="post" action="{{ url_for('settings.start_schwab') }}" autocomplete="off" target="schwab-login" onsubmit="window.open('', 'schwab-login', 'popup,width=560,height=760'); setTimeout(() => location.reload(), 1500)">
+            {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+            <label>App key <input type="text" name="app_key" required></label>
+            <label>Secret <input type="password" name="app_secret" required></label>
+            <label>Callback URL <span class="muted small">(exactly as on Schwab's site, including any port)</span> <input type="text" name="callback_url" value="https://127.0.0.1" required></label>
+            <button class="button" type="submit">Log in to Schwab</button>
+        </form>
+        {% endif %}
+    </div>
+{% endmacro %}

@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% from "_tooltip.html" import tip_text %}
+{% block title %}Alerts · OptionsJourney{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Alerts</h1>
+</div>
+
+{% if unread_alerts %}
+<section class="card section-gap" id="unread-alerts">
+    <h2 class="card__title">Unread</h2>
+    <ul class="alert-list">
+        {% for a in unread_alerts %}
+        <li class="alert{{ ' alert--unread' if a.id in unread_ids }}">
+            <div class="alert__body">
+                <div class="alert__title">{{ a.title }}</div>
+                <div class="muted small">{{ a.detail }}</div>
+                <div class="muted small">{{ a.created_at | market_time }}</div>
+            </div>
+            {% if a.link %}<a class="button button--quiet" href="{{ a.link }}">Look</a>{% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% endif %}
+
+{% if not alerts %}
+<section class="card"><p class="muted">Nothing needs your attention.</p></section>
+{% else %}
+<section class="card">
+    <ul class="alert-list">
+        {% for a in alerts %}
+        <li class="alert alert--{{ a.level }}">
+            <div class="alert__icon" aria-hidden="true">{{ '!' if a.level == 'problem' else 'i' }}</div>
+            <div class="alert__body">
+                <div class="alert__title"><span class="visually-hidden">{{ 'Problem' if a.level == 'problem' else 'Note' }}: </span>{{ a.title }}</div>
+                <div class="muted small">{{ a.detail }}</div>
+            </div>
+            <a class="button button--quiet" href="{{ a.link }}">{{ a.action }}</a>
+            {% if a.user_alert_id %}
+            <form method="post" action="{{ url_for('alerts.change', alert_id=a.user_alert_id, action='rearm') }}"><span class="tip tip--end"><button class="button button--quiet" type="submit" aria-describedby="tip-alerts-set-again-{{ a.user_alert_id }}">Set again</button>{{ tip_text('alerts-set-again-' ~ a.user_alert_id, "Turns this alert back on, with the same level. If the price or P/L is still past that level, it goes off again at the next check, within about 15 seconds.", more='/help/alerts#your-own-alerts') }}</span></form>
+            <form method="post" action="{{ url_for('alerts.change', alert_id=a.user_alert_id, action='dismiss') }}"><span class="tip tip--end"><button class="button button--quiet" type="submit" aria-describedby="tip-alerts-dismiss-{{ a.user_alert_id }}">Dismiss</button>{{ tip_text('alerts-dismiss-' ~ a.user_alert_id, "Clears it from this list. The alert stays off and won't go off again.", more='/help/alerts#your-own-alerts') }}</span></form>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% endif %}
+
+<section class="card section-gap">
+    <h2 class="card__title">Your alerts</h2>
+    <p class="muted small">Checked every 15 seconds from your broker's live prices while OptionsJourney is running. Each one goes off once; set it again from the list above.</p>
+    <form class="inline-form alert-form" method="post" action="{{ url_for('alerts.create') }}">
+        <input type="hidden" name="kind" value="price">
+        <label>When <input type="text" name="symbol" placeholder="SPX" required maxlength="20" class="chart-pane__symbol"></label>
+        <select name="direction" aria-label="Above or below"><option value="below">goes below</option><option value="above">goes above</option></select>
+        <input type="text" name="level" inputmode="decimal" placeholder="7,700" required aria-label="Price" size="9">
+        <input type="text" name="note" placeholder="Note (optional)" maxlength="500" aria-label="Note">
+        <button class="button" type="submit">Set alert</button>
+    </form>
+    <p class="muted small">To alert on a trade's open P/L, open the trade from the journal.</p>
+    {% if mine %}
+    <div class="table-scroll"><table class="table table--compact section-gap">
+        <thead><tr><th>Alert</th><th>Note</th><th></th></tr></thead>
+        <tbody>
+            {% for alert in mine %}
+            <tr>
+                <td>{{ describe(alert).title.replace(' went ', ' goes ') }}</td>
+                <td class="muted small">{{ alert.note or '' }}</td>
+                <td><form method="post" action="{{ url_for('alerts.change', alert_id=alert.id, action='delete') }}"><button class="link small" type="submit">Delete</button></form></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table></div>
+    {% endif %}
+</section>
+
+<section class="card section-gap" id="trades">
+    <h2 class="card__title">Trades</h2>
+    <p class="muted small">Every trade that opened, rolled or closed in the last day, as your broker's fills were synced. The same events pop up on any page{% if not popups %} when Trade popups are on in <a class="link" href="{{ url_for('settings.settings_page') }}#notifications">Settings</a>{% endif %}.</p>
+    <div class="chips" aria-label="Filter by type">
+        <a class="chip{% if not kind %} chip--picked{% endif %}" href="{{ url_for('alerts.alerts_page') }}#trades">All</a>
+        {% for key, label in kinds.items() %}<a class="chip{% if kind == key %} chip--picked{% endif %}" href="{{ url_for('alerts.alerts_page', kind=key) }}#trades">{{ label }}</a>{% endfor %}
+    </div>
+    <div class="table-scroll"><table class="table table--compact section-gap">
+        <thead><tr><th>When</th><th>What</th><th>Trade</th><th>Account</th><th>Cash</th></tr></thead>
+        <tbody id="trade-events">
+            {% for e in events %}
+            <tr>
+                <td class="nowrap">{{ e.when }}</td>
+                <td>{{ e.label }}</td>
+                <td><a class="link" href="{{ e.link }}">{{ e.name }}</a>{% if e.bot_name %} <span class="muted small">{{ e.bot_name }}</span>{% endif %}
+                    {%- for line in e.detail.splitlines() %}<div class="muted small">{{ line }}</div>{% endfor %}</td>
+                <td>{{ e.account }}</td>
+                <td>{{ e.amount }}</td>
+            </tr>
+            {% else %}
+            <tr data-empty><td colspan="5" class="muted">No trades yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table></div>
+</section>
+<script>
+// A trade event that comes in while this page is open joins the top of the list
+window.addEventListener('trade-event', (ev) => {
+    const e = ev.detail, kind = new URLSearchParams(location.search).get('kind');
+    if (!e || (kind && kind !== e.kind)) return;
+    const body = document.getElementById('trade-events');
+    body.querySelector('[data-empty]')?.remove();
+    const row = document.createElement('tr');
+    const cell = (text) => { const td = document.createElement('td'); td.textContent = text; return td; };
+    const trade = document.createElement('td');
+    const link = Object.assign(document.createElement('a'), { className: 'link', href: e.link, textContent: e.name });
+    trade.append(link, e.bot_name ? ' ' + e.bot_name : '');
+    (e.detail || '').split('\n').filter(Boolean).forEach((line) => {
+        trade.append(Object.assign(document.createElement('div'), { className: 'muted small', textContent: line }));
+    });
+    row.append(cell(e.when), cell(e.label), trade, cell(e.account), cell(e.amount));
+    body.prepend(row);
+});
+</script>
+{% endblock %}

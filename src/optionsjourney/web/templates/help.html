@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}{{ page.title if page else 'Search' }} · Help · OptionsJourney{% endblock %}
+{% block content %}
+<div class="help">
+    <nav class="help__side" aria-label="Help pages">
+        <form class="help__search" action="{{ url_for('help.help_search') }}" method="get" role="search">
+            <input type="search" name="q" value="{{ query }}" placeholder="Search help" aria-label="Search help">
+        </form>
+        <ul class="help__list">
+            {% for p in pages %}
+            {% set url = url_for('help.help_page') if p.name == 'index' else url_for('help.help_topic', name=p.name) %}
+            <li><a href="{{ url }}"{% if page and p.name == page.name %} class="help__current" aria-current="page"{% endif %}>{{ 'Help home' if p.name == 'index' else p.title }}</a></li>
+            {% endfor %}
+        </ul>
+    </nav>
+    {% if page %}
+    <article class="help__body">{{ page.html | safe }}</article>
+    {% else %}
+    <section class="help__body help__results" aria-live="polite">
+        <h1>Search</h1>
+        {% if not query %}
+        <p class="muted">Type a word or two in the box, like <em>stop loss</em> or <em>phone alerts</em>, and press Enter.</p>
+        {% elif not results %}
+        <p>Nothing found for “{{ query }}”. Try fewer words, or a different word for the same thing.</p>
+        {% else %}
+        <p class="muted">{{ results | length }}{% if results | length == 50 %}+{% endif %} {{ 'place' if results | length == 1 else 'places' }} in the guide mention “{{ query }}”, best first.</p>
+        <ol class="help__hits">
+            {% for hit in results %}
+            {% set base = url_for('help.help_page') if hit.page == 'index' else url_for('help.help_topic', name=hit.page) %}
+            <li>
+                <a href="{{ base }}{% if hit.anchor %}#{{ hit.anchor }}{% endif %}">{{ hit.heading }}</a>
+                {% if hit.heading != hit.page_title %}<span class="muted"> · {{ hit.page_title }}</span>{% endif %}
+                <p>{% for text, marked in hit.snippet %}{% if marked %}<mark>{{ text }}</mark>{% else %}{{ text }}{% endif %}{% endfor %}</p>
+            </li>
+            {% endfor %}
+        </ol>
+        {% endif %}
+    </section>
+    {% endif %}
+</div>
+{% endblock %}

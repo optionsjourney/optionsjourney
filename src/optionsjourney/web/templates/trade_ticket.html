@@ -1,0 +1,39 @@
+{% extends "tracker_base.html" %}
+{# The Trade page (#90): Tracker2's option chain (js/trade/chain_panel.js), the order ticket and
+   your working orders (js/trade/trade_page.js) and the risk graph (slice 1's panel), in Tracker2's dark look. #}
+{% block title %}Trade · OptionsJourney{% endblock %}
+{% block main_width %}max-w-[1600px] mx-auto{% endblock %}
+{% block content %}
+<form id="trade-symbol" class="flex items-center gap-2 mb-3">
+    <input name="ticker" value="{{ ticker }}" aria-label="Symbol" autocomplete="off"
+           class="w-28 px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-transparent uppercase">
+    <button class="px-3 py-1 rounded bg-blue-600 text-white text-sm">Go</button>
+    <span class="text-xs text-gray-500 dark:text-gray-400">Click a bid to sell, an ask to buy.</span>
+</form>
+<div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
+    <section id="trade-chain" class="lg:col-span-3 h-[70vh] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"></section>
+    <div class="lg:col-span-2 flex flex-col gap-4">
+        <section id="trade-ticket" class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm"></section>
+        {# Its own container: ticket renders and quote pushes never touch it. #}
+        <section id="trade-working" class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm"></section>
+    </div>
+</div>
+{# The risk graph slides out as a drawer from the right, over the page. #}
+<section id="trade-graph" class="hidden fixed inset-y-0 right-0 z-40 w-full sm:w-[min(760px,90vw)] flex flex-col bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 shadow-2xl overflow-y-auto">
+    <div class="flex justify-end px-2 pt-2 flex-shrink-0">
+        <button type="button" data-act="graph-close" aria-label="Close risk graph"
+                class="px-2 py-0.5 rounded text-sm text-gray-400 hover:text-gray-100 hover:bg-gray-700">Close &times;</button>
+    </div>
+    {% include '_risk_graph_panel.html' %}
+</section>
+<script id="trade-accounts" type="application/json">{{ accounts | tojson }}</script>
+{% endblock %}
+{% block scripts %}
+<script type="module">
+  import { toModelerLeg, buildPayoffFns, expiryMs, strikeIncrement, curveStats } from "{{ url_for('static', filename='js/modeler/pricing.js') }}";
+  import { renderPayoffChart } from "{{ url_for('static', filename='js/modeler/render.js') }}";
+  window.__modeler = { toModelerLeg, buildPayoffFns, expiryMs, renderPayoffChart, strikeIncrement, curveStats };
+</script>
+<script src="{{ url_for('static', filename='js/risk_graph.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/trade/trade_page.js') }}"></script>
+{% endblock %}

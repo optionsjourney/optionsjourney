@@ -1,0 +1,140 @@
+{% extends "base.html" %}
+{% block title %}Import a bot · OptionsJourney{% endblock %}
+
+{% macro problem(key) %}{% if problems.get(key) %}<p class="notice notice--warning small">{{ problems[key] }}</p>{% endif %}{% endmacro %}
+{% macro amount(value) %}{{ value if value is not none else '—' }}{% endmacro %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Import a bot</h1>
+    <a class="button button--quiet" href="{{ url_for('automation.automation_page') }}">All bots</a>
+</div>
+
+{% if stage == 'start' %}
+<p class="muted">Bring in a bot someone shared with you: a link to a bot file they posted online, or the bot file itself (it ends in <code>.json</code>). You'll see what it does before anything is saved, and you pick your own account and size. An imported bot starts switched off and Live.</p>
+{% if error %}<p class="notice notice--warning">{{ error }}</p>{% endif %}
+<section class="card">
+    <form method="post" action="{{ url_for('automation.import_preview') }}" enctype="multipart/form-data" class="bot-form">
+        <label class="import-link">Paste a link to a bot file <input type="text" inputmode="url" name="url" value="{{ url or '' }}" placeholder="https://drive.google.com/file/d/…" autocomplete="off" spellcheck="false"></label>
+        <p class="muted small">Google Drive, Dropbox, GitHub or any https link. Share it so anyone with the link can view it.</p>
+        <label class="section-gap">Or choose the bot file <input type="file" name="file" accept=".json,application/json"></label>
+        <p class="muted small">Or paste what's in it:</p>
+        <textarea name="json" rows="8" aria-label="Bot file contents" placeholder='{"format": "optionsjourney.bot", ...}'></textarea>
+        <div class="inline-form section-gap"><button class="button" type="submit">Preview</button></div>
+    </form>
+</section>
+{% elif stage == 'manual' %}
+<p class="muted">This Tracker2 bot enters from the Analyzer, so it comes over as a <strong>manual bot</strong>: a named set of exit rules you attach to a trade you already have{% if source_url %}, from <a href="{{ source_url }}" target="_blank" rel="noopener noreferrer">{{ source_url }}</a>{% endif %}. Nothing is saved until you press Import.</p>
+<section class="notice">
+    <p><strong>Coming from Tracker2.</strong> What's different here:</p>
+    <ul>{% for note in notes %}<li>{{ note }}</li>{% endfor %}</ul>
+</section>
+<section class="card">
+    <h2 class="card__title">{{ manual.name }}</h2>
+    <ul class="small">
+        <li><strong>Profit target:</strong> {% if manual.target_value is none %}none{% else %}{{ '{:f}'.format(manual.target_value.normalize()) }}{{ '%' if manual.target_unit == 'pct' else ' $' }}{% endif %}</li>
+        <li><strong>Stop loss:</strong> {% if manual.stop_value is none %}none{% else %}{{ '{:f}'.format(manual.stop_value.normalize()) }}{{ '%' if manual.stop_unit == 'pct' else ' $' }}{% endif %}</li>
+        <li><strong>Alerts:</strong> {% for a in manual.alerts %}{% if a.type == 'pnl_pct' %}profit/loss {{ a.direction }} {{ '{:f}'.format(a.value.normalize()) if a.value is not none else '?' }}%{% else %}{{ '{:f}'.format(a.points.normalize()) if a.points is not none else '?' }} points from a strike{% endif %}{% if not loop.last %}; {% endif %}{% else %}none{% endfor %}</li>
+        <li><strong>Exit time (New York):</strong> {% if manual.close_time %}{{ manual.close_time }}, {{ manual.close_dte }} days before expiration{% else %}off{% endif %}</li>
+    </ul>
+    <form method="post" action="{{ url_for('automation.import_save') }}" class="bot-form">
+        <textarea name="json" hidden aria-hidden="true">{{ json }}</textarea>
+        {% if source_url %}<input type="hidden" name="source_url" value="{{ source_url }}">{% endif %}
+        <label>Name <input type="text" name="name" value="{{ manual.name }}" maxlength="100"></label>
+        {{ problem('name') }}
+        <div class="inline-form section-gap">
+            <button class="button" type="submit">Import</button>
+            <a class="button button--quiet" href="{{ url_for('automation.import_page') }}">Start again</a>
+        </div>
+    </form>
+</section>
+{% else %}
+{% set b = bot %}
+<p class="muted">Here's what this bot does{% if exported_at %} (its file was saved {{ exported_at | market_time }}){% endif %}{% if source_url %}, from <a href="{{ source_url }}" target="_blank" rel="noopener noreferrer">{{ source_url }}</a>{% endif %}. Nothing is saved until you press Import.</p>
+{% if from_tracker2 %}
+<section class="notice">
+    <p><strong>Coming from Tracker2.</strong> {% if notes %}Everything else carries over as it was. What's different here:{% else %}Every setting carries over as it was.{% endif %}</p>
+    {% if notes %}<ul>{% for note in notes %}<li>{{ note }}</li>{% endfor %}</ul>{% endif %}
+</section>
+{% endif %}
+{% if bot_problems %}
+<section class="notice notice--warning">
+    <p>This bot has settings this app won't accept, so it can't be imported as it is:</p>
+    <ul>{% for text in bot_problems.values() %}<li>{{ text }}</li>{% endfor %}</ul>
+</section>
+{% endif %}
+<section class="card">
+    <h2 class="card__title">{{ b.name }}</h2>
+    <ul class="small">
+        <li><strong>Underlying:</strong> {{ b.underlying }}{% if b.split_iron_condors %}, iron condors shown as two sides in the journal{% endif %}</li>
+        <li><strong>Legs:</strong>
+            {% for leg in b.legs %}{{ leg.side | string | capitalize }} {{ leg.right }} {% if leg.pick == 'premium' %}at about ${{ amount(leg.target) }}{% elif leg.pick == 'delta' %}at about {{ '{:f}'.format((leg.target * 100).normalize()) if leg.target is not none else '?' }} delta{% elif leg.pick == 'spot' %}{% if leg.target is none %}? points from {{ b.underlying }}{% else %}{{ '{:f}'.format(leg.target.copy_abs().normalize()) }} points {{ 'below' if leg.target < 0 else 'above' }} {{ b.underlying }}{% endif %}{% else %}{{ amount(leg.target) }} points from leg {{ (leg.link or 0) + 1 }}{% endif %}{% if not loop.last %}; {% endif %}{% endfor %}</li>
+        {% set styles = {'leg_premium': "% above the short's fill", 'entry_premium': '% of the entry credit', 'closing_order': '$ off the entry credit'} %}
+        {% set wings = {'close_market': 'sold now', 'close_limit': 'sold at a limit', 'close_chase': 'chased', 'leave': 'left open'} %}
+        {% for g in b.groups %}
+        <li><strong>{{ g.name }}:</strong>
+            {% if g.stop_value is none %}no stop{% else %}stop {{ g.stop_value }} {{ '$ loss per contract' if g.stop_unit == 'usd' else styles.get(g.stop_basis, g.stop_basis) }}{% endif %},
+            {% if g.target_value is none %}no profit target{% else %}profit target {{ g.target_value }} {{ '$ profit per contract' if g.target_unit == 'usd' else "% of the side's credit kept" }}{% endif %},
+            the wing after a stop is {{ wings.get(g.on_stop_remainder, g.on_stop_remainder) }}{% if g.close_on_stop is not none and b.groups | length > g.close_on_stop %}; when its stop fills, {{ b.groups[g.close_on_stop].name }} closes too{% endif %}</li>
+        {% endfor %}
+        {% if b.use_floating_entry %}<li><strong>Entry window (New York):</strong> {{ b.floating_start }}–{{ b.floating_end }}, once a minute; the entry times are ignored</li>{% endif %}
+        <li><strong>Entry times (New York):</strong> {% for t in b.entry_times %}{{ t.time }}{% if not t.enabled %} (paused){% endif %}{% if t.label %} "{{ t.label }}"{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</li>
+        <li><strong>How often:</strong> {{ b.frequency | replace('_', ' ') }}{% if b.use_blackout_days %}, with blackout days{% endif %}</li>
+        <li><strong>Caps:</strong> {{ b.max_entries_per_day if b.max_entries_per_day is not none else 'no limit on' }} entries a day, {{ b.max_open_trades if b.max_open_trades is not none else 'no limit on' }} open trades at once</li>
+        {% set filters = [('VIX level', b.use_vix_level), ('VIX overnight move', b.use_vix_overnight), ('VIX9D/VIX ratio', b.use_vix9d_ratio), ('technical indicators', b.use_technicals), ('intraday movement', b.use_intraday_move), ('premium bounds', b.use_premium_bounds)] %}
+        <li><strong>Entry filters:</strong> {% set on = filters | selectattr(1) | map(attribute=0) | list %}{{ on | join(', ') if on else 'none' }}</li>
+        {% for label, c in [('Entry chase', b.entry_chase), ('Exit chase', b.exit_chase)] %}
+        <li><strong>{{ label }}:</strong> starts ${{ c.start_offset }} from the middle price, ${{ c.step }} a try, every {{ c.interval_seconds }} s, up to {{ c.max_tries }} tries{% if label == 'Exit chase' %}; then {{ 'the natural price for ' ~ c.natural_minutes ~ ' minutes, then each leg on its own' if c.exhaust_mode == 'natural_then_leg_out' else 'one more step at a time, never past the natural price, until it fills or the market closes' if c.exhaust_mode == 'keep_conceding' else 'it gives up and the stop goes back' }}{% endif %}</li>
+        {% endfor %}
+        <li><strong>Timed close:</strong> {{ b.close_time ~ ' New York, ' ~ b.close_dte ~ ' days to expiration' if b.close_time else 'off' }}{% if b.use_time_actions %}; {{ b.time_actions | length }} time action{{ 's' if b.time_actions | length != 1 }}{% endif %}</li>
+    </ul>
+    <p class="muted small">Every setting is on the bot's page after import, where you can check or change it.</p>
+</section>
+
+<section class="card section-gap">
+    <h2 class="card__title">Your choices</h2>
+    <form method="post" action="{{ url_for('automation.import_save') }}" class="bot-form">
+        <textarea name="json" hidden aria-hidden="true">{{ json }}</textarea>
+        {% if source_url %}<input type="hidden" name="source_url" value="{{ source_url }}">{% endif %}
+        <div class="bot-form__grid">
+            <label>Name <input type="text" name="name" value="{{ choices.name }}" maxlength="100"></label>
+            {{ problem('name') }}
+            <label>Journal tag (the tag its trades get in your journal)
+                <select name="tag_id">
+                    <option value="">Pick one</option>
+                    {% for t in journal_tags %}<option value="{{ t.id }}" {{ 'selected' if t.id | string == choices.tag_id }}>{{ t.name }}</option>{% endfor %}
+                </select>
+            </label>
+            {% include '_new_tag.html' %}
+            {{ problem('tag') }}
+            <label>Account
+                {% if accounts %}
+                <select name="account">
+                    <option value="">Pick one</option>
+                    {% for broker, number in accounts %}<option value="{{ broker }}:{{ number }}" {{ 'selected' if broker ~ ':' ~ number == choices.account }}>{{ account_label(broker, number) }}</option>{% endfor %}
+                </select>
+                {% else %}
+                <input type="text" name="account" value="{{ choices.account }}" placeholder="tastytrade:account number">
+                {% endif %}
+            </label>
+            {{ problem('broker') }}
+            <label>Contracts per entry <input type="number" name="contracts" min="1" max="100" value="{{ choices.contracts }}"></label>
+            {{ problem('contracts') }}
+            <label>Max contracts per trade <input type="number" name="max_per_trade" min="1" placeholder="Auto" value="{{ choices.max_per_trade }}"></label>
+            <label>Max contracts per day <input type="number" name="max_per_day" min="1" placeholder="Auto" value="{{ choices.max_per_day }}"></label>
+            <p class="muted small">Leave the limits blank for Auto: per trade follows Contracts per entry, per day is that times the entry times that are on.</p>
+            {{ problem('limits') }}
+            {{ problem('times') }}
+        </div>
+        {% for key, text in problems.items() if key not in ('name', 'tag', 'broker', 'contracts', 'limits', 'times') %}
+        <p class="notice notice--warning small">{{ text }}</p>
+        {% endfor %}
+        <p class="muted small">The file never holds an account or a size: those are yours. The bot starts switched off and Live, so it can't trade until you arm it, and sends real orders once armed unless you switch it to Paper first.</p>
+        <div class="inline-form section-gap">
+            <button class="button" type="submit">Import</button>
+            <a class="button button--quiet" href="{{ url_for('automation.import_page') }}">Start again</a>
+        </div>
+    </form>
+</section>
+{% endif %}
+{% endblock %}

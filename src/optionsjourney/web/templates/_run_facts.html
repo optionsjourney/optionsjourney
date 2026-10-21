@@ -1,0 +1,27 @@
+{% from "_tooltip.html" import info, tip_text %}
+{#- A run's facts: status, prices, the resting entry (the run page and the journal's Manage panel, #174).
+    Tracker2's run summary: short facts in a grid of columns, long ones (--wide) across the row. -#}
+{% set next_field %}{% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}{% endset %}
+    <dl class="run-facts">
+        <div><dt>Status</dt><dd><span class="run-chip run-chip--{{ run.status }}">{{ 'handed back to you' if run.status == 'handed' else run.status }}</span> {% if run.live %}<span class="badge badge--live">Live</span>{% else %}<span class="badge badge--preview">Paper</span>{% endif %}</dd></div>
+        {% if trade_now %}<div class="run-facts--wide"><dt>Trade now</dt><dd>Sent off schedule when you typed TRADE, through the bot's own checks</dd></div>{% endif %}
+        {% if from_ticket %}<div class="run-facts--wide"><dt>From the Trade page</dt><dd>A ticket you set up on the Trade page, sent as this bot's entry</dd></div>{% endif %}
+        {% if adopted_from is not none %}<div class="run-facts--wide"><dt>Handed over</dt><dd>A trade you opened, handed to this bot{% if adopted_from %} · <a class="link" href="{{ url_for('journal.trade_page', key=adopted_from) }}">the trade in the journal</a>{% endif %}</dd></div>{% endif %}
+        {% if run.pt_only %}<div class="run-facts--wide"><dt>Futures</dt><dd><strong>{{ futures_note }}.</strong> Contract {{ run.contract }} · ×{{ run.multiplier }} a point</dd></div>{% endif %}
+        <div><dt>Reason</dt><dd>{{ run.reason or '—' }}</dd></div>
+        <div><dt>Contracts</dt><dd class="num-left">{{ run.contracts }}</dd></div>
+        {% set sized = (run.chase_log or []) | selectattr('sizing', 'defined') | first %}
+        {% if sized and sized.sizing == 'contracts' %}<div class="run-facts--wide"><dt>Sized by contracts</dt><dd>{{ sized.why }}</dd></div>
+        {% elif sized and sized.sizing == 'buying_power' %}<div class="run-facts--wide"><dt>Sized by buying power</dt><dd>${{ sized.budget }} budget; at the worst price the chase could reach, {{ sized.worst }}, {{ sized.broker }} says one contract needs ${{ sized.unit_cost }}: {{ sized.contracts }}{% if sized.asked != sized.contracts %} (cut from {{ sized.asked }} by Max per trade){% endif %}</dd></div>
+        {% elif sized %}<div class="run-facts--wide"><dt>Sized by dollars</dt><dd>${{ sized.allocation }} at the worst price the chase could pay, {{ sized.worst }} ({{ sized.unit_cost }} a contract): {{ sized.contracts }}{% if sized.asked != sized.contracts %} (cut from {{ sized.asked }} by Max per trade){% endif %}</dd></div>{% endif %}
+        <div><dt>{{ 'Limit' if run.entry_mode == 'limit' else 'Entry price' }}</dt><dd class="num-left">{{ run.target_credit | premium }}{% if run.pt_only and run.target_credit is not none %} ({{ dollars(run.target_credit) }} a contract){% endif %}</dd></div>
+        <div><dt>Fill price</dt><dd class="num-left">{{ run.fill_credit | premium }}{% if run.pt_only and run.fill_credit is not none %} ({{ dollars(run.fill_credit) }} a contract){% endif %}</dd></div>
+        {% if run.fill_credit is not none and run.fill_credit != 0 %}<div><dt>Opened for</dt><dd>{{ 'a credit' if run.fill_credit > 0 else 'a debit' }}</dd></div>{% endif %}
+        <div><dt>Strikes</dt><dd class="num-left">{% include "_automation_strikes.html" %}{% if not run.legs %}—{% endif %}</dd></div>
+        <div><dt>Started</dt><dd>{{ run.created_at | market_time }}</dd></div>
+        {% if run.filled_at %}<div><dt>Filled</dt><dd>{{ run.filled_at | market_time }}</dd></div>{% endif %}
+        {% if run.priced %}<div class="run-facts--wide"><dt>Priced</dt><dd>{{ run.priced }}</dd></div>{% endif %}
+        {% if run.status == 'working' %}<div class="run-facts--wide"><dt>Resting entry {{ info('run-resting-entry', "Your limit order is resting at TastyTrade as this bot's entry. Cancel entry takes it off. Modify replaces it at the new limit in one step; if it filled first, nothing is changed.", 'Resting entry') }}</dt><dd>Your limit rests at TastyTrade as the bot's entry (order {{ run.broker_order_id }}) until it fills or you cancel it.
+            <form class="inline-form" method="post" action="{{ url_for('automation.cancel_entry', run_id=run.id) }}">{{ next_field }}<button class="button button--quiet" type="submit">Cancel entry</button></form>
+            <form class="inline-form" method="post" action="{{ url_for('automation.modify_entry', run_id=run.id) }}">{{ next_field }}<label>New limit <input type="number" name="price" min="0.01" step="any" required class="narrow"></label><button class="button button--quiet" type="submit">Modify</button></form></dd></div>{% endif %}
+    </dl>

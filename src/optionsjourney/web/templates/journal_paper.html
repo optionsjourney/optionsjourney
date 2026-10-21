@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% from "_macros.html" import pl, pager %}
+{% from "_tooltip.html" import info %}
+{% block title %}Paper trades · Journal · OptionsJourney{% endblock %}
+
+
+{% block main_class %}main--wide{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Journal</h1>
+</div>
+
+<nav class="view-switch" aria-label="View">
+    <a class="view-switch__link" href="{{ url_for('journal.journal_page') }}">Trades</a>
+    <a class="view-switch__link" href="{{ url_for('journal.pl_page') }}">P/L</a>
+    <a class="view-switch__link" href="{{ url_for('journal.metrics_page') }}">Trading metrics</a>
+    <a class="view-switch__link view-switch__link--active" href="{{ url_for('journal.paper_page') }}">Paper trades</a>
+</nav>
+
+<p class="notice notice--warning">Paper trades are pretend. Fills are estimated at the mid price, and stops are watched by the app instead of resting at the broker, so real results would differ.</p>
+<p class="muted small">Only the pretend trades of Paper bots are here. They never appear in the other Journal views, and those views' numbers never include them.</p>
+
+<form class="filters" method="get">
+    <select name="bot" aria-label="Bot">
+        <option value="">All bots</option>
+        {% for b in bots %}
+        <option value="{{ b.id }}" {{ 'selected' if b.id == bot_id }}>{{ b.name }}</option>
+        {% endfor %}
+    </select>
+    <select name="tag" aria-label="Tag">
+        <option value="">All tags</option>
+        {% for t in tags %}
+        <option value="{{ t }}" {{ 'selected' if tag and t | lower == tag | lower }}>{{ t }}</option>
+        {% endfor %}
+    </select>
+    <label class="filters__dates">Opened
+        <input type="date" name="start" value="{{ start.isoformat() if start }}" aria-label="Opened on or after">
+        to <input type="date" name="end" value="{{ end.isoformat() if end }}" aria-label="Opened on or before">
+    </label>
+    <button class="button button--quiet" type="submit">Apply</button>
+</form>
+
+<section class="overview" aria-label="Summary">
+    <div class="overview__rows">
+        <div class="overview__row">
+            <div class="overview__box" id="open-pl" data-url="{{ url_for('journal.paper_open_pl', bot=bot_id, tag=tag, start=start.isoformat() if start else None, end=end.isoformat() if end else None) }}">
+                <div class="stat__label">Open P/L <span class="live-dot" title="Live from your broker's prices" hidden></span></div>
+                <div class="overview__value" id="open-pl-value">—</div>
+                <div class="muted small" id="open-pl-note">waiting for prices</div>
+            </div>
+            <div class="overview__box"><div class="stat__label">Paper P/L (closed) {{ info('paper-pl', "Pretend profit and loss from Paper bots, never counted in your real Journal. Only trades that are closed are added up here; fills are estimated at the mid price.", 'Paper P/L', more='/help/journal#paper-trades') }}</div>
+                <div class="overview__value">{{ pl(totals.pl) }}</div></div>
+            <div class="overview__box"><div class="stat__label">Win rate</div>
+                <div class="overview__value">{{ totals.win_rate | percent }}</div></div>
+            <div class="overview__box overview__box--pair">
+                <div><div class="stat__label">Winners</div><div class="overview__value">{{ totals.wins }}</div></div>
+                <div><div class="stat__label">Losers</div><div class="overview__value">{{ totals.losses }}</div></div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="card" data-live-event="paper_journal_changed">
+    {% if not page.total %}
+    {% if bot_id or tag or start or end %}
+    <p class="muted">No paper trades match these filters.</p>
+    {% else %}
+    <p class="muted">No paper trades yet. A Paper bot's pretend trades show here once it enters.</p>
+    {% endif %}
+    {% else %}
+    {{ pager(page, 'paper trades') }}
+    <div class="table-scroll"><table class="table">
+        <thead>
+            <tr>
+                <th>Bot</th>
+                <th>Opened</th>
+                <th>Closed</th>
+                <th class="num">Contracts</th>
+                <th class="num">Entry</th>
+                <th class="num">Exit</th>
+                <th>Closed by {{ info('paper-closed-by', "What closed the trade: a stop, a target, a timed close or the expiry. A side that was stopped says stop, even though its cheap bought wing was then left to expire.", 'Closed by', more='/help/journal#paper-trades') }}</th>
+                <th class="num">P/L</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for t in trades %}
+            <tr>
+                <td><a class="link" href="{{ url_for('automation.run_page', run_id=t.run_id) }}">{{ t.bot_name }}</a> <span class="badge badge--preview">paper</span>{% if t.side %} <span class="muted small">{{ t.side | title }} side</span>{% endif %}</td>
+                <td class="nowrap">{{ t.opened_at | market_time }}</td>
+                <td class="nowrap">{{ t.closed_at | market_time if t.closed_at else 'Open' }}{% if t.wing_held %}<div class="muted small" title="Its sold leg is closed. The bought wing is left to expire, and counts as worth 0 until it's sold or expires.">wing held</div>{% endif %}</td>
+                <td class="num">{{ t.contracts }}</td>
+                <td class="num">{{ t.entry_price | premium }}</td>
+                <td class="num">{{ t.exit_price | premium if t.exit_price is not none else '—' }}</td>
+                <td>{{ t.closed_by or '—' }}</td>
+                <td class="num">{% if t.pl is not none %}{{ pl(t.pl) }}{% else %}<span data-open-pl-key="{{ t.key }}"></span>{% endif %}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table></div>
+    {% endif %}
+</section>
+<script type="module" src="{{ url_for('static', filename='js/open_pl.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/journal_live.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,1037 @@
+{% extends "base.html" %}
+{% block title %}{{ bot.name or 'New bot' }} · OptionsJourney{% endblock %}
+
+{% from "_tooltip.html" import info %}
+{# A field's name with its ⓘ (#113): the tip says what the field does, so Basics needs
+   no long paragraphs. The ⓘ is a button, so a click on it never focuses the field. #}
+{% macro named(text, id, tip) %}<span class="bot-form__label">{{ text }}{{ info('bot-' ~ id, tip, text) }}</span>{% endmacro %}
+{% macro problem(key) %}{% if problems.get(key) %}<p class="notice notice--warning small">{{ problems[key] }}</p>{% endif %}{% endmacro %}
+{% macro leg_select(name, options, current, by=False) %}
+<select name="{{ name }}" aria-label="{{ name }}"{% if by %} data-choice-by{% endif %}>
+    {% for value, label in options %}<option value="{{ value }}" {{ 'selected' if value == current }}>{{ label }}</option>{% endfor %}
+</select>
+{% endmacro %}
+
+{# typed(name, value): what the form couldn't read, as typed, else the value #}
+{% macro num(name, value) %}<input type="text" name="{{ name }}" inputmode="decimal" value="{{ typed(name, value) }}" class="narrow">{% endmacro %}
+{% macro whole(name, value) %}<input type="text" name="{{ name }}" inputmode="numeric" value="{{ typed(name, value) }}" class="narrow">{% endmacro %}
+{# #134: a move's four limits as Up / Down by Min / Max #}
+{% macro moves(prefix, limits, about) %}
+<div class="bot-moves" role="group" aria-label="{{ about }} limits">
+    <span></span><span class="bot-moves__col">Min %</span><span class="bot-moves__col">Max %</span>
+    {% for way in ['up', 'down'] %}
+    <span class="bot-moves__row">{{ way | capitalize }}</span>
+    {% for end in ['min', 'max'] %}<input type="text" name="{{ prefix }}_{{ end }}_{{ way }}" inputmode="decimal" value="{{ typed(prefix ~ '_' ~ end ~ '_' ~ way, limits[end ~ '_' ~ way]) }}" class="narrow" aria-label="{{ about }}: {{ end }} {{ way }} %">{% endfor %}
+    {% endfor %}
+</div>
+{% endmacro %}
+{# #134, #135: one setting (a market filter, an exit rule, default alerts): its on/off pill,
+   a one-line hint and the ⓘ, then its boxes (data-filter-fields, shown only while it's on by
+   filter_fields.js; a problem keeps them shown, its own or, with keep, one the card shares) #}
+{% macro setting(name, label, id, hint, tip, on, problem_key=none, rows=False, keep=False) %}
+<div class="bot-filter" data-filter{% if keep or problems.get(problem_key) %} data-filter-problem{% endif %}>
+    <div class="bot-filter__head">
+        <label class="check"><input type="checkbox" name="{{ name }}" data-filter-use {{ 'checked' if on }}> {{ named(label, id, tip) }}</label>
+        <span class="muted small">{{ hint }}</span>
+    </div>
+    <div class="bot-filter__fields{{ ' bot-filter__fields--rows' if rows }}" data-filter-fields>
+        {{ caller() }}
+    </div>
+    {% if problem_key %}{{ problem(problem_key) }}{% endif %}
+</div>
+{% endmacro %}
+{% macro date_lists(name, ticked) %}
+<div class="inline-form">
+    {% for value, label in [('FOMC', 'FOMC days'), ('CPI', 'CPI days'), ('EOM', 'Last trading day of the month')] %}
+    <label class="check check--tick"><input type="checkbox" name="{{ name }}" value="{{ value }}" {{ 'checked' if value in ticked }}> {{ label }}</label>
+    {% endfor %}
+</div>
+{% endmacro %}
+{# #207: each blackout list has two checks; a market holiday has no session, so only the second #}
+{% macro blackout_lists(entry, later) %}
+<div class="blackout-lists">
+    {% for value, label in [('FOMC', 'FOMC days'), ('CPI', 'CPI days'), ('EOM', 'Last trading day of the month'), ('HOLIDAY', 'Market holidays')] %}
+    <span class="small">{{ label }}</span>
+    <div class="inline-form">
+        {% if value != 'HOLIDAY' %}<label class="check check--tick" title="Skip when the day is the entry day"><input type="checkbox" name="blackout_date_sets" value="{{ value }}" {{ 'checked' if value in entry }}> Entry day</label>{% endif %}
+        <label class="check check--tick" title="Skip when the day falls after the entry day, up to the trade's expiration"><input type="checkbox" name="blackout_dte_sets" value="{{ value }}" {{ 'checked' if value in later }}> Before expiration</label>
+    </div>
+    {% endfor %}
+</div>
+{% endmacro %}
+
+{# A section's heading: its title and what it holds (#97) #}
+{% macro section_head(title, about) %}
+<header class="bot-section__head">
+    <h2 class="card__title">{{ title }}</h2>
+    <p class="muted small">{{ about }}</p>
+</header>
+{% endmacro %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ bot.name or 'New bot' }}</h1>
+    <a class="button button--quiet" href="{{ url_for('automation.automation_page') }}">All bots</a>
+</div>
+<p class="muted">Bots trade through TastyTrade or Schwab. New bots start Live and switched off.</p>
+{% set watched_here = watched_groups(bot) %}
+{% if watched_here %}
+<section class="notice notice--warning" id="watched-stops">
+    <p><strong>The stops of {{ watched_here | map(attribute='name') | join(', ') }} are watched by this app, not held at {{ broker_names.get(bot.broker, bot.broker) }}.</strong> They work only while this computer is on and awake and the app is running and connected. If the app stops, nothing closes those groups, so keep the computer awake while it trades (the menu bar app's <em>Keep awake</em> helps).</p>
+</section>
+{% endif %}
+{% if notice %}
+<p class="notice notice--warning" id="switched-off">{{ notice }}</p>
+{% endif %}
+{% if stored and not stored.live %}
+<p class="notice notice--warning" id="paper-notice">Paper trades are pretend. Fills are estimated at the mid price, and stops are watched by the app instead of resting at the broker, so real results would differ.</p>
+{% endif %}
+{% if stored and stored.archived %}
+<p class="notice notice--warning">Archived: this bot never trades. Unarchive it below to use it again.</p>
+{% endif %}
+{% if imported and imported[0] %}
+<p class="muted small">Imported from a bot file{% if imported[1] %} at <a href="{{ imported[1] }}" target="_blank" rel="noopener noreferrer">{{ imported[1] }}</a>,{% endif %} exported {{ imported[0] | market_time }}.</p>
+{% endif %}
+{% if stored and request.args.get('imported') %}
+<p class="notice small">Your journal may already hold trades this bot placed before. <a class="link" href="{{ url_for('automation.match_page', bot_id=stored.id) }}">Find this bot's past trades</a> to put them in its record.</p>
+{% endif %}
+
+{% if stored and summary %}{% include '_bot_summary.html' %}{% endif %}
+
+{% set und = bot.underlying or 'SPX' %}
+{% set shown = (['start'] if not bot.id else []) + ['basics', 'schedule', 'legs', 'groups', 'filters', 'exits', 'watch', 'alerts', 'chase'] + (['this-bot'] if stored else []) %}
+{# #116 (Tracker2's Use leg groups): with one group the bot has one stop and target for
+   the whole trade, and the form says so; leg groups are the option. #}
+{% set grouped = bot.groups | length > 1 %}
+{% set sections = {
+    'start': ('Start from', 'Fill the form in from a ready-made shape.'),
+    'basics': ('Basics', 'Its name, where its trades are filed, the account it trades in and how big it trades.'),
+    'schedule': ('Schedule', 'When it enters: the times of day, which days, and the days it stays out.'),
+    'legs': ('Legs', 'The options it buys and sells, and how each strike is picked.'),
+    'groups': ('Groups', 'Which legs close together, and each group\'s stop, profit target and profit actions.') if grouped else ('Stop and target', "The trade's stop, profit target and profit actions."),
+    'exits': ('Exits', 'Closing at a set time, and actions at set times.'),
+    'watch': ('Watch exits', "Close the whole trade on delta, the short/long ratio or the underlying's move. A breach must hold for two checks in a row."),
+    'alerts': ('Alerts', 'What its alerts are called and where they go.'),
+    'filters': ('Filters', 'When it skips an entry: the premium, VIX and how far ' ~ und ~ ' has moved.'),
+    'chase': ('Chase', 'How it moves the price of an order that hasn\'t filled.'),
+    'this-bot': ('This bot', 'Live or Paper, arm it, skip a day, and its runs and record.'),
+} %}
+<div class="bot-page">
+<nav class="bot-page__nav" aria-label="Bot sections">
+    {% for key in shown %}<a class="bot-page__link" href="#{{ key }}">{{ sections[key][0] }}</a>{% endfor %}
+</nav>
+<div class="bot-page__main">
+{% if not bot.id %}
+<form class="card start-from bot-section" id="start" method="get" action="{{ url_for('automation.new_page') }}">
+    {{ section_head(*sections['start']) }}
+    <p class="muted small">Pick a shape to fill in its legs, its groups and which of each group's exits rests at the broker, with the targets left blank for you. This starts the form again, so anything you've typed below is cleared.</p>
+    <div class="inline-form">
+        <select name="shape" aria-label="Start from">
+            {% if shape_key is none %}<option value="" selected>Pick a shape</option>{% endif %}
+            {% for key, choice in shapes.items() %}<option value="{{ key }}"{% if key == shape_key %} selected{% endif %}>{{ choice.label }}</option>{% endfor %}
+        </select>
+        <button class="button button--quiet" type="submit">Use this shape</button>
+    </div>
+</form>
+{% endif %}
+
+<form class="bot-form" method="post" action="{{ url_for('automation.save') }}">
+    {# Enter in a box presses the form's first button: make that Save, never an edit. #}
+    <button type="submit" class="visually-hidden" tabindex="-1" aria-hidden="true">Save</button>
+    <input type="hidden" name="id" value="{{ bot.id or '' }}">
+    <input type="hidden" name="leg_count" value="{{ bot.legs | length }}">
+    <input type="hidden" name="group_count" value="{{ bot.groups | length }}">
+
+    {% set size_tip %}<table class="tip-table"><thead><tr><th>Size by</th><th>Each entry</th></tr></thead><tbody>
+<tr><td>Contracts</td><td>The same number of contracts every time.</td></tr>
+<tr><td>Buying power</td><td>The app asks your broker what one contract needs, and buys as many as your amount covers.</td></tr>
+</tbody></table><p>Only the box for the one you pick shows.</p>{% endset %}
+<section class="card bot-section" id="basics">
+        {{ section_head(*sections['basics']) }}
+        <div class="bot-form__grid bot-form__grid--wide">
+            {# #140: short fields side by side, each box as wide as what it holds #}
+            <div class="bot-form__fields bot-form__fields--top">
+            <label class="field--wide">{{ named('Name', 'name', "What the bot is called on the Automation list, in its alerts and on its runs. Up to 100 characters.") }} <input type="text" name="name" value="{{ bot.name }}" maxlength="100"></label>
+            <div>
+            <label>{{ named('Journal tag', 'journal-tag', "The tag the bot puts on its trades in your journal. Its Record counts the trades it placed, the ones matched to it, and every other trade with this tag in the bot's account that no bot is linked to, including ones you opened by hand. + New tag makes one without leaving this page.") }}
+                <select name="tag_id">
+                    <option value="">Pick one</option>
+                    {% for t in journal_tags %}<option value="{{ t.id }}" {{ 'selected' if t.id == bot.tag_id }}>{{ t.name }}</option>{% endfor %}
+                </select>
+            </label>
+            {% include '_new_tag.html' %}
+            </div>
+            </div>
+            {{ problem('name') }}
+            {{ problem('tag') }}
+            <div class="bot-form__fields">
+            <label class="field--wide">{{ named('Account', 'account', "The account the bot trades in. Its orders, its previews and the buying power it's sized by all go through this account's broker. Changing the broker switches the bot off and back to Paper.") }}
+                {% if accounts %}
+                <select name="account">
+                    {% if bot.account_number and (bot.broker, bot.account_number) not in accounts %}
+                    <option value="{{ bot.broker }}:{{ bot.account_number }}" selected>{{ account_label(bot.broker, bot.account_number) }}</option>
+                    {% endif %}
+                    {% for broker, number in accounts %}
+                    <option value="{{ broker }}:{{ number }}" {{ 'selected' if (broker, number) == (bot.broker, bot.account_number) }}>{{ account_label(broker, number) }}</option>
+                    {% endfor %}
+                </select>
+                {% else %}
+                <input type="text" name="account" value="{{ bot.broker }}:{{ bot.account_number }}" placeholder="tastytrade:account number">
+                {% endif %}
+            </label>
+            <label>{{ named('Underlying', 'underlying', "SPX, XSP, any stock or ETF your broker lists options on (like SPY or AAPL), or a futures root (like /ES or /MES). SPX and XSP options settle in cash at the close. Stock and ETF options settle in shares and can be assigned early: on expiry day you get an urgent alert 10 minutes before the close about any still held. The app doesn't know earnings or dividend dates. Strikes and prices are in the underlying's own price: XSP is a tenth of SPX.") }} <input type="text" class="w-short" name="underlying" value="{{ und }}" list="underlyings" placeholder="SPX" maxlength="10" autocapitalize="characters"></label>
+            </div>
+            {{ problem('broker') }}
+            <datalist id="underlyings">{% for u in underlyings %}<option value="{{ u.symbol }}">{{ u.symbol }}: {{ u.about }}</option>{% endfor %}{% for root, about in futures_roots %}<option value="{{ root }}">{{ root }}: {{ about }}</option>{% endfor %}</datalist>
+            {% if is_futures(und) %}<p class="notice notice--warning small"><strong>Futures: profit target only, no stop.</strong> A futures bot enters only from the Trade page's Manage with a bot, as a resting limit at your price, trades through TastyTrade only, and is never armed. When it fills, the bot rests a profit target on each group at TastyTrade. Set a target on every group and leave the stops blank. The ticket brings the strikes and expirations, so the legs here are only the shape it takes.</p>{% endif %}
+            {{ problem('underlying') }}
+            {# #111, decision 0050 (Tracker2's allocation type): one way to size, and only its
+               box shows; sizing_choice.js hides the other (without it, both show). #}
+            <h3 class="card__subtitle section-gap">Size and limits</h3>
+            <div class="bot-form__fields" data-sizing-choice>
+            <label>{{ named('Size each entry by', 'sizing', size_tip) }} {{ leg_select('sizing', [('contracts', 'Contracts'), ('dollars', 'Buying power')], bot.sizing) }}</label>
+            <label data-sizing="contracts">{{ named('Contracts per entry', 'contracts', "Each entry is one order, with every leg, for this many contracts, 1 to 100. An entry time in the Schedule can set its own number. Entries you send from the Trade page keep the size you set there.") }} <input type="number" class="w-num" name="contracts" min="1" max="100" value="{{ bot.contracts }}"></label>
+            <label data-sizing="dollars">{{ named('Most buying power per entry ($)', 'buying-power', "Before each entry your broker (TastyTrade or Schwab, whichever the account is at) says what one contract needs on its own at the worst price the entry chase could reach. Credit or debit alike, and nothing else you hold changes it. Example: $2,000 and a spread that needs $497.30 a contract buys 4. If it doesn't cover one, or the broker doesn't answer, the entry is skipped and you get an alert.") }} {{ num('max_per_entry_usd', bot.max_per_entry_usd) }}</label>
+            </div>
+            {{ problem('contracts') }}
+            {{ problem('sizing') }}
+            <div class="bot-form__fields section-gap--small" role="group" aria-label="Limits">
+            <label>{{ named('Max contracts per trade', 'per-trade', "The most contracts one entry may open, counted in the largest leg: a butterfly whose middle leg is sold 2 at a time uses 2 for each one you enter. Leave it blank for Auto: the biggest entry the bot makes by itself (its contracts, or an entry time's own number). An entry sized by buying power is cut down to it; blank, the cap is 100 contracts. Entries you start yourself (Trade now, the Trade page, taking over a trade) aren't held to a blank limit, only to the 100-contract cap.") }} <input type="number" class="w-num" name="max_per_trade" min="1" placeholder="Auto: {{ trade_cap(bot) }}" value="{{ bot.max_per_trade if bot.max_per_trade is not none else '' }}"></label>
+            <label>{{ named('Max contracts per day', 'per-day', "The most contracts the bot may open in a day, counted the same way. Only opening orders count, not its own stops and closes, and a re-sent rest of a partly filled entry doesn't count twice. An entry that would pass it is skipped, not cut down. Leave it blank for Auto: what the entry times that are on add up to (the entry window: one entry), no more than Most entries per day of them. Blank, entries you start yourself aren't counted against it and have no daily cap. Either way, every order is checked against it just before it's sent, so a misfire can't repeat all day.") }} <input type="number" class="w-num" name="max_per_day" min="1" placeholder="Auto: {{ day_cap(bot) }}" value="{{ bot.max_per_day if bot.max_per_day is not none else '' }}"></label>
+            <label>{{ named('Max entries per day', 'entries', "How many entries the bot may take in a day; blank for no limit. An entry still in progress counts, and one split into tranches counts once. Skipped, missed and error runs don't, and Preview order saves no run.") }} <input type="number" class="w-num" name="max_entries_per_day" min="1" placeholder="No limit" value="{{ bot.max_entries_per_day if bot.max_entries_per_day is not none else '' }}"></label>
+            <label>{{ named('Max open trades', 'open', "How many of the bot's trades may be open at once; blank for no limit. A trade is open until it expires or every side is closed. With split iron condors each open side counts as 1, so a fresh condor counts as 2. At the limit the entry is skipped.") }} <input type="number" class="w-num" name="max_open_trades" min="1" placeholder="No limit" value="{{ bot.max_open_trades if bot.max_open_trades is not none else '' }}"></label>
+            </div>
+            <p class="muted small">Blank contract limits are Auto: per trade follows Contracts per entry, per day is that times the entry times that are on. Blank entries and open trades: no limit.</p>
+            {{ problem('limits') }}
+            {{ problem('caps') }}
+            {# #109 (Tracker2's initTags): tag_picker.js turns the comma box into chips, a menu
+               of every bot tag and a New tag box; it keeps the box's text in step, so the
+               form sends tags the same way with or without it. #}
+            <div class="tag-picker" data-known="{{ all_tags | list | tojson | forceescape }}"
+                 data-reserved="{{ reserved_tags | list | tojson | forceescape }}" data-max="{{ max_tags }}">
+            {{ named('Tags', 'tags', "Your own labels for finding bots: the Automation list filters by them. They never change how a bot trades and are never in a shared bot file. Pick tags lists the ones your bots and your journal already use.") }}
+            <label>Separate them with commas <input type="text" name="tags" value="{{ bot.tags | join(', ') }}" placeholder="for example: 0DTE, mornings"></label>
+            </div>
+            {{ problem('tags') }}
+        </div>
+    </section>
+
+    {% set frequency_tip %}<table class="tip-table"><thead><tr><th>Frequency</th><th>Enters on</th></tr></thead><tbody>
+<tr><td>Every trading day</td><td>Each day the market is open.</td></tr>
+<tr><td>Certain weekdays</td><td>The weekdays you tick.</td></tr>
+<tr><td>One day a month</td><td>Like the third Friday.</td></tr>
+<tr><td>Specific dates</td><td>Only the dates you list.</td></tr>
+</tbody></table><p>Market holidays are always skipped.</p>{% endset %}
+<section class="card section-gap bot-section" id="schedule">
+        {{ section_head(*sections['schedule']) }}
+        {# #114 (Tracker2's applyEntryToggles): schedule_choice.js shows only what the
+           choices use: the window or the entry times, the chosen frequency's fields and the
+           blackout days while ticked. Hidden fields still go with the form; without the
+           script every field shows. #}
+        <div data-schedule-choice>
+        <label class="check">
+            <input type="checkbox" name="use_floating_entry" {{ 'checked' if bot.use_floating_entry }}>
+            {{ named('Use an entry window', 'window', "Instead of fixed entry times, the bot checks once a minute between two times (New York, both included) and enters at the first minute its filters and premium bounds allow, once a day. If a try doesn't fill, the next minute tries again. The entry times are kept but not used, and neither are their contracts. Example: 11:30 to 11:45 with a VIX filter enters at 11:38 if that's the first minute VIX is inside its range.") }}
+        </label>
+        <div class="inline-form" data-shown-by="use_floating_entry">
+            <label>from <input type="text" name="floating_start" value="{{ bot.floating_start or '' }}" placeholder="11:30" size="6" data-clock></label>
+            <label>to <input type="text" name="floating_end" value="{{ bot.floating_end or '' }}" placeholder="11:45" size="6" data-clock></label>
+        </div>
+        {{ problem('floating') }}
+        {% if floating_last %}<p class="muted small" data-shown-by="use_floating_entry">Last check {{ floating_last[0] }}: {{ floating_last[1] }}</p>{% endif %}
+
+        <div data-hidden-by="use_floating_entry">
+        <h3 class="card__subtitle section-gap">Entry times {{ info('bot-times', "New York time, 24-hour. 945, 9:45 and 09:45 all mean 09:45. Seconds are optional, in 15-second steps: 9:30:15 or 93015 is 09:30:15. Untick On to pause a time; ✕ removes it. Contracts sets the size for that time alone (blank: the bot's).", 'Entry times') }}</h3>
+        {% set rows = bot.entry_times | length + blank_times %}
+        <input type="hidden" name="times" value="{{ rows }}">
+        <div class="entry-times">
+        {% for k in range(rows) %}
+        {% set row = bot.entry_times[k] if k < bot.entry_times | length else {'time': '', 'enabled': true, 'quantity': none, 'label': none} %}
+        <div class="inline-form entry-time" data-entry-time>
+            <input type="text" name="time-{{ k }}" value="{{ row.time }}" placeholder="09:45" size="8" aria-label="Entry time {{ k + 1 }}" data-clock="seconds">
+            <label class="check"><input type="checkbox" name="time-{{ k }}-on" {{ 'checked' if row.enabled }}> On</label>
+            <input type="text" name="time-{{ k }}-qty" inputmode="numeric" value="{{ typed('time-%d-qty' % k, row.quantity) }}" placeholder="Contracts" class="narrow" aria-label="Contracts for entry time {{ k + 1 }}" data-sizing="contracts">
+            {# Tracker2's form has no box for a time's label: one from before, or from a bot
+               file, is kept as it is #}
+            <input type="hidden" name="time-{{ k }}-label" value="{{ row.label if row.label is not none else '' }}">
+            <button type="button" class="chip__remove" data-remove-time aria-label="Remove entry time {{ k + 1 }}" hidden>✕</button>
+        </div>
+        {% endfor %}
+        </div>
+        <button type="button" class="button button--quiet" data-add-time hidden>+ Add entry time</button>
+        {{ problem('times') }}
+        </div>
+
+        {# #140: how often and blackout days side by side #}
+        <div class="bot-form__cols">
+        <div>
+        <h3 class="card__subtitle section-gap">How often</h3>
+        <div class="bot-form__grid">
+            <label>{{ named('Frequency', 'frequency', frequency_tip) }}
+                {{ leg_select('frequency', [('daily', 'Every trading day'), ('weekly', 'Certain weekdays'), ('monthly', 'One day a month'), ('specific_dates', 'Specific dates')], bot.frequency) }}
+            </label>
+            <div data-frequency="weekly">
+                <span class="small">Weekdays</span>
+                <div class="day-toggles" role="group" aria-label="Weekdays">
+                    {% for n, label in [(1, 'Mon'), (2, 'Tue'), (3, 'Wed'), (4, 'Thu'), (5, 'Fri')] %}
+                    <label class="day-toggle"><input type="checkbox" name="entry_days" value="{{ n }}" {{ 'checked' if n in bot.entry_days }}><span>{{ label }}</span></label>
+                    {% endfor %}
+                </div>
+            </div>
+            <div data-frequency="monthly">
+                <span class="small">Which day of the month</span>
+                <div class="inline-form">
+                    {% set weeks = [('', '-'), ('1', 'First'), ('2', 'Second'), ('3', 'Third'), ('4', 'Fourth'), ('5', 'Fifth')] %}
+                    {% set weekdays = [('', '-'), ('1', 'Monday'), ('2', 'Tuesday'), ('3', 'Wednesday'), ('4', 'Thursday'), ('5', 'Friday')] %}
+                    {{ leg_select('monthly_week', weeks, (bot.monthly_week | string) if bot.monthly_week else '') }}
+                    {{ leg_select('monthly_weekday', weekdays, (bot.monthly_weekday | string) if bot.monthly_weekday else '') }}
+                </div>
+            </div>
+            <label data-frequency="specific_dates">Dates (one per line or separated by commas, like 2026-10-14)
+                <textarea name="specific_dates" rows="3">{{ bot.specific_dates | join('\n') }}</textarea>
+            </label>
+            <div data-frequency="specific_dates">
+                <span class="small">Also on these days</span>
+                {{ date_lists('specific_date_sets', bot.specific_date_sets) }}
+            </div>
+            {{ problem('frequency') }}
+        </div>
+
+        </div>
+        <div>
+        <h3 class="card__subtitle section-gap">Blackout days</h3>
+        <div class="bot-form__grid">
+            <label class="check"><input type="checkbox" name="use_blackout_days" {{ 'checked' if bot.use_blackout_days }}>
+                {{ named('Use blackout days', 'blackout', "Days the bot won't enter, like a day you want off. The Skip button on this page adds a day here for you. The lists add their days for you: FOMC days (the Fed's announcement days), CPI days (the inflation report), the last trading day of each month and market holidays; see Market calendar on the Automation page. Entry day skips an entry on the list's day. Before expiration skips an entry when a list's day falls after it, up to the trade's expiration (the entry day plus the longest leg's DTE, moved on to the next trading day), so the bot can still enter on the day itself unless Entry day is ticked too. A 0DTE trade has no days after the entry. If the app can't tell about a day it needs, the bot doesn't enter and you get an alert. Preview order ignores blackout days.") }}
+            </label>
+            <label data-shown-by="use_blackout_days">Dates (one per line or separated by commas, like 2026-12-25)
+                <textarea name="blackout_days" rows="3">{{ bot.blackout_days | join('\n') }}</textarea>
+            </label>
+            <div data-shown-by="use_blackout_days">
+                <span class="small">Also these days</span>
+                {{ blackout_lists(bot.blackout_date_sets, bot.blackout_dte_sets) }}
+            </div>
+            {{ problem('blackout') }}
+        </div>
+        </div>
+        </div>
+        </div>
+    </section>
+
+    <section class="card section-gap bot-section" id="legs">
+        {{ section_head(*sections['legs']) }}
+        {# #115 (Tracker2's leg rows): the help is in each heading's ⓘ, and leg_rows.js shows
+           only the boxes a row's pick uses (without it every column shows). One group: no
+           Belongs to column, its legs all in it. #}
+        <p class="muted small">Up to {{ max_legs }} legs, one a row. 🔗 on a leg adds one below it, measured from it: a wing for a sold leg. Adding or removing a leg or a group keeps what you've typed and saves nothing until you press Save.</p>
+        {{ problem('legs') }}
+        {% set can_add = bot.legs | length < max_legs %}
+        {% macro col(text, id, tip) %}<span class="bot-form__label">{{ text }}{{ info('bot-leg-' ~ id, tip, text) }}</span>{% endmacro %}
+{% set pick_tip %}<p>How the strike is chosen; Target says what it aims at.</p>
+<table class="tip-table"><thead><tr><th>Pick by</th><th>Strike chosen</th><th>Target is</th></tr></thead><tbody>
+<tr><td>Premium</td><td>The option priced nearest the target</td><td>Dollars, like 1.20</td></tr>
+<tr><td>Delta</td><td>The one nearest that delta</td><td>16 or 0.16 (16 delta)</td></tr>
+<tr><td>Spot offset</td><td>Points from the {{ und }} price</td><td>Points: -50 on a put, 50 on a call</td></tr>
+<tr><td>Offset</td><td>Points from another leg of the same type (From)</td><td>Points, like 50</td></tr>
+</tbody></table>{% endset %}
+{% set target_leg_tip %}<table class="tip-table"><thead><tr><th>Pick by</th><th>Target</th><th>Notes</th></tr></thead><tbody>
+<tr><td>Premium</td><td>1.20</td><td>The option priced nearest 1.20.</td></tr>
+<tr><td>Delta</td><td>16 or 0.16</td><td>A sold leg looks only out of the money, a bought leg anywhere. No deltas: the entry is skipped, with an alert.</td></tr>
+<tr><td>Spot offset</td><td>-50</td><td>Points from {{ und }}: a sold leg takes the nearest listed strike at least that far out (5,803 and -50 on a sold put: 5,750). 0 is the strike nearest the price.</td></tr>
+<tr><td>Offset</td><td>50</td><td>Points from its From leg: a bought call 50 above a sold one.</td></tr>
+</tbody></table>{% endset %}
+        <div class="table-scroll"><table class="table table--compact leg-rows" data-leg-rows data-underlying="{{ und }}">
+            <thead><tr>
+                <th>Buy or sell</th><th>Type</th>
+                <th>{{ col('Ratio', 'ratio', "How many of this leg go with one of the trade, 1 to %d. A butterfly's middle leg is 2." % max_ratio) }}</th>
+                <th>{{ col('DTE', 'dte', "Days to expiration, 0 (today) to %d. Give a group's legs different DTEs for a calendar or a diagonal: the nearer leg is the one sold. In a group, a sold leg can't expire after a bought one. Exact DTE only, under Strike picking, says what happens when no expiration is that many days away." % max_dte) }}</th>
+                <th>{{ col('Pick by', 'pick', pick_tip) }}</th>
+                <th>{{ col('Target', 'target', target_leg_tip) }}</th>
+                <th data-leg-col="from">{{ col('From', 'from', "The leg an Offset is measured from, or the sold leg a bought premium leg's Max offset is measured from. It's a leg of the same type that isn't itself an offset or a linked wing. 🔗 fills it in for you.") }}</th>
+                <th data-leg-col="exact">{{ col('Exact', 'exact', "For an Offset: use only that strike, or skip the trade if it isn't listed. Off, it takes the next listed strike further out.") }}</th>
+                <th data-leg-col="max">{{ col('Max offset', 'max', "For a bought leg picked by premium, with From set to the sold leg of its type: the strike nearest its premium no further than this many points from that leg (a put's negative, a call's positive), so the spread is never wider. Example: a bought put aiming at 0.50 with -25 from a sold put at 5,700 looks only between 5,695 and 5,675; if nothing there has a price, the entry is skipped.") }}</th>
+                <th><span class="visually-hidden">Link or remove</span></th>
+            </tr></thead>
+            <tbody>
+            {% set units = {'premium': '$', 'delta': 'Δ', 'offset': 'pts from its leg', 'spot': 'pts from ' ~ und} %}
+            {% for leg in bot.legs %}
+            {% set i = leg.position %}
+            <tr data-leg-row>
+                <td><select name="leg-{{ i }}-side" aria-label="Buy or sell" class="leg-side leg-side--{{ leg.side | string }}" data-leg="side">
+                    {% for value, label in [('sell', 'Sell'), ('buy', 'Buy')] %}<option value="{{ value }}" {{ 'selected' if (leg.side | string) == value }}>{{ label }}</option>{% endfor %}
+                </select></td>
+                <td>{{ leg_select('leg-%d-right' % i, [('call', 'Call'), ('put', 'Put')], leg.right) }}</td>
+                <td><input type="number" name="leg-{{ i }}-ratio" min="1" max="{{ max_ratio }}" value="{{ leg.ratio }}" class="narrow narrow--digits" aria-label="Ratio"></td>
+                <td><input type="text" name="leg-{{ i }}-dte" inputmode="numeric" value="{{ typed('leg-%d-dte' % i, leg.dte) }}" class="narrow narrow--digits" aria-label="Days to expiration"></td>
+                <td><select name="leg-{{ i }}-pick" aria-label="Pick by" data-leg="pick">
+                    {% for value, label in [('premium', 'Premium'), ('delta', 'Delta'), ('spot', 'Spot offset'), ('offset', 'Offset')] %}<option value="{{ value }}" {{ 'selected' if leg.pick == value }}>{{ label }}</option>{% endfor %}
+                </select></td>
+                {% set shown = '' if leg.target is none else ('{:f}'.format((leg.target * 100).normalize()) if leg.pick == 'delta' else leg.target) %}
+                <td class="nowrap"><input type="text" name="leg-{{ i }}-target" inputmode="decimal" value="{{ typed('leg-%d-target' % i, shown) }}" class="narrow" aria-label="Target"> <span class="small muted" data-leg-unit>{{ units.get(leg.pick, '') }}</span></td>
+                <td data-leg-col="from"><select name="leg-{{ i }}-link" aria-label="From leg" data-leg="link">
+                    <option value="">-</option>
+                    {% for other in bot.legs if other.position != i %}<option value="{{ other.position }}" {{ 'selected' if leg.link == other.position }}>Leg {{ other.position + 1 }}</option>{% endfor %}
+                </select></td>
+                <td data-leg-col="exact"><input type="checkbox" name="leg-{{ i }}-exact" {{ 'checked' if leg.exact }} aria-label="Exact strike only"></td>
+                <td data-leg-col="max"><input type="text" name="leg-{{ i }}-max-offset" inputmode="decimal" value="{{ typed('leg-%d-max-offset' % i, leg.max_offset) }}" class="narrow" aria-label="Max offset from its leg"></td>
+                <input type="hidden" name="leg-{{ i }}-group" value="{{ leg.group }}">{# #120: its group is set with the arrows under Groups #}
+                <td class="nowrap">
+                    {%- if can_add and leg.pick != 'offset' and leg.max_offset is none %}<button class="button button--quiet" type="submit" name="op" value="link-leg-{{ i }}" formnovalidate title="Add a leg below, measured from leg {{ i + 1 }}" aria-label="Add a leg linked to leg {{ i + 1 }}">🔗</button>{% endif -%}
+                    {%- if bot.legs | length > 1 %}<button class="button button--danger-text" type="submit" name="op" value="remove-leg-{{ i }}" formnovalidate title="Remove leg {{ i + 1 }}" aria-label="Remove leg {{ i + 1 }}">✕</button>{% endif -%}
+                </td>
+            </tr>
+            {% if problems.get('leg-%d' % i) %}<tr><td colspan="10">{{ problem('leg-%d' % i) }}</td></tr>{% endif %}
+            {% endfor %}
+            </tbody>
+        </table></div>
+        {% if can_add %}<button class="button button--quiet" type="submit" name="op" value="add-leg" formnovalidate>+ Add leg</button>{% endif %}
+        <h3 class="card__subtitle section-gap">Strike picking</h3>
+        <div class="bot-form__row">
+            <input type="hidden" name="exact_dte_shown" value="1">
+            <label class="check"><input type="checkbox" name="use_exact_dte" {{ 'checked' if bot.use_exact_dte }}> {{ named('Exact DTE only', 'exact-dte', "On: a leg trades only the expiration exactly its DTE away, and the entry is skipped when there isn't one, so the trade is always the shape you set. Off: it takes the first listed expiration at or after its DTE, never an earlier one.") }}</label>
+            <label class="check"><input type="checkbox" name="move_conflicted_strikes" {{ 'checked' if bot.move_conflicted_strikes }}> {{ named('Move conflicted strikes', 'conflicted', "A leg that lands on an option you already hold the other way (your broker would refuse the whole order), or on one another leg of this order uses, moves one strike further out; if that one is taken or has no price, it stays. Your positions are read for this at each entry.") }}</label>
+            <label>{{ named('Min short width (points)', 'min-width', "With one sold put and one sold call in the same expiration, they're moved apart a strike at a time (whichever side gives up less of its target) until the call is at least this many points above the put; blank is off. Example: 20 turns sold strikes at 5,795 and 5,805 into 5,790 and 5,810. If it can't, the entry is skipped.") }} {{ num('min_short_width', bot.min_short_width) }}</label>
+        </div>
+        {{ problem('strikes') }}
+        {% if bot.legs | selectattr('dte') | list %}
+        <div class="notice">
+            <p><strong>This bot holds trades overnight.</strong> A stop or profit target that rests at your broker stays on overnight. A stop or profit target the app watches, and watch rules, work only during the session, so the app must be running when the market opens at 09:30. A calendar or diagonal must close before its near legs expire: set a timed close (it counts days to each group's nearest leg, so 0 DTE closes it on the near legs' last day). If it still isn't closed when the near legs expire, its stop and target end and the far legs are left to you, with an urgent alert. A debit diagonal can lose more than its debit: if the price runs through both strikes, the near leg can cost more to settle than the far one is worth.</p>
+        </div>
+        {% endif %}
+    </section>
+
+    {% set leg_groups_tip %}<table class="tip-table"><thead><tr><th>Use leg groups</th><th>Stops and targets</th></tr></thead><tbody>
+<tr><td>Off</td><td>One stop and one profit target for the whole trade.</td></tr>
+<tr><td>On</td><td>The legs are split into groups (up to 4), each with its own stop and target, like an iron condor's call side and put side. Move a leg between groups with its ▲ ▼.</td></tr>
+</tbody></table><p>Turning it on adds a group. Turning it off makes the legs one trade again, with one stop and target.</p>{% endset %}
+<section class="card section-gap bot-section" id="groups">
+        {{ section_head(*sections['groups']) }}
+        <div class="bot-form__row">
+            <label class="check"><input type="checkbox" name="use_leg_groups" data-use-groups {{ 'checked' if grouped }}> {{ named('Use leg groups', 'leg-groups', leg_groups_tip) }}</label>
+            <noscript><button class="button button--quiet" type="submit" name="op" value="{{ 'one-group' if grouped else 'use-groups' }}" formnovalidate>{{ 'Turn leg groups off' if grouped else 'Turn leg groups on' }}</button></noscript>
+        </div>
+        {{ problem('groups') }}
+        <p class="muted small">{% if grouped %}A group is a set of legs closed together, with its own stop and profit target.{% else %}One stop and one profit target for the whole trade.{% endif %} Leave an amount blank for none. "$" is per contract, in option price: 2.00 means $200 a contract.{% if is_futures(und) %} On futures the amount is in points, times the contract's multiplier: 2.00 on /ES is $100 a contract.{% endif %}</p>
+        {% if is_iron_condor_shape(bot) %}
+        <p><label class="check"><input type="checkbox" name="split" {{ 'checked' if bot.split_iron_condors }}> Split iron condors (each side is its own trade in the journal)</label></p>
+        {% endif %}
+        {# #118 (Tracker2's renderGroups): the help is in each heading's ⓘ, and group_exits.js
+           shows only the boxes a group's choices use (without it everything shows). #}
+        {% macro gcol(text, id, tip) %}<span class="bot-form__label">{{ text }}{{ info('bot-group-' ~ id, tip, text) }}</span>{% endmacro %}
+        {% set rests_tip %}<p>Only one closing order can rest at the broker; the app watches the other.</p>
+<table class="tip-table"><thead><tr><th>Group</th><th>Rests at the broker</th><th>The app watches</th></tr></thead><tbody>
+<tr><td>One sold leg, Rest the stop ticked</td><td>Its stop (a stop market order)</td><td>Its profit target</td></tr>
+<tr><td>One sold leg, unticked</td><td>Its profit target</td><td>Its stop</td></tr>
+<tr><td>More than one leg, or a bought leg</td><td>Its profit target</td><td>Its stop</td></tr>
+</tbody></table>
+<p>Unticked, the profit target rests and the app watches the stop. A watched exit works only while this computer is on and awake and the app is running. To rest a stop on a sold leg, give it its own group and close its wing with When its stop fills, also close. Futures bots rest a target only, at TastyTrade.</p>{% endset %}
+        {% set stop_tip %}<p>How far it may lose before it closes. Blank: no stop.</p>
+<table class="tip-table"><thead><tr><th>Choice</th><th>Means</th><th>Example</th></tr></thead><tbody>
+<tr><td>% · leg premium</td><td>The sold leg's price rises this % above its fill (credit trades only).</td><td>95: a put sold at 2.50 stops at 4.80.</td></tr>
+<tr><td>% · entry premium</td><td>This % of the whole trade's entry credit, on each sold leg. On a debit, 200 is all of it lost.</td><td>95 of a 4.90 entry: 4.60.</td></tr>
+<tr><td>% · closing order ($)</td><td>Dollars off the whole trade's entry credit (credit trades only).</td><td>0.20 off 4.90: 4.70.</td></tr>
+<tr><td>% · group premium</td><td>This % of the group's own entry price lost.</td><td>50 on a spread bought for 2.00: out at 1.00.</td></tr>
+<tr><td>$ P&amp;L</td><td>A loss per contract, either side.</td><td>1.00 on a spread bought for 2.00: out at 1.00.</td></tr>
+</tbody></table>
+<p>On a group with one sold leg (a credit spread), group premium is measured on the sold leg, with the bought leg counted as worthless, so it fires early or may be refused.</p>{% endset %}
+        {% set target_tip %}<p>The profit it closes at. Blank: no target.</p>
+<table class="tip-table"><thead><tr><th>Unit</th><th>Credit trade</th><th>Debit trade</th></tr></thead><tbody>
+<tr><td>%</td><td>The share of the credit kept: 50 on 2.00 closes once it costs 1.00 to buy back. 100 or more can't be reached.</td><td>The % gained: 50 on 2.00 closes once it sells for 3.00.</td></tr>
+<tr><td>$</td><td>Profit per contract.</td><td>Profit per contract.</td></tr>
+</tbody></table>{% endset %}
+        {% set after_tip %}<p>A stop closes its whole group. <strong>When its stop fills, also close</strong>: a group of one sold leg whose stop rests at the broker can close another group too, such as its wing.</p>
+<table class="tip-table"><thead><tr><th>When another group's stop closes it</th><th>Its legs are</th></tr></thead><tbody>
+<tr><td>Market closed</td><td>Closed at market (offered at one tick, $0.05 on SPX, without a fresh bid).</td></tr>
+<tr><td>Chased closed</td><td>Closed from the middle of the bid and ask, stepping with the exit chase, then at market.</td></tr>
+<tr><td>Left alone</td><td>Not closed: for you to close (you can pause this on the Automation page).</td></tr>
+</tbody></table>
+<p>Its own stop and target are taken off first.</p>{% endset %}
+        {# #124 (Tracker2's group row): Stop [amount] [% / basis | $ P&L] [basis]; the posted
+           unit and basis are read as one style (bot_store._group) #}
+        {% set resting_bases = [('leg_premium', 'leg premium'), ('entry_premium', 'entry premium'), ('closing_order', 'closing order ($)'), ('group_entry', 'group premium')] %}
+        {% set watched_bases = [('group_entry', 'group premium')] %}
+        {% set all_bases = dict(resting_bases) %}
+        {% set target_units = [('pct', '%'), ('usd', 'pts' if is_futures(und) else '$')] %}
+        {# #127: closed, not sold; closing at a limit is no longer offered (a bot saved with it keeps it) #}
+        {% set remainders = [('close_market', 'Market closed'), ('close_chase', 'Chased closed'), ('leave', 'Left alone')] %}
+        {% set profit_tip %}<p>Once {{ 'the group' if grouped else 'the trade' }} has made a set profit, or lost a set amount (a negative At), close part of it, move its stop closer, or both. Actions run in order, each once, only while prices are fresh.</p>
+<table class="tip-table"><thead><tr><th>At</th><th>Close %</th><th>Stop to</th><th>Does</th></tr></thead><tbody>
+<tr><td>75</td><td></td><td>0</td><td>At 75% profit, the stop moves to break-even. Nothing closed.</td></tr>
+<tr><td>50</td><td>33</td><td>0</td><td>At 50% profit, a third closed, the rest's stop to break-even.</td></tr>
+<tr><td>-50</td><td>50</td><td></td><td>Once it has lost half, half is closed.</td></tr>
+</tbody></table><p>A put spread that took in 1.20, at 50: once it's 0.60 up. A call spread bought for 2.00, at 50: once it sells for 3.00.</p>{% endset %}
+        {# #120 (OptionOmega's leg groups): each group's name and its legs as cards; the
+           arrows move a leg to the group above or below (ops that redraw, saving nothing) #}
+        {% if grouped %}
+        <div class="leg-groups">
+            {% for group in bot.groups %}{% set g = group.position %}
+            <div class="leg-group leg-group--{{ g }}">
+                <div class="leg-group__head">
+                    <label class="bot-form__label">Group name <input type="text" name="group-{{ g }}-name" value="{{ group.name }}" aria-label="Group name" data-group-name="{{ g }}"></label>
+                    <button class="button button--danger-text" type="submit" name="op" value="remove-group-{{ g }}" formnovalidate title="Remove this group (its legs move to the first group)" aria-label="Remove {{ group.name or 'this group' }}">✕</button>
+                </div>
+                <ul class="leg-cards">
+                    {% for leg in bot.legs_in(g) %}{% set i = leg.position %}
+                    {% set sold = (leg.side | string) == 'sell' %}
+                    {% set amount = '' if leg.target is none else ('{:f}'.format((leg.target * 100).normalize()) if leg.pick == 'delta' else leg.target) %}
+                    <li class="leg-card">
+                        <span class="leg-card__moves">
+                            <button class="leg-card__move" type="submit" name="op" value="move-leg-{{ i }}-up" formnovalidate {{ 'disabled' if g == 0 }} title="Move leg {{ i + 1 }} to the group above" aria-label="Move leg {{ i + 1 }} to the group above">▲</button>
+                            <button class="leg-card__move" type="submit" name="op" value="move-leg-{{ i }}-down" formnovalidate {{ 'disabled' if g == bot.groups | length - 1 }} title="Move leg {{ i + 1 }} to the group below" aria-label="Move leg {{ i + 1 }} to the group below">▼</button>
+                        </span>
+                        <span class="leg-card__side leg-card__side--{{ 'sell' if sold else 'buy' }}">{{ 'Sell' if sold else 'Buy' }} {{ leg.right | title }}</span>
+                        <span>{{ leg.ratio }}</span>
+                        <span>{% if amount == '' %}-{% elif leg.pick == 'delta' %}{{ amount }} Δ{% elif leg.pick == 'premium' %}${{ amount }}{% elif leg.pick == 'spot' %}{{ amount }} pts from {{ und }}{% else %}{{ amount }} pts from leg {{ (leg.link or 0) + 1 }}{% endif %}</span>
+                        <span>{{ leg.dte }} DTE</span>
+                    </li>
+                    {% else %}
+                    <li class="leg-card leg-card--empty muted small">No legs yet: move one here with its ▲ or ▼.</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endfor %}
+            {% if bot.groups | length < max_groups %}<button class="button button--quiet" type="submit" name="op" value="add-group" formnovalidate>+ Add leg group</button>{% endif %}
+        </div>
+        {% endif %}
+        <div data-group-exits>
+        {% for group in bot.groups %}
+        {% set g = group.position %}
+        {% set kind = bot.kind(g) %}
+        {% set style = 'usd' if group.stop_unit == 'usd' else group.stop_basis %}
+        {% set others = bot.legs_in(g) | length - 1 %}
+        <div class="group-panel group-panel--{{ g }}" data-group-row="{{ g }}">
+            {% if grouped %}<h3 class="card__subtitle section-gap">Stop and target: <span data-group-label="{{ g }}">{{ group.name or 'Group %d' % (g + 1) }}</span></h3>
+            {% else %}<input type="hidden" name="group-{{ g }}-name" value="{{ group.name }}">{% endif %}
+            <div class="group-panel__fields">
+                <div class="group-panel__field">
+                    {{ gcol('Profit target', 'target-%d' % g, target_tip) }}
+                    <div>
+                        <input type="text" name="group-{{ g }}-target" inputmode="decimal" value="{{ typed('group-%d-target' % g, group.target_value) }}" class="narrow" aria-label="Profit target amount">
+                        <select name="group-{{ g }}-target-unit" aria-label="Profit target measured as">
+                            {% for value, label in target_units %}<option value="{{ value }}"{% if group.target_unit == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                        </select>
+                    </div>
+                </div>
+                <div class="group-panel__field">
+                    {{ gcol('Stop', 'stop-%d' % g, stop_tip) }}
+                    <div>
+                        <input type="text" name="group-{{ g }}-stop" inputmode="decimal" value="{{ typed('group-%d-stop' % g, group.stop_value) }}" class="narrow" aria-label="Stop amount" data-exit="stop">
+                        <select name="group-{{ g }}-stop-unit" aria-label="Stop measured as" data-exit="stop-unit">
+                            {% for value, label in [('pct', '% / basis'), ('usd', '$ P&L')] %}<option value="{{ value }}"{% if (style == 'usd') == (value == 'usd') %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                        </select>
+                        {% set offered = watched_bases if kind == 'watched' else resting_bases %}
+                        {# #130: on one leg, group premium is leg premium; kept only if already saved #}
+                        {% if others == 0 and style != 'group_entry' %}{% set offered = offered | rejectattr('0', 'equalto', 'group_entry') | list %}{% endif %}
+                        <select name="group-{{ g }}-stop-basis" aria-label="Stop basis" data-exit="stop-basis" data-exit-show="basis">
+                            {% if style != 'usd' and group.stop_value is not none and style not in offered | map('first') %}<option value="{{ style }}" selected>{{ all_bases.get(style, style) }} (not available for this group)</option>{% endif %}
+                            {% for value, label in offered %}<option value="{{ value }}"{% if style == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                        </select>
+                        <div class="small muted" data-exit-show="co-hint" data-co-hint>Dollars off the whole trade's entry credit: a $5.00 entry would stop at {% if group.stop_basis == 'closing_order' and group.stop_pct is not none %}<strong>${{ '%.2f' % (5 - group.stop_pct) }}</strong>{% else %}$4.80 with 0.20{% endif %}.</div>
+                    </div>
+                </div>
+                <div class="group-panel__field">
+                    {{ gcol('At the broker', 'rests-%d' % g, rests_tip) }}
+                    <div>
+                        {% if is_futures(und) %}
+                        <div class="small muted">Profit target rests at TastyTrade</div>
+                        <input type="hidden" name="group-{{ g }}-rests" value="{{ group.broker_exit }}">
+                        {% elif bot.rests_stop(g) %}
+                        {# #126 (OptionOmega's Use Resting Stop Market Order): one sold leg with a stop
+                           may rest it at the broker; unticked, its target rests and the app watches it #}
+                        <div data-exit-show="rest-stop">
+                            <input type="hidden" name="group-{{ g }}-rest-shown" value="1">
+                            <label class="check small"><input type="checkbox" name="group-{{ g }}-rest-stop" {{ 'checked' if group.broker_exit == 'stop' }} data-exit="rest-stop"> Rest the stop at the broker (stop market order){{ info('bot-rest-stop-%d' % g, "Ticked: the stop rests at the broker as a stop market order on the sold leg and works with this computer off; the app watches the profit target. Unticked: the profit target rests and the app watches the stop, which works only while this computer is on and awake and the app is running.", 'Rest the stop at the broker') }}</label>
+                        </div>
+                        {% else %}
+                        {# Decision 0054: no other group can rest its stop #}
+                        <input type="hidden" name="group-{{ g }}-rests" value="target">
+                        <div class="small muted" data-exit-show="watched-note">Stop watched by the app{{ info('bot-watched-%d' % g, ("A group of more than one leg can't rest a stop at the broker, so its profit target rests at the broker and the app watches its stop." if others > 0 else "Only a sold leg's stop can rest at the broker, so its profit target rests at the broker and the app watches its stop.") ~ " It works only while this computer is on and awake and the app is running." ~ (" To rest a stop on a sold leg, group it on its own and close its wing with When its stop fills, also close." if grouped and others > 0 else ""), 'Stop watched by the app') }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="group-panel__field">
+                    {{ gcol('After a stop', 'after-%d' % g, after_tip) }}
+                    <div>
+                        {% if bot.groups | length > 1 %}
+                        {# Decision 0054: the remainder is read only when another group's stop closes this one #}
+                        <div class="small" data-exit-show="remainder">When another group's stop closes it:
+                            <select name="group-{{ g }}-remainder" aria-label="When another group's stop closes it" data-exit="remainder">
+                                {% if group.on_stop_remainder == 'close_limit' %}<option value="close_limit" selected>At a limit (no longer offered)</option>{% endif %}
+                                {% for value, label in remainders %}<option value="{{ value }}"{% if group.on_stop_remainder == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                            </select>
+                            {% if group.on_stop_remainder == 'close_limit' %}<input type="text" name="group-{{ g }}-remainder-limit" inputmode="decimal" value="{{ typed('group-%d-remainder-limit' % g, group.remainder_limit) }}" class="narrow" placeholder="the bid" aria-label="Limit price" data-exit-show="limit">
+                            {% else %}<input type="hidden" name="group-{{ g }}-remainder-limit" value="">{% endif %}
+                        </div>
+                        {% else %}
+                        <input type="hidden" name="group-{{ g }}-remainder" value="{{ group.on_stop_remainder }}">
+                        <input type="hidden" name="group-{{ g }}-remainder-limit" value="{{ typed('group-%d-remainder-limit' % g, group.remainder_limit) }}">
+                        {% endif %}
+                        {% if bot.groups | length > 1 and bot.rests_stop(g) %}
+                        <div class="small" data-exit-show="pair">When its stop fills, also close
+                            <select name="group-{{ g }}-pair" aria-label="When its stop fills, also close">
+                                <option value="">nothing else</option>
+                                {% for other in bot.groups if other.position != g %}<option value="{{ other.position }}"{% if group.close_on_stop == other.position %} selected{% endif %} data-group-label="{{ other.position }}">{{ other.name or 'Group %d' % (other.position + 1) }}</option>{% endfor %}
+                            </select>
+                        </div>
+                        {% else %}
+                        <input type="hidden" name="group-{{ g }}-pair" value="">
+                        <span class="small muted">{{ 'The stop closes the whole group.' if grouped else 'The stop closes the whole trade.' }}</span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {{ problem('group-%d' % g) }}
+{% set pa_at_tip %}<p>The profit, or (negative) the loss, it fires at, measured like the profit target. Profit levels go up and loss levels go down; each kind takes its own turn.</p>
+<table class="tip-table"><thead><tr><th>At</th><th>Fires once</th></tr></thead><tbody>
+<tr><td>50</td><td>Half the entry price is made (half the credit kept, or 50% gained on a debit).</td></tr>
+<tr><td>-50</td><td>Half the entry price is lost.</td></tr>
+<tr><td>0.75 ($ target)</td><td>0.75 profit per contract; -0.75 is that much lost.</td></tr>
+</tbody></table>{% endset %}
+{% set pa_stop_tip %}<p>Where the stop goes on what's left. Blank: it stays. It only ever moves closer, never to where it would fire at once.</p>
+<table class="tip-table"><thead><tr><th>Unit</th><th>Means</th><th>Example</th></tr></thead><tbody>
+<tr><td>% loss</td><td>The loss you'd accept, as a % of the entry price.</td><td>0: break-even. -25 keeps about a quarter of it.</td></tr>
+<tr><td>$ P&amp;L</td><td>The profit (negative: the loss) per contract the stop keeps.</td><td>0.40 on a 2.45 credit: out where buying back keeps 0.40.</td></tr>
+</tbody></table>{% endset %}
+            {% set saved = group.profit_actions | list %}
+            {# #128: the saved rows and one blank one; + Add profit action (profit_rows.js) adds more #}
+            {% set profit_rows = saved + [none] %}
+            <div data-profit>
+            <label class="check"><input type="checkbox" name="group-{{ g }}-use-profit" {{ 'checked' if group.use_profit_actions }} data-exit="use-profit"> {{ gcol('Use profit actions on this ' ~ ('group' if grouped else 'trade'), 'pa-%d' % g, profit_tip) }}</label>
+            <input type="hidden" name="group-{{ g }}-profits" value="{{ profit_rows | length }}" data-profit-count>
+            <div data-exit-show="profit">
+            <div class="table-scroll"><table class="table table--compact profit-rows">
+                <thead><tr><th>{{ gcol('At', 'pa-at-%d' % g, pa_at_tip) }}</th><th>{{ gcol('Close % (optional)', 'pa-close-%d' % g, "How much of the position to close, as a % of the contracts at entry.\n• Blank or 0: close nothing, only move the stop\n• Rounded down, at least 1\n• At least 1 contract always stays open for the target") }}</th><th>{{ gcol('Then move the stop to (optional)', 'pa-stop-%d' % g, pa_stop_tip) }}</th></tr></thead>
+                <tbody data-profit-rows>
+                {% for a in profit_rows %}{% set i = loop.index0 %}
+                {% set usd = a and a.stop_usd is not none %}
+                <tr data-profit-row>
+                    <td><input type="text" name="pa-{{ g }}-{{ i }}-at" value="{{ typed('pa-%d-%d-at' % (g, i), a.at if a else none) }}" class="narrow" aria-label="Profit action {{ i + 1 }}: at"></td>
+                    <td><input type="text" name="pa-{{ g }}-{{ i }}-close" inputmode="numeric" value="{{ typed('pa-%d-%d-close' % (g, i), a.close_pct if a else none) }}" class="narrow" aria-label="Profit action {{ i + 1 }}: close %"></td>
+                    <td class="nowrap"><input type="text" name="pa-{{ g }}-{{ i }}-stop" inputmode="decimal" value="{{ typed('pa-%d-%d-stop' % (g, i), (a.stop_usd if usd else a.stop_pct) if a else none) }}" class="narrow" aria-label="Profit action {{ i + 1 }}: new stop">
+                        {{ leg_select('pa-%d-%d-stop-unit' % (g, i), [('pct', '% loss'), ('usd', '$ P&L')], 'usd' if usd else 'pct') }}</td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table></div>
+            <button class="button button--quiet" type="button" data-add-profit hidden>+ Add profit action</button>
+            <p class="muted small">Example: to move the stop to break-even once it's 75% up, without closing any, enter At 75, leave Close % blank, and Then move the stop to 0 % loss. To close half once it's lost half: At -50, Close % 50. Close % and the new stop are each optional, but a row needs at least one. Fill in a row to add an action; clear it to remove it.</p>
+            </div>
+            </div>
+            {{ problem('profit-%d' % g) }}
+        </div>
+        {% endfor %}
+        </div>
+
+        {# #132: with leg groups only (one group's credit is the trade's: its stop's own
+           closing order ($) basis covers it); a one-group bot already using it still shows it #}
+        {% if grouped or bot.stop_co_mode != 'off' %}
+        <h3 class="card__subtitle section-gap">{% set co_tip %}<p>A second stop price for every group's sold leg: the whole trade's entry credit, less the amount you type. Example: an iron condor took in 4.90, with 0.20 off: 4.70.</p>
+<table class="tip-table"><thead><tr><th>Setting</th><th>What happens</th></tr></thead><tbody>
+<tr><td>Off</td><td>Each group uses its own stop.</td></tr>
+<tr><td>Replaces each stop</td><td>Every group's own % stop becomes 4.70.</td></tr>
+<tr><td>Whichever fires first</td><td>Each group keeps its own stop or uses 4.70, whichever is reached first: a side at 4.60 keeps 4.60; a side at 5.40 moves to 4.70.</td></tr>
+</tbody></table>
+<p>Credit trades only (on a debit fill it's ignored, and you're told). A $ P&amp;L stop ignores it.</p>{% endset %}{{ named('Advanced closing orders (optional)', 'closing-order', co_tip) }}</h3>
+        <div class="inline-form" data-closing-order>
+            <select name="stop_co_mode" aria-label="Closing order" data-exit="co-mode">
+                {% for value, label in [('off', 'Off'), ('both', 'Replaces each stop'), ('tighter', 'Whichever fires first')] %}<option value="{{ value }}"{% if bot.stop_co_mode == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+            <label data-exit-show="co-amount">$ off the entry credit <input type="text" name="stop_co_amount" inputmode="decimal" value="{{ typed('stop_co_amount', bot.stop_co_amount) }}" class="narrow" aria-label="Closing order amount"></label>
+        </div>
+        {% else %}
+        <input type="hidden" name="stop_co_mode" value="off">
+        <input type="hidden" name="stop_co_amount" value="{{ typed('stop_co_amount', bot.stop_co_amount) }}">
+        {% endif %}
+        {% if problems.get('closing_order') %}{{ problem('closing_order') }}{% endif %}
+    </section>
+
+    <section class="card section-gap bot-section" id="filters">
+        {{ section_head(*sections['filters']) }}
+        {# #134 (Tracker2's filter toggles): one row per filter, its pill and a one-line hint,
+           the detail in the ⓘ; filter_fields.js shows a filter's boxes only while it's on. #}
+        <p class="muted small">Each filter skips an entry that doesn't pass it. Preview order ignores them all. Turning a filter off keeps its numbers. Leave a box blank for no limit. If a price can't be read, or is more than 5 minutes old, the entry is skipped and you get an alert.</p>
+
+        {% set premium_tip %}<p>The size of the trade's price at the strikes it picked, credit or debit alike, at the middle price before any chase concession. A price exactly on a bound is let in. Example, at least 1.00 and at most 6.00:</p>
+<table class="tip-table"><thead><tr><th>Trade prices at</th><th>What happens</th></tr></thead><tbody>
+<tr><td>Credit 0.85</td><td>Skipped: below the minimum.</td></tr>
+<tr><td>Credit 6.10</td><td>Skipped: above the maximum.</td></tr>
+<tr><td>Debit 1.20</td><td>Enters.</td></tr>
+<tr><td>Credit 6.00</td><td>Enters.</td></tr>
+</tbody></table>{% endset %}
+        {% call setting('use_premium_bounds', 'Premium bounds', 'premium', "Skip when the trade's price is outside a range.", premium_tip, bot.use_premium_bounds, 'premium') %}
+            <label>Minimum ($) <input type="text" name="premium_min" inputmode="decimal" value="{{ typed('premium_min', bot.premium_min) }}" class="narrow"></label>
+            <label>Maximum ($) <input type="text" name="premium_max" inputmode="decimal" value="{{ typed('premium_max', bot.premium_max) }}" class="narrow"></label>
+        {% endcall %}
+
+        <h3 class="card__subtitle section-gap">VIX</h3>
+        {% call setting('use_vix_level', 'VIX level', 'vix-level', 'Enter only while VIX is in a range.', "VIX's latest price when the entry fires. A price exactly on a bound is let in. Example: a maximum of 20 skips an entry while VIX is 21.30.", bot.use_vix_level, 'vix_level') %}
+            <label>Minimum {{ num('vix_min', bot.vix_min) }}</label>
+            <label>Maximum {{ num('vix_max', bot.vix_max) }}</label>
+        {% endcall %}
+
+        {% set overnight_tip %}<p>VIX's move from yesterday's close to its first price at or after 9:30 New York, in % (positive numbers both ways).</p>
+<table class="tip-table"><thead><tr><th>Box</th><th>What it does</th></tr></thead><tbody>
+<tr><td>Up, min</td><td>Needs a rise of at least this.</td></tr>
+<tr><td>Up, max</td><td>Skips a rise bigger than this. A fall isn't limited.</td></tr>
+<tr><td>Down, min</td><td>Needs a fall of at least this.</td></tr>
+<tr><td>Down, max</td><td>Skips a fall bigger than this. A rise isn't limited.</td></tr>
+</tbody></table>
+<p>With both minimums, either one is enough. Example: yesterday 15.00, today 15.60 is up 4%, so an up max of 3 skips the day.</p>{% endset %}
+        {% call setting('use_vix_overnight', 'VIX overnight move', 'vix-overnight', "Limit or require VIX's move since yesterday's close.", overnight_tip, bot.use_vix_overnight, 'vix_overnight') %}
+            {{ moves('vix_on', bot.vix_overnight, 'VIX overnight move') }}
+        {% endcall %}
+
+        {% call setting('use_vix9d_ratio', 'VIX9D / VIX ratio', 'vix9d', 'Enter only while VIX9D ÷ VIX is in a range.', 'The 9-day VIX divided by VIX, when the entry fires. Example: 14.50 ÷ 16.00 = 0.91, so a maximum of 0.90 skips it.', bot.use_vix9d_ratio, 'vix9d_ratio') %}
+            <label>Minimum {{ num('vix9d_ratio_min', bot.vix9d_ratio_min) }}</label>
+            <label>Maximum {{ num('vix9d_ratio_max', bot.vix9d_ratio_max) }}</label>
+        {% endcall %}
+        {% if stored %}
+        <div class="filters-now" id="filters-now" data-url="{{ url_for('automation.filters_now', bot_id=stored.id) }}">
+            <button class="button button--quiet" type="button" data-filters-now>Check the filters now</button>
+            <span class="muted small">Reads VIX and VIX9D once and says how this bot's saved VIX level and ratio filters read right now. Nothing is sent or saved.</span>
+            <ul class="small" data-filters-out></ul>
+        </div>
+        <script type="module" src="{{ url_for('static', filename='js/filters_now.js') }}"></script>
+        {% endif %}
+
+        <h3 class="card__subtitle section-gap">{{ und }}</h3>
+        {% set technicals_tip %}<table class="tip-table"><thead><tr><th>Choice</th><th>Enters when</th></tr></thead><tbody>
+<tr><td>Price above</td><td>{{ und }}'s price is above the average.</td></tr>
+<tr><td>Price below</td><td>{{ und }}'s price is below the average.</td></tr>
+<tr><td>Compare</td><td>The first average is above the second, like a 5 above a 20.</td></tr>
+</tbody></table>
+<p><strong>SMA</strong> (days): today's price plus the previous closes, averaged. A 3-day SMA at 1 p.m. is (the 1 p.m. price + the last two closes) ÷ 3. Above or below needs at least 2 days.</p>
+<p><strong>EMA</strong> (minutes): an average of 1-minute closes that leans toward the latest.</p>
+<p>With both set, both must pass. Equal never passes.</p>{% endset %}
+        {% set modes = [('', 'None'), ('above', 'Price above'), ('below', 'Price below'), ('compare', 'Compare')] %}
+        {% call setting('use_technicals', 'Technical indicators', 'technicals', 'Enter only when ' ~ und ~ ' is above or below its moving averages.', technicals_tip, bot.use_technicals, 'technicals', rows=True) %}
+            {% for p, name, unit, a, b in [('sma', 'SMA', 'days', 'sma_days_a', 'sma_days_b'), ('ema', 'EMA', 'minutes', 'ema_minutes_a', 'ema_minutes_b')] %}
+            <div class="inline-form" data-choice>
+                <label>{{ name }} {{ leg_select(p ~ '_mode', modes, bot[p ~ '_mode'] or '', by=True) }}</label>
+                <label>{{ unit | capitalize }} {{ whole(a, bot[a]) }}</label>
+                <label data-when="compare">&gt; {{ unit }} {{ whole(b, bot[b]) }}</label>
+            </div>
+            {% endfor %}
+        {% endcall %}
+
+        {% call setting('use_intraday_move', 'Intraday movement', 'intraday', "Limit or require " ~ und ~ "'s move since today's open.", und ~ "'s move from today's open (its first 1-minute bar at or after 9:30) to its price when the entry fires, in %, with the same four boxes as the VIX overnight move. Example: open 5,000, now 5,016 is up 0.32%, so an up min of 0.30 lets it enter and 0.50 skips it.", bot.use_intraday_move, 'intraday_move') %}
+            {{ moves('intraday', bot.intraday, 'Intraday move') }}
+        {% endcall %}
+    </section>
+
+    <section class="card section-gap bot-section" id="exits">
+        {{ section_head(*sections['exits']) }}
+        {# #135 (Tracker2's toggles, like Filters #134): one row per exit, its pill and a
+           one-line hint, the detail in the ⓘ; a rule's boxes show only while it's on. #}
+        {% set close_tip %}<p>Every group still open closes at this time (New York, 24-hour), on a day the trade is this many days or fewer from expiring. Days count to each group's nearest leg. It runs once a day.</p>
+<p>Each group closes the way a profit target does: its stop is cancelled first, the close starts at the middle price and steps with the exit chase, and if it doesn't fill, the stop and the profit target go back.</p>
+<p>On a half day (a 13:00 close), a time at or after the 13:00 close closes at 12:45 instead, 15 minutes before it.</p>
+<p>Example: 15:45 with 0 days closes a same-day trade at 15:45 if neither its stop nor its target has.</p>{% endset %}
+        <div class="bot-filter">
+            <div class="bot-filter__head">
+                {{ named('Timed close', 'timed-close', close_tip) }}
+                <span class="muted small">Close what's still open at a set time. Leave the time blank for none.</span>
+            </div>
+            <div class="bot-filter__fields">
+                <label>Close at <input type="text" name="close_time" value="{{ bot.close_time or '' }}" class="narrow" placeholder="HH:MM" aria-label="Timed close time"></label>
+                <label>Days to expiration, at most <input type="text" name="close_dte" inputmode="numeric" value="{{ typed('close_dte', bot.close_dte) }}" class="narrow" aria-label="Days to expiration"></label>
+            </div>
+            <p class="small"><strong>A calendar or diagonal must close before its near legs expire: set a timed close.</strong></p>
+            {% if bot.close_time and '12:45' <= bot.close_time < '13:00' %}<p class="notice notice--warning small">On a half day (a 13:00 close), {{ bot.close_time }} leaves less than 15 minutes to chase the close before the market shuts. A time at or after 13:00 closes at 12:45 on those days.</p>{% endif %}
+            {{ problem('timed_close') }}
+        </div>
+
+        {% set actions_tip %}<p>At a set time, move every open group's stop or profit target, or close part of it. Each action runs once per group.</p>
+<table class="tip-table"><thead><tr><th>Box</th><th>What it does</th></tr></thead><tbody>
+<tr><td>When</td><td>Counts days to expiration, or days in the trade (0 is the day it was entered).</td></tr>
+<tr><td>Move stop to %</td><td>Measured the way the group's own % stop is. A group with a $ stop uses % above the short's fill if its stop rests at your broker, or % of entry price lost if the app watches it.</td></tr>
+<tr><td>Move target to %</td><td>Measured like the group's profit target: the share of the credit kept, or the % gained on a debit.</td></tr>
+<tr><td>Close %</td><td>Closes that share of each group's contracts at entry, rounded down, always leaving at least 1 open. The moves happen first, so what's left keeps them.</td></tr>
+</tbody></table>
+<p>Example: "0 days to expiration, 14:00, target 25" closes a put spread that took in 1.00 once it can be bought back for 0.75. Close 50 on a 4-contract trade closes 2 of each group.</p>{% endset %}
+        {% call setting('use_time_actions', 'Time actions', 'time-actions', 'At a set time, move the stop or target, or close part of the trade.', actions_tip, bot.use_time_actions, 'time_actions', rows=True) %}
+            {% set action_rows = (bot.time_actions | list) + [none, none] %}
+            <input type="hidden" name="actions" value="{{ action_rows | length }}">
+            <div class="table-scroll"><table class="table table--compact">
+                <thead><tr><th>When</th><th>Days</th><th>At</th><th>Move stop to %</th><th>Move target to %</th><th>Close %</th></tr></thead>
+                <tbody>
+                {% for a in action_rows %}{% set i = loop.index0 %}
+                <tr>
+                    <td><select name="ta-{{ i }}-type" aria-label="Time action {{ i + 1 }}: when">
+                        {% for value, label in [('dte', 'Days to expiration'), ('dit', 'Days in trade')] %}<option value="{{ value }}"{% if a and a.type == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select></td>
+                    <td><input type="text" name="ta-{{ i }}-days" inputmode="numeric" value="{{ typed('ta-%d-days' % i, a.days if a else none) }}" class="narrow" aria-label="Time action {{ i + 1 }}: days"></td>
+                    <td><input type="text" name="ta-{{ i }}-at" value="{{ a.at if a else '' }}" class="narrow" placeholder="HH:MM" aria-label="Time action {{ i + 1 }}: time"></td>
+                    <td><input type="text" name="ta-{{ i }}-stop" inputmode="decimal" value="{{ typed('ta-%d-stop' % i, a.stop_pct if a else none) }}" class="narrow" aria-label="Time action {{ i + 1 }}: stop %"></td>
+                    <td><input type="text" name="ta-{{ i }}-target" inputmode="decimal" value="{{ typed('ta-%d-target' % i, a.target_pct if a else none) }}" class="narrow" aria-label="Time action {{ i + 1 }}: target %"></td>
+                    <td><input type="text" name="ta-{{ i }}-close" inputmode="numeric" value="{{ typed('ta-%d-close' % i, a.close_pct if a else none) }}" class="narrow" aria-label="Time action {{ i + 1 }}: close %"></td>
+                </tr>
+                {% endfor %}
+                </tbody>
+            </table></div>
+            <p class="muted small">Fill in a blank row to add an action (up to 10); clear a row to remove it.</p>
+        {% endcall %}
+
+    </section>
+
+    <section class="card section-gap bot-section" id="watch">
+        {{ section_head(*sections['watch']) }}
+        {# #136 (Tracker2's Watch exits): Use delta (the position's levels, then leg rows added
+           with Add leg delta exit, watch_rows.js), Use short/long ratio and Use underlying price
+           movement (its short put and short call rows only while the legs have that short). #}
+        {% set watch_keep = problems.get('watch_rules') %}
+        {% set pos_delta_tip = "The legs' deltas added up, each signed by side, in whole numbers: 30 is 0.30. A short put counts plus and a short call minus as it's tested. Example: above 30 closes when a sold put is being pushed toward the money.\nDelta needs TastyTrade's quote stream: without it the rule waits, closes nothing, and you get one alert a day." %}
+        {% set leg_delta_tip = "Signed by side: a short put is usually plus and rises when tested (exit above 65, say); a short call is usually minus and falls when tested (exit below -65)." %}
+        {% call setting('use_delta_exit', 'Use delta', 'delta-exit', "Exit on position delta or a single leg's delta.", pos_delta_tip, bot.use_delta_exit, keep=watch_keep, rows=True) %}
+            <div class="bot-boxes">
+                <label>{{ named('Exit below position delta', 'delta-below', pos_delta_tip) }} {{ num('position_delta_below', bot.position_delta_below) }}</label>
+                <label>{{ named('Exit above position delta', 'delta-above', pos_delta_tip) }} {{ num('position_delta_above', bot.position_delta_above) }}</label>
+            </div>
+            <div class="leg-deltas" data-leg-deltas{% if watch_keep %} data-keep{% endif %}>
+                {% for leg in bot.legs %}{% set n = leg.position %}
+                <div class="bot-boxes leg-delta" data-leg-delta="{{ n }}">
+                    <label>Leg <select aria-label="Leg {{ n + 1 }}'s delta exit: which leg" data-leg-delta-pick>
+                        {% for other in bot.legs %}<option value="{{ other.position }}"{% if other.position == n %} selected{% endif %}>Leg {{ other.position + 1 }}: {{ other.side | string | capitalize }} {{ other.right }}</option>{% endfor %}
+                    </select></label>
+                    <label>{{ named('Exit below leg delta', 'leg-delta-below-%d' % n, leg_delta_tip) }} <input type="text" name="leg-{{ n }}-delta-below" inputmode="decimal" value="{{ typed('leg-%d-delta-below' % n, leg.exit_delta_below) }}" class="narrow" aria-label="Leg {{ n + 1 }}: exit below delta"></label>
+                    <label>{{ named('Exit above leg delta', 'leg-delta-above-%d' % n, leg_delta_tip) }} <input type="text" name="leg-{{ n }}-delta-above" inputmode="decimal" value="{{ typed('leg-%d-delta-above' % n, leg.exit_delta_above) }}" class="narrow" aria-label="Leg {{ n + 1 }}: exit above delta"></label>
+                    <button type="button" class="button button--quiet" data-leg-delta-remove aria-label="Remove leg {{ n + 1 }}'s delta exit" hidden>✕</button>
+                </div>
+                {% endfor %}
+                <button type="button" class="button button--quiet" data-leg-delta-add hidden>Add leg delta exit</button>
+            </div>
+        {% endcall %}
+
+        {% set ratio_tip = "Total short premium ÷ total long premium, from live mids. Example: below 0.78." %}
+        {% call setting('use_sl_ratio_exit', 'Use short/long ratio', 'sl-ratio', 'Total short premium ÷ total long premium, from live mids.', ratio_tip, bot.use_sl_ratio_exit, keep=watch_keep) %}
+            <label>{{ named('Exit when S/L ratio is below', 'sl-below', ratio_tip) }} {{ num('sl_ratio_below', bot.sl_ratio_below) }}</label>
+            <label>{{ named('Exit when S/L ratio is above', 'sl-above', ratio_tip) }} {{ num('sl_ratio_above', bot.sl_ratio_above) }}</label>
+        {% endcall %}
+
+        {% set shorts = bot.legs | selectattr('side', 'equalto', 'sell') | map(attribute='right') | list %}
+        {% call setting('use_underlying_exit', 'Use underlying price movement', 'underlying-exit', 'Exit on a % move, or when an OTM short is tested.', und ~ "'s price, watched every 2 seconds. The % moves count from where it was when the trade's strikes were picked.", bot.use_underlying_exit, keep=watch_keep, rows=True) %}
+            <div class="bot-boxes">
+                <label>{{ named('Exit when ' ~ und ~ ' moves up (%)', 'under-up', 'Exit once ' ~ und ~ " is this % above its price when the trade's strikes were picked. Example: picked with " ~ und ~ ' at 6,000, 1 exits at 6,060. Blank: off.') }} {{ num('underlying_up_pct', bot.underlying_up_pct) }}</label>
+                <label>{{ named('Exit when ' ~ und ~ ' moves down (%)', 'under-down', 'Exit once ' ~ und ~ " is this % below its price when the trade's strikes were picked. Enter it positive. Example: picked with " ~ und ~ ' at 6,000, 1 exits at 5,940. Blank: off.') }} {{ num('underlying_down_pct', bot.underlying_down_pct) }}</label>
+            </div>
+            {% for right, field, value, sign, tip in [
+                ('put', 'short_put_tested_pts', bot.short_put_tested_pts, und ~ ' − strike', "Points between " ~ und ~ " and your nearest open short put's strike (" ~ und ~ " − strike). Exits when that distance is at or below this number.\n• Positive: exit before it's touched. Short put 6,800, 25: exits when " ~ und ~ " falls to 6,825.\n• 0: exit when touched (6,800).\n• Negative: exit past the strike. Short put 6,800, −70: exits at 6,730."),
+                ('call', 'short_call_tested_pts', bot.short_call_tested_pts, 'strike − ' ~ und, "Points between your nearest open short call's strike and " ~ und ~ " (strike − " ~ und ~ "). Exits when that distance is at or below this number.\n• Positive: exit before it's touched. Short call 7,000, 25: exits when " ~ und ~ " rises to 6,975.\n• 0: exit when touched (7,000).\n• Negative: exit past the strike. Short call 7,000, −70: exits at 7,070."),
+            ] %}
+            <div class="short-tested" data-short-tested="{{ right }}"{% if right not in shorts and value is none %} hidden{% endif %}>
+                <label class="check check--tick"><input type="checkbox" data-tested-use{% if value is not none %} checked{% endif %} aria-label="Exit when the OTM short {{ right }} is tested"> Exit when OTM short {{ right }} is</label>
+                <input type="text" name="{{ field }}" inputmode="decimal" value="{{ typed(field, value) }}" class="narrow" placeholder="±" aria-label="Short {{ right }}: points from {{ und }}">
+                {{ named('from ' ~ und, 'tested-' ~ right, tip) }}
+            </div>
+            {% endfor %}
+            <p class="muted small" data-no-shorts{% if shorts %} hidden{% endif %}>Add a short put or short call leg to exit on the OTM short.</p>
+        {% endcall %}
+        {{ problem('watch_rules') }}
+        {% set watch_tip %}<p>The app acts only on fresh prices. If they're missing or old, nothing is closed, you get one alert after a minute, and the stops keep protecting the trade.</p>
+<p>A group whose exits you turned off is left alone. Each trade is closed by a watch rule at most once.</p>{% endset %}
+        <div class="muted small bot-note section-gap">Watched every 2 seconds from live quotes, greeks and the underlying's price, 9:30 to the close. A breach must hold for two checks in a row, then the whole trade is closed with the exit chase.{{ info('bot-watch-rules', watch_tip, 'Watch exits') }}</div>
+    </section>
+
+    <section class="card section-gap bot-section" id="alerts">
+        {{ section_head(*sections['alerts']) }}
+        {% set channel_tip %}<p>Alerts go to the Discord and Telegram you set up under Settings → Notifications.</p>
+<table class="tip-table"><thead><tr><th>Kind</th><th>Goes to</th></tr></thead><tbody>
+<tr><td>Routine</td><td>The channel you pick here. News with nothing left for you to do: a close or profit target that filled, a profit action that moved the stop.</td></tr>
+<tr><td>Problems</td><td>They always go to every channel, whatever you choose here: a group with no stop, an order whose outcome is unclear, Freeze holding a stop back, a group held back, a close that failed.</td></tr>
+</tbody></table>
+<p>If the channel you pick isn't set up, alerts go to the ones that are.</p>{% endset %}
+        <div class="bot-boxes">
+            <label>{{ named('Alert name', 'alert-name', 'The name on the first line of a phone alert, after what happened, for example "✅ close filled · IC Joint". Blank: the bot\'s name.') }} <input type="text" name="alert_name" value="{{ bot.alert_name or '' }}" maxlength="40" placeholder="{{ bot.name or 'e.g. IC Joint' }}" aria-label="Alert name"></label>
+            <label>{{ named('Routine alerts go to', 'alert-channel', channel_tip) }} <select name="alert_channel" aria-label="Where routine alerts go">
+                {% for value, label in [('all', 'Every channel'), ('discord', 'Discord only'), ('telegram', 'Telegram only')] %}<option value="{{ value }}"{% if bot.alert_channel == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select></label>
+        </div>
+        {{ problem('alert_name') }}{{ problem('alert_channel') }}
+
+        {% set alerts_tip %}<table class="tip-table"><thead><tr><th>Alert</th><th>Goes off when</th></tr></thead><tbody>
+<tr><td>P&amp;L %</td><td>The trade's profit or loss passes that share of the credit, measured from what it costs to close now. Below 0 is a loss. Example: a trade that took in 2.00 with above 25 goes off once it can be closed for less than 1.50; below -50 once it has lost half its credit.</td></tr>
+<tr><td>Near a short strike</td><td>{{ und }} comes within that many points of a sold put or call (0 is at the strike). Example: 10 on a 5,700 short put goes off below 5,710.</td></tr>
+</tbody></table>
+<p>They show in the app's alerts and are sent like routine alerts, unless you keep them in the app.</p>{% endset %}
+        {% call setting('use_default_alerts', 'Default alerts', 'default-alerts', 'Made for each trade when a live entry fills; cleared when it closes.', alerts_tip, bot.use_default_alerts, 'default_alerts', rows=True) %}
+            {% set alert_rows = (bot.default_alerts | list) + [none] %}{% set alert_most = 10 %}
+            {% include "_alert_rows.html" %}
+            <p class="muted small">Clear an alert's number to remove it.</p>
+            <div class="bot-filter__head">
+                <label class="check"><input type="checkbox" name="default_alerts_in_app_only" {{ 'checked' if bot.default_alerts_in_app_only }}> In the app only</label>
+                <span class="muted small">Never sent to Discord or Telegram.</span>
+            </div>
+        {% endcall %}
+    </section>
+
+    <section class="card section-gap bot-section" id="chase">
+        {{ section_head(*sections['chase']) }}
+        {# #135: the chase's columns explain themselves in their ⓘ; what ends an exit's chase is
+           the market pill, then the choice, its minutes shown only for the natural price #}
+        <p class="muted small">If an order isn't filled, the bot moves its price a step at a time.</p>
+        <div class="table-scroll"><table class="table table--compact chase-table">
+            <thead><tr><th></th>
+                <th>{{ named('Start offset', 'chase-start', 'How far from the middle price the first try is.') }}</th>
+                <th>{{ named('Step', 'chase-step', 'How much the price moves on each try after the first.') }}</th>
+                <th>{{ named('Seconds', 'chase-seconds', 'How long each try waits for a fill before the next step.') }}</th>
+                <th>{{ named('Tries', 'chase-tries', 'How many tries before the chase ends, 1 to 60.') }}</th>
+                <th>{{ named('Stop after (minutes)', 'chase-window', "Ends an entry's chase after this many minutes even if tries are left; what filled is kept. Blank: only the tries.") }}</th></tr></thead>
+            <tbody>
+            {% for phase, label, chase in [('entry', 'Entry', bot.entry_chase), ('exit', 'Exit', bot.exit_chase)] %}
+            <tr>
+                <td>{{ label }}</td>
+                <td><input type="text" name="chase-{{ phase }}-start" inputmode="decimal" value="{{ chase.start_offset }}" class="narrow" aria-label="{{ label }} start offset"></td>
+                <td><input type="text" name="chase-{{ phase }}-step" inputmode="decimal" value="{{ chase.step }}" class="narrow" aria-label="{{ label }} step"></td>
+                <td><input type="number" name="chase-{{ phase }}-interval" min="1" value="{{ chase.interval_seconds }}" class="narrow" aria-label="{{ label }} seconds"></td>
+                <td><input type="number" name="chase-{{ phase }}-tries" min="1" value="{{ chase.max_tries }}" class="narrow" aria-label="{{ label }} tries"></td>
+                <td>{% if phase == 'entry' %}<input type="text" name="chase-entry-window" inputmode="numeric" value="{{ typed('chase-entry-window', chase.window_minutes) }}" class="narrow" aria-label="Stop the entry chase after this many minutes">{% endif %}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table></div>
+        {{ problem('chase') }}
+
+        <h3 class="card__subtitle section-gap">If a close hasn't filled after the last try</h3>
+        <div class="bot-filter">
+            <div class="bot-filter__head">
+                <label class="check"><input type="checkbox" name="chase-exit-market" {{ 'checked' if bot.exit_chase.switch_to_market }}> {{ named('First, at market (one-leg groups)', 'chase-market', "A close of a group with one leg that hasn't filled after its last try is sent at market for what's left, during the market's regular hours, before the choice below.\n• A bought option with no bid is never sold at market.\n• A group of two or more legs never goes to market.") }}</label>
+                <span class="muted small">A one-leg close goes to market for what's left.</span>
+            </div>
+        </div>
+        <div class="bot-filter">
+            <div class="bot-filter__head">
+                <label class="check"><input type="checkbox" name="chase-exit-bidless" {{ 'checked' if bot.exit_chase.ignore_bidless_longs }}> {{ named('Leave long legs with no bid to expire', 'chase-bidless', "When a close runs, a bought leg nobody is bidding on is left out and expires instead of being sold.\n• Sold legs are always closed.\n• A leg with a bid is closed as usual.") }}</label>
+                <span class="muted small">A bought leg with no bid is left to expire.</span>
+            </div>
+        </div>
+        {% set exhaust_tip %}<table class="tip-table"><thead><tr><th>Choice</th><th>What happens</th></tr></thead><tbody>
+<tr><td>Give up and put the stop back</td><td>The close is cancelled and the group's stop is placed again for what's still open.</td></tr>
+<tr><td>Natural price, then leg out</td><td>For the minutes you set, the close is offered at the natural price (paying the ask on legs it buys back, taking the bid on legs it sells). If that doesn't fill either, the legs close one at a time, the ones it buys back first, each one's price stepping, then at market.</td></tr>
+<tr><td>Keep lowering the price until it fills</td><td>Keeps moving the price one step at a time, never past the natural price, until it fills or the market closes.</td></tr>
+</tbody></table>
+<p>A close of two or more legs is never sent at market. Example: a put spread that costs 0.55 at the natural (sold put's ask 0.65, bought put's bid 0.10) is offered at 0.55 for 2 minutes, then the sold put is bought back by itself, then the other put is sold.</p>{% endset %}
+        <div class="bot-filter">
+            <div class="bot-boxes" data-choice>
+                <label>{{ named('Then', 'chase-exhaust', exhaust_tip) }} <select name="chase-exit-exhaust" aria-label="If a close hasn't filled after the last try" data-choice-by>
+                    {% for value, label in [('give_up', 'Give up and put the stop back'), ('natural_then_leg_out', 'Natural price, then leg out'), ('keep_conceding', 'Keep lowering the price until it fills')] %}<option value="{{ value }}"{% if bot.exit_chase.exhaust_mode == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                </select></label>
+                <label data-when="natural_then_leg_out">Natural price for (minutes) <input type="text" name="chase-exit-natural" inputmode="numeric" value="{{ typed('chase-exit-natural', bot.exit_chase.natural_minutes) }}" class="narrow" aria-label="Natural price window in minutes"></label>
+            </div>
+        </div>
+        {{ problem('chase_exhaust') }}
+    </section>
+
+    <div class="inline-form section-gap bot-save-bar">
+        <button class="button" type="submit">Save</button>
+        <a class="button button--quiet" href="{{ url_for('automation.automation_page') }}">Cancel</a>
+    </div>
+</form>
+
+{% if stored %}
+<section class="card section-gap bot-section" id="this-bot">
+    {{ section_head(*sections['this-bot']) }}
+    <div class="bot-actions">
+        <div class="bot-actions__row">
+            <span class="bot-actions__label">Status</span>
+            <div class="bot-actions__items">
+                {% if stored.live %}<span class="badge badge--live">Live</span>{% else %}<span class="badge badge--preview">Paper</span>{% endif %}
+                <span class="muted small">{{ 'Sends real orders.' if stored.live else "Checks orders but doesn't send them." }}</span>
+                {% if stored.live %}
+                <form method="post" action="{{ url_for('automation.set_live', bot_id=stored.id) }}"><input type="hidden" name="on" value="0"><button class="button button--quiet" type="submit">Switch to Paper</button></form>
+                {% else %}
+                <a class="button button--quiet" href="{{ url_for('automation.live_page', bot_id=stored.id) }}">Switch to Live</a>
+                {% endif %}
+            </div>
+        </div>
+        <div class="bot-actions__row">
+            <span class="bot-actions__label">Schedule</span>
+            <div class="bot-actions__items">
+                {% if is_futures(stored.underlying) %}
+                <span class="muted small">A futures bot enters only from the Trade page (Manage with a bot): it's never armed and has no Preview order.</span>
+                {% elif not stored.archived %}
+                <form method="post" action="{{ url_for('automation.arm', bot_id=stored.id) }}" id="arm" class="bot-actions__form">
+                    <input type="hidden" name="next" value="bot">
+                    <input type="hidden" name="on" value="{{ '0' if stored.enabled else '1' }}">
+                    {% if stored.enabled %}<span class="badge badge--armed">Armed</span>{% else %}<span class="badge badge--preview">Off</span>{% endif %}
+                    {% if app_watched(stored) and not stored.enabled and not stored.live %}
+                    <label class="small"><input type="checkbox" name="understood" value="1" required> {{ understood_words(stored) }}</label>
+                    {% endif %}
+                    <button class="button button--quiet" type="submit">{{ 'Turn off' if stored.enabled else ('Arm it (sends real orders)' if stored.live else 'Arm it') }}</button>
+                </form>
+                {% else %}
+                <span class="muted small">Archived: unarchive it to arm it.</span>
+                {% endif %}
+                {% if skip.skipping %}
+                <form method="post" action="{{ url_for('automation.unskip', bot_id=stored.id) }}" class="bot-actions__form">
+                    <input type="hidden" name="day" value="{{ skip.day.isoformat() }}">
+                    <span class="badge badge--preview">Skipping {{ skip.label }}</span>
+                    <button class="button button--quiet" type="submit">Undo</button>
+                </form>
+                {% elif stored.enabled %}
+                <form method="post" action="{{ url_for('automation.skip', bot_id=stored.id) }}"><button class="button button--quiet" type="submit">Skip {{ skip.button }}</button></form>
+                {% endif %}
+            </div>
+        </div>
+        {% if not is_futures(stored.underlying) %}
+        <div class="bot-actions__row">
+            <span class="bot-actions__label">Try it</span>
+            <div class="bot-actions__items">
+                <form method="post" action="{{ url_for('automation.preview_now', bot_id=stored.id) }}" id="preview" class="bot-actions__form">
+                    {% if app_watched(stored) and stored.live %}
+                    <label class="small"><input type="checkbox" name="understood" value="1" required> {{ understood_words(stored, short=true) }}</label>
+                    {% endif %}
+                    <button class="button button--quiet" type="submit">Preview order</button>
+                </form>
+                {% if stored.live and not stored.archived %}
+                <form method="post" action="{{ url_for('automation.trade_now', bot_id=stored.id) }}" id="trade-now" class="bot-actions__form bot-actions__danger" onsubmit="this.querySelector('button[type=submit]').disabled = true">
+                    {% if app_watched(stored) %}
+                    <label class="small"><input type="checkbox" name="understood" value="1" required> {{ understood_words(stored, short=true) }}</label>
+                    {% endif %}
+                    <label class="small">Type TRADE <input type="text" name="confirm" autocomplete="off" required pattern="TRADE" class="narrow" aria-label="Type TRADE to send a real order"></label>
+                    <button class="button button--danger" type="submit" onclick="return confirm('Send a real order now? It counts as one of today\'s entries{% if stored.sizing == 'dollars' %}, and is skipped if its size would pass Max contracts per day{% endif %}.')">Trade now</button>
+                </form>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+        <div class="bot-actions__row">
+            <span class="bot-actions__label">History</span>
+            <div class="bot-actions__items bot-actions__links">
+                <a class="link" href="{{ url_for('automation.runs_page', bot_id=stored.id) }}">Runs</a>
+                <a class="link" href="{{ url_for('automation.record_page', bot_id=stored.id) }}">Record</a>
+                <a class="link" href="{{ url_for('automation.match_page', bot_id=stored.id) }}">Match trades</a>
+            </div>
+        </div>
+        <div class="bot-actions__row">
+            <span class="bot-actions__label">Manage</span>
+            <div class="bot-actions__items">
+                <form method="post" action="{{ url_for('automation.clone', bot_id=stored.id) }}"><button class="button button--quiet" type="submit">Clone</button></form>
+                {% if not stored.archived %}
+                <a class="button button--quiet" href="{{ url_for('automation.export', bot_id=stored.id) }}">Download bot file</a>
+                <form method="post" action="{{ url_for('automation.archive', bot_id=stored.id) }}"><button class="button button--quiet" type="submit">Archive</button></form>
+                {% else %}
+                <form method="post" action="{{ url_for('automation.unarchive', bot_id=stored.id) }}"><button class="button button--quiet" type="submit">Unarchive</button></form>
+                {% endif %}
+                <form method="post" action="{{ url_for('automation.delete', bot_id=stored.id) }}" class="bot-actions__end"><button class="button button--danger-text" type="submit">Delete</button></form>
+            </div>
+        </div>
+    </div>
+    {% if stored.live and not is_futures(stored.underlying) %}<p class="muted small"><strong>Trade now</strong> sends this bot's entry now, off its schedule, as a real order: type TRADE first. Pressing it is your choice to trade now, so arming, the schedule, blackout days, the market filters and the premium bounds don't apply; Freeze, No new trades, the market's hours and the contract and open-trade limits do. It counts as one of today's entries.</p>{% endif %}
+    <p class="muted small">Clone makes a copy that's off, in this bot's mode (Live or Paper). The bot file holds the bot's settings to share with a friend: never your account, sizes or tags. Archive puts away a bot you've finished with (only when nothing of it is open).</p>
+</section>
+{% endif %}
+</div>
+</div>
+<script src="{{ url_for('static', filename='js/bot_sections.js') }}" defer></script>
+<script type="module" src="{{ url_for('static', filename='js/tag_picker.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/sizing_choice.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/leg_rows.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/group_exits.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/keep_place.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/profit_rows.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/schedule_choice.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/filter_fields.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/alert_rows.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/watch_rows.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/save_bar.js') }}"></script>
+{% endblock %}

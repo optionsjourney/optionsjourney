@@ -1,0 +1,62 @@
+{% from "_tooltip.html" import info, tip_text %}
+{#- This trade's own timed close and watch rules (run page and Manage panel, #174) -#}
+{% set next_field %}{% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}{% endset %}
+{% if timed %}
+<section class="card section-gap" id="settings">
+    <h2 class="card__title">This trade's settings</h2>
+    <p class="muted small">These replace the bot's settings for this trade only. The bot keeps its own.</p>
+    <div class="manage-side">
+        <div class="manage-side__head">
+            <h3>Timed close {{ info('run-timed-close', "Closes every side of this trade that is still open at this New York time, once the options have this many days or fewer left (0 means they expire today). Leave the time blank to switch it off for this trade.", 'Timed close', more='/help/automation#timed-close') }}</h3>
+            <span class="manage-side__levels"><span><strong>{% if timed.time %}{{ timed.time }}, {{ timed.dte }} DTE or fewer{% else %}None{% endif %}</strong> <span class="muted small">({{ "set for this trade" if timed.source == 'trade' else "the bot's" }}){% if timed.next_close %} · next: {{ timed.next_close }}{% endif %}</span></span></span>
+        </div>
+        {% if timed.editable %}
+        <form class="inline-form" method="post" action="{{ url_for('automation.trade_timed_close', run_id=run.id) }}">{{ next_field }}
+            <label>Close at <input type="time" name="time" min="09:30" max="15:59" value="{{ timed.time or '' }}"></label>
+            <label>when <input type="number" name="dte" min="0" step="1" value="{{ timed.dte }}" class="narrow"> DTE or fewer</label>
+            <button class="button button--small" type="submit">Save</button>
+            {% if timed.source == 'trade' %}<button class="button button--quiet button--small" type="submit" formaction="{{ url_for('automation.trade_timed_close_revert', run_id=run.id) }}">Back to the bot's</button>{% endif %}
+        </form>
+        {% else %}<p class="muted small">{{ timed.reason }}</p>{% endif %}
+    </div>
+    {% if watch_rules %}{% set w = watch_rules.rules %}
+    <div class="manage-side">
+        <div class="manage-side__head">
+            <h3>Watch rules {{ info('run-watch-rules', "Close the whole trade when the market moves against it: the position's delta, or the short/long ratio, past a level you set. A rule must hold on two checks in a row, and delta and ratio for 30 seconds, before it closes anything. Save checks the prices first and asks you to confirm a rule that would fire at once.", 'Watch rules', more='/help/automation#watch-rules') }}</h3>
+            <span class="badge badge--preview">{{ "set for this trade" if watch_rules.source == 'trade' else "the bot's" }}</span>
+        </div>
+        <p class="muted small">{{ "Set for this trade." if watch_rules.source == 'trade' else "The bot's." }} The underlying move and tested shorts stay the bot's. Deltas are whole numbers (−65, 65).</p>
+        {% if watch_rules.editable %}
+        <form method="post" action="{{ url_for('automation.trade_watch_rules', run_id=run.id) }}">{{ next_field }}
+            <table class="table table--compact watch-table">
+                <thead><tr><th></th><th>Below</th><th>Above</th></tr></thead>
+                <tbody>
+                <tr class="watch-table__group">
+                    <td><label class="check"><input type="checkbox" name="use_delta_exit" value="on"{% if w.use_delta %} checked{% endif %}> Use delta: position</label></td>
+                    <td class="watch-table__delta"><input type="number" step="any" name="position_delta_below" aria-label="Position delta below" value="{{ w.position_delta[0] if w.position_delta[0] is not none else '' }}"></td>
+                    <td class="watch-table__delta"><input type="number" step="any" name="position_delta_above" aria-label="Position delta above" value="{{ w.position_delta[1] if w.position_delta[1] is not none else '' }}"></td>
+                </tr>
+                {% for leg in watch_rules.legs %}
+                <tr class="watch-table__delta">
+                    <td class="watch-table__leg">Leg {{ leg.position + 1 }} ({{ leg.label }})</td>
+                    <td><input type="number" step="any" name="leg-{{ leg.position }}-delta-below" aria-label="Leg {{ leg.position + 1 }} delta below" value="{{ leg.below if leg.below is not none else '' }}"></td>
+                    <td><input type="number" step="any" name="leg-{{ leg.position }}-delta-above" aria-label="Leg {{ leg.position + 1 }} delta above" value="{{ leg.above if leg.above is not none else '' }}"></td>
+                </tr>
+                {% endfor %}
+                <tr class="watch-table__group">
+                    <td><label class="check"><input type="checkbox" name="use_sl_ratio_exit" value="on"{% if w.use_sl_ratio %} checked{% endif %}> Use S/L ratio</label></td>
+                    <td class="watch-table__ratio"><input type="number" step="any" name="sl_ratio_below" aria-label="S/L ratio below" value="{{ w.sl_ratio[0] if w.sl_ratio[0] is not none else '' }}"></td>
+                    <td class="watch-table__ratio"><input type="number" step="any" name="sl_ratio_above" aria-label="S/L ratio above" value="{{ w.sl_ratio[1] if w.sl_ratio[1] is not none else '' }}"></td>
+                </tr>
+                </tbody>
+            </table>
+            <div class="inline-form section-gap--small">
+                <button class="button button--small" type="submit">Save</button>
+                {% if watch_rules.source == 'trade' %}<button class="button button--quiet button--small" type="submit" formaction="{{ url_for('automation.trade_watch_rules_revert', run_id=run.id) }}">Back to the bot's</button>{% endif %}
+            </div>
+        </form>
+        {% else %}<p class="muted small">{{ watch_rules.reason }}</p>{% endif %}
+    </div>
+    {% endif %}
+</section>
+{% endif %}

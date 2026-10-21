@@ -1,0 +1,27 @@
+{#- The ticker drawer (#236): a stock's daily closes, a yellow dashed line at your cost per share, and
+    ▲ buys and ▼ sells. Opened by any [data-stock-chart] button; stock_drawer.js reads
+    GET /api/stocks/<ticker>/chart and draws it. -#}
+<div id="stock-drawer" class="drawer hidden" role="dialog" aria-modal="true" aria-labelledby="stock-title"
+     data-chart-url="{{ url_for('journal.stock_chart_api', ticker='TICKER') }}"
+     data-account="{{ filters.account }}">
+    <div data-stock-backdrop class="drawer__backdrop opacity-0"></div>
+    <div data-stock-panel class="drawer__panel drawer__panel--side translate-x-full">
+        <div class="drawer__header">
+            <div>
+                <h3 id="stock-title">Stock</h3>
+                <p id="stock-subtitle" class="muted small"></p>
+            </div>
+            <button data-stock-close type="button" class="drawer__close" title="Close" aria-label="Close">✕</button>
+        </div>
+        <div class="drawer__body" aria-live="polite">
+            <div class="stock-drawer__ranges segmented" id="stock-ranges">
+                {% for key in stock_ranges %}<button type="button" class="segmented__item" data-stock-range="{{ key }}">{{ key }}</button>{% endfor %}
+            </div>
+            <div id="stock-body"></div>
+        </div>
+    </div>
+</div>
+<script type="module">
+    import { installStockDrawer } from "{{ url_for('static', filename='js/stock_drawer.js') }}";
+    installStockDrawer(document, window);
+</script>

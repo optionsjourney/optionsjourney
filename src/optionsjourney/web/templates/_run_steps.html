@@ -1,0 +1,30 @@
+{% from "_tooltip.html" import info, tip_text %}
+{#- A run's orders, step by step (or its chase log), for the run page and the Manage panel (#174) -#}
+{% macro pairs(entry) %}{% for key, value in entry.items() %}{{ key }}: {{ value }}{{ ', ' if not loop.last }}{% endfor %}{% endmacro %}
+{% if steps %}
+{# Folded by default (it's long once an entry chases): one line per step. The date shows only
+   on a step from another day than the first; an entry's legs are the whole trade, shown above. #}
+{% set first_day = (steps | selectattr('when') | map(attribute='when') | first or '')[:5] %}
+{% set working = steps | selectattr('live') | list %}
+<details class="card section-gap steps" id="timeline">
+    <summary class="card__title">Orders, step by step <span class="muted small">{{ steps | length }} step{{ 's' if steps | length != 1 }}{% if working %} · <span class="badge badge--preview">working now</span>{% endif %}</span></summary>
+    <p class="muted small">Every step the entry and the exits took, oldest first, in New York time.</p>
+    <ol class="steps__list">
+        {% for step in steps %}
+        <li class="steps__item{% if step.live %} timeline-live{% endif %}">
+            <span class="steps__when num">{% if not step.when %}—{% elif step.when[:5] != first_day %}{{ step.when }}{% else %}{{ step.when[6:] }}{% endif %}</span>
+            <span><span class="muted">{{ step.source }} ·</span> {{ step.event }}{% if step.price %} · {{ step.price }}{% endif %}{% if step.live %} <span class="badge badge--preview">working now</span>{% endif %}
+            {% if step.legs and not step.source.startswith('Entry') %}<span class="muted small"> · {{ step.legs }}</span>{% endif %}
+            {% if step.note %}<div class="muted small">{{ step.note }}</div>{% endif %}</span>
+        </li>
+        {% endfor %}
+    </ol>
+</details>
+{% elif run.chase_log %}
+<section class="card section-gap">
+    <h2 class="card__title">Chase {{ info('run-chase', "How the entry order was chased: if it did not fill, the price moved a step toward the broker's side every few seconds, up to the number of tries the bot allows. Each line is one try.", 'Chase', more='/help/automation#chase-settings') }}</h2>
+    <ul class="small">
+        {% for entry in run.chase_log %}<li>{{ pairs(entry) }}</li>{% endfor %}
+    </ul>
+</section>
+{% endif %}

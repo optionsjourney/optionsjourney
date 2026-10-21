@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% from "_macros.html" import account_cell, pl, position_history %}
+{% from "_tooltip.html" import info, tip_text %}
+{% from "_manual_rule_tips.html" import hand_to_bot_button %}
+{% set p = entry.position %}
+{% block title %}{{ entry.name }} · OptionsJourney{% endblock %}
+
+{% block content %}
+<p><a class="link" href="{{ back }}">← Back to the journal</a></p>
+
+<div class="page-header">
+    <div>
+        <h1>{{ entry.name }}</h1>
+        {% if entry.bot %}<a class="badge badge--bot" href="{% if entry.bot.per_trade %}{{ url_for('journal.manage_page', key=p.split_from or p.key) }}{% elif entry.bot.matched %}{{ url_for('automation.record_page', bot_id=entry.bot.bot_id) }}{% else %}/automation/{{ entry.bot.bot_id }}/runs{% endif %}" title="{{ 'Matched to' if entry.bot.matched else 'Opened by' }} {{ entry.bot.name }}"><svg class="bot-icon" viewBox="0 0 16 16" width="13" height="13" aria-label="bot" role="img"><rect x="1.5" y="2" width="13" height="9" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 14h5M8 11v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>{% if entry.bot.name != entry.name %} {{ entry.bot.name }}{% endif %}</a>{% endif %}
+        {% if entry.renamed %}<div class="muted small">Default name: {{ p.name }}</div>{% endif %}
+    </div>
+    <div class="stat">
+        <div class="stat__label">Realized P/L</div>
+        <div class="stat__value">{{ pl(p.realized_pl) }}</div>
+    </div>
+</div>
+
+<section class="card">
+    <div class="facts">
+        <div><div class="stat__label">Account</div>{{ account_cell(accounts, p.broker, p.account_number) }}</div>
+        <div><div class="stat__label">Status</div>{% if entry.awaiting_broker and manual_entries %}Expired · mark it expired below{% elif entry.awaiting_broker %}Expired · waiting on broker{% else %}{{ p.status.value | title }}{% if entry.close_reason %} · {{ entry.close_reason }}{% endif %}{% endif %}</div>
+        <div><div class="stat__label">Opened</div>{{ p.opened_at | market_time }}</div>
+        <div><div class="stat__label">Closed</div>{{ p.closed_at | market_time if p.closed_at else '—' }}</div>
+        <div><div class="stat__label">Qty</div>{{ p.units | number }}</div>
+        <div><div class="stat__label">Entry</div>{{ p.entry_price | premium }}</div>
+        <div><div class="stat__label">Exit</div>{{ p.exit_price | premium }}</div>
+        <div><div class="stat__label">Fees</div>{{ p.fees | money }}</div>
+        {% if entry.estimated_pl is not none %}
+        <div><div class="stat__label">Estimated P/L</div>≈ {{ pl(entry.estimated_pl) }}<div class="muted small">from the broker's closing price, until the broker's own record arrives</div></div>
+        {% endif %}
+    </div>
+    {% if p.status.value != 'closed' and p.live_legs | selectattr('option') | list %}
+    <p class="section-gap"><a class="button button--quiet" href="{{ url_for('risk_graph.risk_graph_page', trade=p.key) }}">Risk graph</a></p>
+    {% endif %}
+    {% if p.status.value != 'closed' %}
+    <form class="inline-form alert-form section-gap" method="post" action="{{ url_for('alerts.create') }}">
+        <input type="hidden" name="kind" value="trade_pl">
+        <input type="hidden" name="position" value="{{ p.key }}">
+        <input type="hidden" name="name" value="{{ entry.name }}">
+        <input type="hidden" name="next" value="{{ request.full_path }}">
+        <span class="small">Alert me when its open P/L goes</span>
+        <select name="direction" aria-label="Above or below"><option value="below">below</option><option value="above">above</option></select>
+        <input type="text" name="level" inputmode="decimal" placeholder="-500" required aria-label="Dollars" size="7">
+        <button class="button button--quiet" type="submit">Set alert</button>
+    </form>
+    {% endif %}
+    <h2 class="card__title section-gap">History</h2>
+    {{ position_history(p) }}
+</section>
+
+{% if manual_entries %}
+<section class="card">
+    <h2 class="card__title">Entered by hand</h2>
+    {% if p.status.value != 'closed' %}
+    <div class="inline-form">
+        <a class="button button--quiet" href="{{ url_for('manual.new_entry', close=p.key) }}">Close…</a>
+        <form method="post" action="{{ url_for('manual.expire') }}">
+            <input type="hidden" name="key" value="{{ p.key }}">
+            <span class="tip"><button class="button button--quiet" type="submit" aria-describedby="tip-trade-mark-expired">Mark expired</button>{{ tip_text('trade-mark-expired', "Closes what is left of this trade at 0, as expired worthless, at the close of its expiration day. It only works once the market has closed on that day. Only for trades you entered by hand.", more='/help/journal#adding-a-trade-by-hand') }}</span>
+        </form>
+    </div>
+    {% endif %}
+    <p class="muted small section-gap">Each entry you made for this trade. Deleting one takes it out of the trade; deleting the opening entry removes the trade.</p>
+    <ul class="entry-list">
+        {% for entry_id in manual_entries %}
+        <li>
+            <span>Entry {{ loop.index }}{% if loop.first %} (opening){% endif %}</span>
+            <form method="post" action="{{ url_for('manual.delete_entry', entry_id=entry_id) }}"
+                  onsubmit='return confirm({{ ("Delete entry " ~ loop.index ~ " of this trade?") | tojson }})'>
+                <button class="button button--danger" type="submit">Delete</button>
+            </form>
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+{% endif %}
+
+{% if adopt is not none or manage %}
+<section class="card">
+    <h2 class="card__title">Automation</h2>
+    {% if manage %}
+    <a class="button button--quiet" href="{{ url_for('journal.manage_page', key=p.split_from or p.key, back=back) }}">Manage this trade…</a>
+    <p class="muted small section-gap">Give it a profit target, a stop loss or an exit time: a manual bot's rules, or your own.</p>
+    {% endif %}
+    {% if adopt is none %}{% elif adopt %}
+    {{ hand_to_bot_button('trade-hand-to-bot', url_for('journal.adopt_page', key=p.split_from or p.key, back=back)) }}
+    <p class="muted small section-gap">A bot then manages its exits as if it had opened it. You see what it will place first.</p>
+    {% else %}
+    <p class="muted small">{{ which_trades }}</p>
+    {% endif %}
+</section>
+{% endif %}
+{% if entry.bot and entry.bot.matched %}{% include "_unlink_bot.html" %}{% endif %}
+
+<section class="card">
+    <h2 class="card__title">Edit</h2>
+    <form class="form" method="post" action="{{ url_for('journal.save_trade', key=p.key) }}">
+        <input type="hidden" name="back" value="{{ back }}">
+        <label>Name
+            <input type="text" name="name" maxlength="120" value="{{ entry.name if entry.renamed else '' }}" placeholder="{{ p.name }}">
+            <span class="muted small">Leave blank to use the default name.</span>
+        </label>
+        {% set fixed = entry.fixed_tags | map(attribute='name') | list %}
+        <div class="field">
+            <span>Tags</span>
+            <div class="inline-form">
+                <input type="text" name="tags" value="{{ entry.tags | rejectattr('name', 'in', fixed) | map(attribute='name') | join(', ') }}" aria-label="Tags, separated by commas" list="trade-tag-names" data-tag-list="No tags" data-tag-fixed="{{ fixed | tojson | forceescape }}">
+                <datalist id="trade-tag-names">{% for t in tags %}<option value="{{ t.name }}">{% endfor %}</datalist>
+                <input type="text" name="new_tags" maxlength="60" placeholder="New tag" aria-label="New tags, separated by commas">
+            </div>
+            <span class="muted small">{% if entry.bot and entry.bot.name and fixed %}{{ entry.bot.name }} files its trades under {{ (entry.fixed_tags | last).name }}, so it stays ticked: <a class="link" href="{{ url_for('automation.bot_page', bot_id=entry.bot.bot_id) }}#basics">change the bot's Journal tag</a>. {% endif %}<a class="link" href="{{ url_for('journal.tags_page') }}">Manage tags</a></span>
+        </div>
+        <div class="field">
+            <span>Close reason {{ info('trade-close-reason', "The note shown under the trade's status, such as Profit target or Stop loss. Automatic uses what your broker's records say, like Expired or Assigned. Choosing one here changes only that note, not the trade's P/L.", 'Close reason', more='/help/journal#the-trades-own-page') }}</span>
+            <select name="close_reason" aria-label="Close reason">
+                <option value="">Automatic{% if p.close_reason %} ({{ p.close_reason }}){% endif %}</option>
+                {% for reason in close_reasons %}
+                <option value="{{ reason }}" {{ 'selected' if entry.close_reason == reason and entry.close_reason != p.close_reason }}>{{ reason }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <label>Notes
+            <textarea name="notes" rows="4">{{ entry.notes or '' }}</textarea>
+        </label>
+        <div><button class="button" type="submit">Save</button></div>
+    </form>
+</section>
+
+{% if p.can_split or p.split_from %}
+<section class="card">
+    <h2 class="card__title">Iron condor {{ info('trade-iron-condor', "Splitting is your choice, trade by trade. Left alone, an iron condor shows as one trade, unless the bot that placed it splits its condors.", 'Iron condor', more='/help/journal#iron-condors-one-trade-or-two') }}</h2>
+    {% if p.can_split %}
+    <p>Track this iron condor as two positions, a put spread and a call spread, each with its own P/L.</p>
+    <form method="post" action="{{ url_for('journal.split_trade', key=p.key) }}">
+        <input type="hidden" name="split" value="1">
+        <input type="hidden" name="back" value="{{ back }}">
+        <span class="tip"><button class="button button--quiet" type="submit" aria-describedby="tip-trade-split-ic">Split into put and call spreads</button>{{ tip_text('trade-split-ic', "Tracks the put side and the call side as two trades. Each half starts with this trade's tags, and a bot's tag stays on both.", more='/help/journal#iron-condors-one-trade-or-two') }}</span>
+    </form>
+    {% else %}
+    <p>This is one half of a split iron condor.</p>
+    <form method="post" action="{{ url_for('journal.split_trade', key=p.split_from) }}">
+        <input type="hidden" name="split" value="0">
+        <input type="hidden" name="back" value="{{ back }}">
+        <span class="tip"><button class="button button--quiet" type="submit" aria-describedby="tip-trade-combine-ic">Combine back into one iron condor</button>{{ tip_text('trade-combine-ic', "Shows the two halves as the one iron condor again, as before you split it.", more='/help/journal#iron-condors-one-trade-or-two') }}</span>
+    </form>
+    {% endif %}
+</section>
+{% endif %}
+<script type="module" src="{{ url_for('static', filename='js/tag_list.js') }}"></script>
+{% endblock %}

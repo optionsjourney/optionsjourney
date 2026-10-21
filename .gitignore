@@ -1,0 +1,44 @@
+# Secrets and personal data: never commit
+.env
+.env.*
+!.env.example
+tokens*.json
+*.pem
+*.key
+
+# Local databases and data
+*.db
+*.sqlite
+*.sqlite3
+/data/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+
+# Build output
+build/
+dist/
+
+# Logs
+*.log
+/logs/
+
+# OS and editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Made by the install scripts
+/OptionsJourney.command
+/OptionsJourney.bat

@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% from "_macros.html" import pl %}
+{% from "_tooltip.html" import info %}
+{% block title %}P/L · {{ dashboard.name if dashboard else 'Journal' }} · OptionsJourney{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Journal</h1>
+    <a class="link" href="{{ url_for('journal.tags_page') }}">Tags</a>
+</div>
+
+{% include "_journal_nav.html" %}
+
+{% set c = calendar %}
+<section class="card calendar" aria-labelledby="calendar-title">
+    <div class="calendar__header">
+        <h2 class="card__title" id="calendar-title">P/L calendar</h2>
+        <nav class="calendar__nav" aria-label="Month">
+            <a class="button button--quiet" href="{{ month_url(-1) }}" aria-label="Previous month">‹</a>
+            <span class="calendar__month">{{ c.first.strftime('%B %Y') }}</span>
+            <a class="button button--quiet" href="{{ month_url(1) }}" aria-label="Next month">›</a>
+        </nav>
+    </div>
+    <div class="calendar__summary">
+        <div><div class="stat__label">Month P/L</div>{{ pl(c.total) }}</div>
+        <div><div class="stat__label">Trades closed</div>{{ c.trades }}{% if c.partials %} <span class="muted small">+ {{ c.partials }} partial</span>{% endif %}</div>
+        <div><div class="stat__label">Winning days</div>{% if c.days %}{{ c.winning_days }} of {{ c.days | length }}{% else %}—{% endif %}</div>
+        <div><div class="stat__label">Average day</div>{{ pl(c.average_day) if c.average_day is not none else '—' }}</div>
+        <div><div class="stat__label">Best / worst day</div>{{ pl(c.best_day) if c.best_day is not none else '—' }} / {{ pl(c.worst_day) if c.worst_day is not none else '—' }}</div>
+    </div>
+    <table class="calendar__grid">
+        <thead>
+            <tr><th>Mon</th><th>Tue</th><th>Wed</th><th>Thu</th><th>Fri</th><th>Week</th></tr>
+        </thead>
+        <tbody>
+            {% for week in c.weeks %}
+            <tr>
+                {% for cell in week.days %}
+                <td class="calendar__day {{ 'calendar__day--' ~ cell.shade if cell.shade }} {{ 'calendar__day--outside' if not cell.in_month }}"
+                    {% if cell.pl %}title="{{ cell.day.strftime('%a %b') }} {{ cell.day.day }}: {{ cell.pl.realized | money }} · {{ cell.pl.trades }} closed{% if cell.pl.partials %}, {{ cell.pl.partials }} partial{% endif %}{% if cell.pl.trades %} · {{ cell.pl.wins }} won, {{ cell.pl.losses }} lost{% endif %}"{% endif %}>
+                    <div class="calendar__date">{{ cell.day.day }}</div>
+                    {% if cell.pl %}
+                    <div class="calendar__pl"><span class="calendar__long">{{ cell.pl.realized | signed_money }}</span><span class="calendar__short">{{ cell.pl.realized | short_money }}</span></div>
+                    <div class="calendar__count muted small">{{ cell.pl.trades }} closed{% if cell.pl.partials %} · {{ cell.pl.partials }} partial{% endif %}</div>
+                    {% endif %}
+                </td>
+                {% endfor %}
+                <td class="calendar__week {{ 'calendar__week--gain' if week.total > 0 else 'calendar__week--loss' if week.total < 0 }}">
+                    {% if week.total or week.trades %}
+                    <div class="calendar__pl"><span class="calendar__long">{{ week.total | signed_money }}</span><span class="calendar__short">{{ week.total | short_money }}</span></div>
+                    <div class="calendar__count muted small">{{ week.trades }} closed</div>
+                    {% if week.weekend %}<div class="calendar__weekend muted small" title="P/L the broker booked on the weekend">incl. {{ week.weekend | signed_money }} weekend</div>{% endif %}
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</section>
+
+{% set h = history %}
+<section class="card pl-history" aria-labelledby="history-title">
+    <div class="calendar__header">
+        <h2 class="card__title" id="history-title">P/L over time</h2>
+        {% if h.points %}
+        <div class="muted small">
+            Realized P/L, added up day by day ·
+            deepest drawdown {{ pl(h.deepest.drawdown) if h.deepest else '—' }}{% if h.deepest %} on {{ h.deepest.day.strftime('%b') }} {{ h.deepest.day.day }}, {{ h.deepest.day.year }}{% endif %}
+        </div>
+        {% endif %}
+    </div>
+    {% if not h.points %}
+    <p class="muted">No closed trades yet, so nothing to chart.</p>
+    {% else %}
+    <figure class="chart" id="pl-history" data-line-chart="pl-history-data"
+            data-tooltip='[["Cumulative", "cumulative", "signed"], ["That day", "pl", "signed"], ["Drawdown", "drawdown", "drawdown"]]'>
+        <div class="chart__label">Cumulative P/L {{ info('pl-cumulative', "Your realized P/L added up day by day, starting from zero. Each day's P/L counts on the day it was made, so closing part of a trade adds that part.", 'Cumulative P/L', more='/help/journal#pl-over-time') }}</div>
+        <svg class="chart__plot" data-series="cumulative" data-mark="end" role="img" aria-label="Cumulative realized P/L by day"></svg>
+        <div class="chart__label">Drawdown <span class="muted">· how far below its highest point so far</span></div>
+        <svg class="chart__plot chart__plot--short" data-series="drawdown" data-mark="min" data-color="loss" role="img" aria-label="Drawdown by day"></svg>
+        <div class="chart__tooltip" role="status" hidden></div>
+    </figure>
+    <script type="application/json" id="pl-history-data">{{ h.chart_data() | tojson }}</script>
+    <details class="section-gap">
+        <summary class="link">Show as a table</summary>
+        <div class="table-scroll"><table class="table">
+            <thead><tr><th>Month</th><th class="num">P/L</th><th class="num">Cumulative</th><th class="num">Deepest drawdown {{ info('pl-deepest-drawdown', "The biggest fall below your best cumulative P/L so far, within that month. The best point starts at zero, so losses before your first gain count as drawdown.", 'Deepest drawdown', more='/help/journal#pl-over-time') }}</th></tr></thead>
+            <tbody>
+                {% for row in h.months %}
+                <tr>
+                    <td>{{ row.month.strftime('%b %Y') }}</td>
+                    <td class="num">{{ pl(row.pl) }}</td>
+                    <td class="num">{{ pl(row.cumulative) }}</td>
+                    <td class="num">{{ pl(row.drawdown) if row.drawdown < 0 else '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table></div>
+    </details>
+    <script src="{{ url_for('static', filename='js/line_chart.js') }}" defer></script>
+    {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,42 @@
+{# Pieces shared by several pages. #}
+
+{% macro account_cell(accounts, broker, number) %}
+{% set account = accounts.get((broker, number)) %}
+<div>{{ account.display_name if account else broker }}</div>
+<div class="muted small">{{ account.masked_number if account else '' }}</div>
+{% endmacro %}
+
+{% macro pl(value) %}
+<span class="{{ 'positive' if value > 0 else 'negative' if value < 0 }}">{{ value | money }}</span>
+{% endmacro %}
+
+{% macro position_history(position) %}
+<table class="table table--nested">
+    {% for event in position.events %}
+    <tr>
+        <td class="nowrap muted small">{{ event.at | market_time }}</td>
+        <td class="small">{{ event.kind.value | title }}</td>
+        <td class="small">
+            {% for order in event.orders %}
+            {% for leg in order.legs %}<div>{{ order.leg_label(leg) }}</div>{% endfor %}
+            {% endfor %}
+        </td>
+        <td class="num small">{{ event.value | money }}</td>
+        <td class="num small">{% if event.kind.value != 'open' %}{{ pl(event.realized) }}{% endif %}</td>
+    </tr>
+    {% endfor %}
+</table>
+{% endmacro %}
+
+{% macro pager(page, noun) %}
+<div class="pager">
+    <span class="muted small">{{ page.first }}–{{ page.last }} of {{ page.total }} {{ noun }}</span>
+    {% if page.pages > 1 %}
+    <span class="pager__links">
+        {% if page.number > 1 %}<a class="link" href="{{ page.url(page.number - 1) }}">← Previous</a>{% endif %}
+        <span class="muted small">Page {{ page.number }} of {{ page.pages }}</span>
+        {% if page.number < page.pages %}<a class="link" href="{{ page.url(page.number + 1) }}">Next →</a>{% endif %}
+    </span>
+    {% endif %}
+</div>
+{% endmacro %}

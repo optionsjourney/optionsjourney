@@ -1,0 +1,382 @@
+{% extends "base.html" %}
+{% from "_macros.html" import account_cell, pl, pager %}
+{% from "_tooltip.html" import info, tip_text %}
+{% block title %}{{ dashboard.name if dashboard else 'Journal' }} · OptionsJourney{% endblock %}
+
+
+{% block main_class %}main--wide{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>Journal</h1>
+    <div class="inline-form">
+        <form method="post" action="{{ url_for('transactions.sync_now') }}" class="inline-form">
+            <input type="hidden" name="back" value="{{ request.full_path }}">
+            <span class="tip"><button class="button button--small" type="submit" aria-describedby="tip-journal-sync-now">Sync now</button>{{ tip_text('journal-sync-now', "Reads your new trades from your brokers right now, and refreshes your account values. The app already does this on its own: every minute during market hours by default. Not yet when you started the app from the menu bar icon: press Sync now.", more='/help/behind-the-scenes#how-trades-get-into-the-journal') }}</span>
+        </form>
+        <a class="link" href="{{ url_for('manual.new_entry') }}">＋ Add a trade</a>
+        <a class="link" href="{{ url_for('journal.tags_page') }}">Tags</a>
+        <button class="button button--quiet button--small" type="button" data-schedule-open title="Bot schedule: what fires today or another day">📅 Schedule</button>
+    </div>
+</div>
+
+{% include "_journal_nav.html" %}
+
+{% macro box(label, value, tone='', id='', tip='') %}
+<div class="overview__box {{ 'overview__box--' ~ tone if tone }}">
+    <div class="stat__label">{{ label }}{% if tip %} {{ info('journal-' ~ id, tip, label, more='/help/journal#the-summary-above-the-trades') }}{% endif %}</div>
+    <div class="overview__value">{{ value }}</div>
+</div>
+{% endmacro %}
+{% macro tone(value) %}{{ 'gain' if value is not none and value > 0 else 'loss' if value is not none and value < 0 }}{% endmacro %}
+{% macro gauge(label, value, low, high, places=0, id='', tip='') %}
+{# A half-circle dial, like Tracker2's. `value` runs from `low` to `high`. #}
+{% set share = 0 if value is none else ([[(value - low) / (high - low), 0] | max, 1] | min) %}
+<figure class="gauge" role="img" aria-label="{{ label }}: {{ value | percent(places) if value is not none else 'none yet' }}">
+    <svg viewBox="0 0 120 70" class="gauge__dial" aria-hidden="true">
+        <path class="gauge__track" d="M10,60 A50,50 0 0 1 110,60" pathLength="100"></path>
+        {% if value is not none %}
+        <path class="gauge__fill {{ 'gauge__fill--loss' if value < 0 }}" d="M10,60 A50,50 0 0 1 110,60" pathLength="100"
+              stroke-dasharray="{{ '%.2f' % (share * 100) }} 100"></path>
+        {% endif %}
+        <text x="60" y="56" text-anchor="middle" class="gauge__value">{{ value | percent(places) }}</text>
+    </svg>
+    <figcaption class="stat__label">{{ label }}{% if tip %} {{ info('journal-' ~ id, tip, label, more='/help/journal#the-summary-above-the-trades') }}{% endif %}</figcaption>
+</figure>
+{% endmacro %}
+
+{% if stocks is not none %}
+{# The Stocks tab (#58): just the shares held, with live prices #}
+<p class="muted small" id="stocks-scope">{% if filters.account %}Every share position your broker reports in this account, including shares you didn't buy through this app.{% else %}Every share position your brokers report, across all your connected accounts, added up by ticker. That includes shares you didn't buy through this app. Pick an account above to see just one.{% endif %} <a class="link" href="/help/journal#stocks" target="_blank" rel="noopener">Learn more</a></p>
+<section class="card" aria-labelledby="stocks-pl-title">
+    <h2 class="card__title" id="stocks-pl-title">Your stocks against what you paid {{ info('stocks-pl-chart', "Your total profit or loss on shares, measured against what you paid for them. Saved shortly after each close (4:15 PM New York time, 1:15 PM on early-close days). If a closing price is missing it keeps trying until 8 PM, then saves without it. The line starts on the first save, and days the app was off are missing. It follows the account picker above.", 'Stocks against what you paid', more='/help/journal#stocks') }}</h2>
+    <nav class="segmented" aria-label="Range">
+        {% for key in stock_ranges %}
+        <a class="segmented__item {{ 'segmented__item--active' if key == stock_range }}" href="{{ url_for('journal.journal_page', **dict(filters.to_args(), range=key)) }}"{% if key == stock_range %} aria-current="true"{% endif %}>{{ key }}</a>
+        {% endfor %}
+    </nav>
+    {% set gap = namespace(day=none) %}
+    {% for d in stock_days %}{% if d.priced < d.total %}{% set gap.day = d %}{% endif %}{% endfor %}
+    {% if not stock_chart %}
+    {% if stock_has_saved %}<p class="muted">Nothing saved in this range yet.</p>
+    {% elif stocks %}<p class="muted">Your first point appears after the next close (4:15 PM New York time).</p>
+    {% else %}<p class="muted">The chart starts after the first close at which you hold shares.</p>{% endif %}
+    {% else %}
+    {% set last = stock_chart[-1] %}
+    <p><strong class="{{ 'positive' if last.pl > 0 else 'negative' if last.pl < 0 }}">{{ last.pl | money }}{% if last.pct is not none %} ({{ '%+.2f' % last.pct }}%){% endif %}</strong>
+        <span class="muted small">on {{ last.cost | money }} paid, {{ last.day.strftime('%b') }} {{ last.day.day }}, {{ last.day.year }}</span></p>
+    <figure class="chart" data-line-chart="stocks-pl-data"
+            data-tooltip='[["P/L", "pl", "signed"], ["of what you paid", "pct", "percent"]]'>
+        <svg class="chart__plot" data-series="pl" data-mark="end"
+             role="img" aria-label="Stocks profit or loss by day"></svg>
+        <div class="chart__tooltip" role="status" hidden></div>
+    </figure>
+    <script type="application/json" id="stocks-pl-data">{{ stock_chart_data | tojson }}</script>
+    <script src="{{ url_for('static', filename='js/line_chart.js') }}" defer></script>
+    {% endif %}
+    {% if gap.day %}<p class="muted small">{{ gap.day.day.strftime('%b') }} {{ gap.day.day.day }}: {{ gap.day.priced }} of {{ gap.day.total }} priced. Shares without a closing price are left out.</p>{% endif %}
+</section>
+<section class="card">
+    {% if not stocks %}
+    <p class="muted">No shares held{{ ' in this account' if filters.account }}.</p>
+    {% else %}
+    <div class="table-scroll"><table class="table" id="holdings" data-url="{{ url_for('journal.stocks_api', **filters.to_args()) }}">
+        <thead>
+            <tr>
+                <th>Ticker</th>
+                <th class="num">Qty</th>
+                <th class="num">Cost basis {{ info('journal-cost-basis', "The average price per share, as your broker reports it. The line under it is the total paid for the shares you hold.", 'Cost basis', more='/help/journal#stocks') }}</th>
+                <th class="num">Current price</th>
+                <th class="num">P/L</th>
+                <th class="num">Today's P/L</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for h in stocks %}
+            <tr data-ticker="{{ h.ticker }}">
+                <td><button type="button" class="link-button" data-stock-chart="{{ h.ticker }}" title="Chart {{ h.ticker }}"><strong>{{ h.ticker }}</strong></button></td>
+                <td class="num">{{ h.quantity | number }}</td>
+                <td class="num">{{ '%.2f' % h.cost_basis }}<div class="muted small">{{ h.cost | money }}</div></td>
+                <td class="num" data-cell="price">{{ h.price | number if h.price is not none else '—' }}</td>
+                <td class="num {{ 'positive' if h.pl and h.pl > 0 else 'negative' if h.pl and h.pl < 0 }}" data-cell="pl">{% if h.pl is not none %}{{ h.pl | money }}<div class="small">{{ '%+.2f' % h.pl_percent }}%</div>{% else %}—{% endif %}</td>
+                <td class="num {{ 'positive' if h.today_pl and h.today_pl > 0 else 'negative' if h.today_pl and h.today_pl < 0 }}" data-cell="today">{{ h.today_pl | money if h.today_pl is not none else '—' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table></div>
+    <p class="muted small">Prices are live from your broker. Today's P/L is from the previous close, or from the price paid for shares bought today.</p>
+    {% endif %}
+</section>
+<script src="{{ url_for('static', filename='js/holdings.js') }}" defer></script>
+{% include "_stock_drawer.html" %}
+{% else %}
+{% set o = view.overview %}
+{% if filters.shown_status != 'all' %}
+{% set all_args = dict(filters.to_args(), status='all', **({'dashboard': dashboard.id} if dashboard else {})) %}
+<p class="muted small">Showing {{ statuses[filters.shown_status] | lower }} trades only, and the numbers below are for them.
+    <a class="link" href="{{ url_for('journal.journal_page', **all_args) }}">Show open and closed</a></p>
+{% endif %}
+<section class="overview" aria-label="Summary">
+    <div class="overview__rows">
+        <div class="overview__row">
+            <div class="overview__box" id="open-pl" data-url="{{ url_for('journal.open_pl', **filters.to_args()) }}">
+                <div class="stat__label">Open P/L <span class="live-dot" title="Live from your broker's prices" hidden></span> {{ info('journal-open-pl', "The profit or loss of your open trades at your broker's live prices, added up. The line under it says how many have a price yet.", 'Open P/L') }}</div>
+                <div class="overview__value" id="open-pl-value">—</div>
+                <div class="muted small" id="open-pl-note">waiting for prices</div>
+            </div>
+            <div class="overview__box" id="pl-day">
+                <div class="stat__label">P/L Day {{ info('journal-pl-day', "What your open trades have made or lost since the last close. The app saves each trade's P/L at 4:15 PM New York time (1:15 PM on half days) and measures from that. A ≈ means some trades had no saved P/L, so your broker's previous closes were used instead.", 'P/L Day', more='/help/behind-the-scenes#pl-day') }}</div>
+                <div class="overview__value" id="pl-day-value">—</div>
+                <div class="muted small" id="pl-day-note"></div>
+            </div>
+            {{ box('Closed P/L', o.closed_pl | money, tone(o.closed_pl), 'closed-pl', "What the trades shown have made or lost on what they've closed, after fees. A trade you've rolled and still hold isn't counted until it closes. On Open + closed today, an open trade counts only what it closed today.") }}
+            {{ box('Open Premium', o.open_premium | dollars, '', 'open-premium', "The cash your option trades that are still open took in (or paid) to open, rolls included. A partly closed trade counts only the part still open.") }}
+            {{ box('Premium', o.closed_premium | dollars, '', 'closed-premium', "The same for what's closed: the cash your closed option trades took in (or paid) to open, rolls included, plus the closed part of partly closed trades. Capture Rate measures Closed P/L against this.") }}
+        </div>
+        <div class="overview__row">
+            {{ box('Avg/Trade/Lot', o.avg_per_lot | money, tone(o.avg_per_lot), 'avg-per-lot', "Closed trades only (and the closed part of partly closed ones): their Closed P/L divided by the lots closed, so trades of different sizes compare fairly. A 2-lot spread counts as 2. Example: $300 made on a 3-lot is $100 a lot. Open trades aren't counted until they close.") }}
+            {{ box('Avg Winner/Lot', o.avg_winner_per_lot | money, tone(o.avg_winner_per_lot), 'avg-winner', "The same, for the closed trades that made money only. Open trades aren't counted until they close.") }}
+            {{ box('Avg Loser/Lot', o.avg_loser_per_lot | money, tone(o.avg_loser_per_lot), 'avg-loser', "The same, for the closed trades that lost money only. Open trades aren't counted until they close.") }}
+            {{ box('Max Winner/Lot', o.max_winner_per_lot | money, tone(o.max_winner_per_lot), 'max-winner', "Your best closed trade, per lot. Open trades aren't counted until they close.") }}
+            {{ box('Max Loser/Lot', o.max_loser_per_lot | money, tone(o.max_loser_per_lot), 'max-loser', "Your worst closed trade, per lot. Open trades aren't counted until they close.") }}
+            <div class="overview__box overview__box--pair">
+                <div><div class="stat__label">Trades {{ info('journal-trades', "Every trade shown, open or closed. Unlike the rest of this row, it counts open trades too.", 'Trades', more='/help/journal#the-summary-above-the-trades') }}</div><div class="overview__value">{{ o.trades }}</div></div>
+                <div><div class="stat__label">Winners {{ info('journal-winners', "Closed trades that made money. Open trades aren't counted until they close.", 'Winners', more='/help/journal#the-summary-above-the-trades') }}</div><div class="overview__value">{{ o.winners }}</div></div>
+            </div>
+        </div>
+    </div>
+    <div class="overview__gauges">
+        {{ gauge('Win Rate', o.win_rate, 0, 100, 0, 'win-rate', "Closed trades only: the share of them that made money. Open trades aren't counted until they close.") }}
+        {{ gauge('Capture Rate', o.capture_rate, -100, 100, 1, 'capture-rate', "Closed trades only (and the closed part of partly closed ones): how much of their premium you kept, Closed P/L divided by Premium. 100% means you kept all of it; below 0% means you lost more than they took in. Open trades aren't counted until they close.") }}
+    </div>
+</section>
+</div>
+
+{% if view.unreadable %}
+<p class="notice notice--warning">
+    {{ view.unreadable }} stored transaction{{ 's' if view.unreadable != 1 }} couldn't be read and
+    {{ 'are' if view.unreadable != 1 else 'is' }} left out. The details are in the app's log.
+</p>
+{% endif %}
+
+{% if settle %}
+<form class="inline-form small" method="post" action="{{ url_for('journal.settle_switch', back=request.full_path) }}" id="settle-switch">
+    <input type="hidden" name="on" value="{{ '0' if settle.on else '1' }}">
+    <label class="check" title="At 4:15 PM New York time on trading days, trades whose options expired that day are settled at the last price from your broker, without waiting for the broker's expiration record. When the official close is out, they're corrected to it, and you get an alert if your P/L changes by $1 or more. The broker's own record replaces the settlement when it arrives.">
+        <input type="checkbox" {{ 'checked' if settle.on }} onchange="this.form.submit()"> Settle expirations at 4:15 PM
+    </label>
+    <noscript><button class="button button--small" type="submit">{{ 'Turn off' if settle.on else 'Turn on' }}</button></noscript>
+</form>
+{% if settle.on and settle.last and (settle.last.skipped or settle.last.note) %}
+<p class="notice" id="settle-skips">
+    {% if settle.last.note %}{{ settle.last.note }}{% endif %}
+    {% if settle.last.skipped %}Left open at the {{ settle.last.day }} close, for the broker to settle:
+    {% for s in settle.last.skipped %}{{ s.name }} ({{ s.reason }}){{ '; ' if not loop.last }}{% endfor %}.{% endif %}
+</p>
+{% endif %}
+{% endif %}
+
+{% if view.failed %}
+<p class="notice notice--warning">
+    {{ view.failed }} broker record{{ 's' if view.failed != 1 }} couldn't be placed in a trade and
+    {{ 'are' if view.failed != 1 else 'is' }} left out. The details are in the app's log.
+</p>
+{% endif %}
+
+<script>
+    // Cards, Table or Compact (#155, #156, Tracker2's switch): picked before first paint so the list doesn't
+    // flash; the saved choice, else cards on phones and the table elsewhere.
+    (function () {
+        var view = null;
+        try { view = localStorage.getItem("journal_trade_view"); } catch (e) { /* storage blocked */ }
+        if (view !== "cards" && view !== "table" && view !== "compact") view = window.innerWidth < 768 ? "cards" : "table";
+        document.documentElement.dataset.tradeView = view;
+    })();
+</script>
+<section class="card">
+    {% if not view.entries %}
+    <p class="muted">No trades match. Change the filters, or sync on the Transactions page to pull in trades.</p>
+    {% else %}
+    {{ pager(page, 'trades') }}
+    <div class="list-head">
+        <div class="view-switch" role="group" aria-label="How to show the trades">
+            <button type="button" data-set-trade-view="cards" title="Show trades as cards">▤ Cards</button>
+            <button type="button" data-set-trade-view="table" title="Show trades as a table">▦ Table</button>
+            <button type="button" data-set-trade-view="compact" title="A tighter table: one line per trade; click a row for its legs, premium and fees">☰ Compact</button>
+            <a href="{{ url_for('journal.grid_page', **filters.to_args()) }}" title="The open trades in a table, ticked ones in one risk graph together">⊞ Grid</a>
+        </div>
+        <span class="muted small">Tick trades to tag them or graph them together</span>
+    </div>
+    <div class="table-scroll"><table class="table journal-table">
+        <thead>
+            {# Click a heading to sort by it; again to reverse (#60) #}
+            {% macro sortable(column, label, num=False, cls='') %}
+            {% set current = not grouped and sort == column %}
+            {% set next_dir = 'asc' if current and direction == 'desc' else 'desc' if current else ('asc' if column in ('trade', 'account', 'status') else 'desc') %}
+            {% set args = request.args.to_dict() %}
+            {% set _ = args.update({'sort': column, 'dir': next_dir}) %}
+            {% set _ = args.pop('page', None) %}
+            <th class="{{ cls }} {{ 'num' if num }}" {% if current %}aria-sort="{{ 'ascending' if direction == 'asc' else 'descending' }}"{% endif %}>
+                <a class="sort {{ 'sort--active' if current }}" href="{{ url_for(page_endpoint, **args) }}">{{ label }}{% if current %} {{ '▲' if direction == 'asc' else '▼' }}{% endif %}</a>
+            </th>
+            {% endmacro %}
+            <tr>
+                <th><span class="visually-hidden">Graph together</span></th>
+                {{ sortable('trade', 'Trade') }}
+                <th class="num nowrap">P/L Day {{ info('journal-pl-day-col', "Since the last close, with its share of the trade's premium. A ≈ in the box at the top means part of it came from your broker's previous closes.", 'P/L Day', more='/help/journal#reading-a-trade') }}</th>
+                {{ sortable('pl', 'P/L', True) }}
+                {{ sortable('opened', 'Opened') }}
+                {{ sortable('account', 'Account') }}
+                <th class="col-legs">Legs {{ info('journal-legs', "What the trade still holds: quantity (negative means sold), strike, put or call, and expiration. @ is the leg's live price. Closing fills are listed underneath in grey.", 'Legs', more='/help/journal#reading-a-trade') }}</th>
+                {{ sortable('closed', 'Closing legs', cls='col-closing') }}
+                {{ sortable('entry', 'Entry', True) }}
+                {{ sortable('exit', 'Exit', True) }}
+                {{ sortable('premium', 'Premium', True, 'col-premium') }}
+                {{ sortable('fees', 'Fees', True, 'col-fees') }}
+                <th></th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for entry in rows %}
+            {% if entry.kind is defined %}
+            {% if entry.kind == 'day' %}
+            <tr class="row-group row-group--day"><td colspan="13">
+                <span>Closed {{ entry.day.strftime('%a %b %-d, %Y') }}</span>
+                <span class="row-group__badges"><span class="pill">{{ entry.count }} trade{{ 's' if entry.count != 1 }}</span><span class="pill {{ 'pill--ok' if entry.pl >= 0 else 'pill--bad' }}">{{ entry.pl | money }}</span></span>
+                <span class="row-group__select"><button type="button" class="link" data-select-group="day-{{ entry.day }}">Select day</button></span>
+            </td></tr>
+            {% else %}
+            <tr class="row-group row-group--section"><td colspan="13">
+                <span>{{ 'Open' if entry.kind == 'open' else 'Closed' }} <span class="muted">({{ entry.count }})</span></span>
+                {% if entry.pl is not none %}<span class="pill {{ 'pill--ok' if entry.pl >= 0 else 'pill--bad' }}">{{ entry.pl | money }}</span>{% endif %}
+                <span class="row-group__select"><button type="button" class="link" data-select-group="{{ entry.kind }}">Select all</button> · <button type="button" class="link" data-select-group="{{ entry.kind }}" data-select-none>None</button></span>
+            </td></tr>
+            {% endif %}
+            {% else %}
+            {% set p = entry.position %}
+            <tr class="trade-row" data-group="{{ 'closed' if p.status.value == 'closed' else 'open' }}"{% if p.status.value == 'closed' and p.closed_at %} data-day="day-{{ p.closed_at | market_day }}"{% endif %}>
+                <td class="col-tick"><input type="checkbox" class="select-trade" value="{{ p.key }}" {{ 'data-analyzable' if analyzable(entry) }} aria-label="Tick {{ entry.name }}"></td>
+                <td class="col-trade trade-cell">
+                    <div class="trade-name">
+                        {{ entry.name }}
+                        {% if p.is_0dte %}<span class="tag">0DTE</span>{% endif %}
+                        {% if p.roll_count %}<span class="tag">Rolled ×{{ p.roll_count }}</span>{% endif %}
+                        {% if p.split_from %}<span class="tag">Split</span>{% endif %}
+                        {% set look = needs_a_look.get(p.key) if needs_a_look is defined else none %}{% if entry.bot and look %}<a class="badge badge--bot badge--alert" href="/automation/runs/{{ entry.bot.run_id }}" title="{{ entry.bot.name }} · needs a look: {{ look | join('; ') }} · open the run"><svg class="bot-icon" viewBox="0 0 16 16" width="13" height="13" aria-label="needs a look" role="img"><path d="M8 1.8 15 14H1z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 6.2v3.6M8 11.6v.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>{% if entry.bot.name != entry.name %} {{ entry.bot.name }}{% endif %}</a>{% elif entry.bot %}<a class="badge badge--bot" href="{% if entry.bot.per_trade %}{{ url_for('journal.manage_page', key=p.split_from or p.key) }}{% elif entry.bot.matched %}{{ url_for('automation.record_page', bot_id=entry.bot.bot_id) }}{% else %}/automation/{{ entry.bot.bot_id }}/runs{% endif %}" title="{{ 'Matched to' if entry.bot.matched else 'Opened by' }} {{ entry.bot.name }}"><svg class="bot-icon" viewBox="0 0 16 16" width="13" height="13" aria-label="bot" role="img"><rect x="1.5" y="2" width="13" height="9" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 14h5M8 11v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>{% if entry.bot.name != entry.name %} {{ entry.bot.name }}{% endif %}</a>{% endif %}
+                    </div>
+                    <div class="chips">
+                        {% for tag in entry.tags %}<span class="chip">{{ tag.name }}</span>{% endfor %}
+                        {% if entry.bot and not entry.bot.matched %}<span class="bot-chips" data-run-id="{{ entry.bot.run_id }}" data-symbols="{{ p.legs | map(attribute='symbol') | join(',') }}">{% endif %}{% for chip in bot_chips.get(p.key, ()) %}<span class="chip chip--{{ 'off' if chip.warning else 'changed' }}" title="{{ chip.title }}">{{ chip.label }}</span>{% endfor %}{% if entry.bot and not entry.bot.matched %}</span>{% endif %}
+                    </div>
+                    <div class="muted small trade-status">
+                        {{ p.units | number }} lot{{ 's' if p.units != 1 }}
+                        {%- if p.status.value == 'partial' %} · Partly closed{% endif %}
+                        {%- if entry.awaiting_broker %} · Expired · Waiting on broker
+                        {%- elif entry.close_reason and entry.close_reason != 'Closed' %} · {{ entry.close_reason }}{% endif %}
+                        {%- if entry.settled_prelim %} · <span title="{{ entry.prelim_note }}">Settled at close (prelim)</span>
+                        {%- elif entry.settled_by_app %} · <span title="Settled by the app at the underlying's close. The broker's own record replaces it when it arrives.">Settled at close</span>{% endif %}
+                    </div>
+                    {% if entry.notes %}<div class="muted small notes">{{ entry.notes }}</div>{% endif %}
+                </td>
+                {% set d = row_details(p) %}
+                <td class="col-plday num small" data-pl-day-key="{{ p.key }}"></td>
+                <td class="col-pl num pl-cell" data-premium="{{ d.premium }}">
+                    {% if entry.estimated_pl is not none %}<span title="Estimated from the broker's close; the broker's own record replaces it">≈ {{ pl(entry.estimated_pl) }} <span class="muted small">est.</span></span>
+                    {% else %}{{ pl(p.realized_pl) if p.status.value != 'open' else '' }}
+                    {% if d.realized_percent is not none %}<div class="muted small">{{ '%+.1f' % d.realized_percent }}%</div>{% endif %}
+                    {% if p.status.value != 'closed' %}<div class="small" data-open-pl-key="{{ p.key }}"></div>{% endif %}{% endif %}
+                </td>
+                <td class="col-opened nowrap">{{ p.opened_at | market_time }}</td>
+                <td class="col-account">{{ account_cell(view.accounts, p.broker, p.account_number) }}</td>
+                <td class="col-legs legs small nowrap">
+                    {% for leg in d.open_legs %}
+                    <div>{{ '%+g' % leg.quantity }} {{ leg.label }} <span class="muted" data-mark-key="{{ leg.symbol }}"></span></div>
+                    {% endfor %}
+                </td>
+                <td class="col-closing legs small nowrap">
+                    {% for order in d.closing_orders %}
+                    <div class="closing-order">
+                        <div class="muted">{{ order.at | market_time }}{% if order.kind != 'close' %} · {{ order.kind }}{% endif %}</div>
+                        {% for leg in order.legs %}<div>{{ '%+g' % leg.quantity }} {{ leg.label }}{% if leg.price is not none %} <span class="muted">@{{ '%.2f' % leg.price }}</span>{% endif %}</div>{% endfor %}
+                    </div>
+                    {% endfor %}
+                </td>
+                <td class="col-entry num nowrap">{{ p.entry_price | premium }}
+                    {% if p.original_entry_price is not none %}<div class="muted small">was {{ p.original_entry_price | premium }}</div>{% endif %}
+                </td>
+                <td class="col-exit num nowrap">{{ p.exit_price | premium }}</td>
+                <td class="col-premium num nowrap">{% if d.premium %}{{ d.premium | dollars }} <span class="muted small">{{ 'cr' if d.credit else 'db' }}</span>{% endif %}</td>
+                <td class="col-fees num nowrap">{{ (d.fees_open + d.fees_close) | money }}
+                    {% if d.fees_close %}<div class="muted small">{{ d.fees_open | money }} + {{ d.fees_close | money }}</div>{% endif %}
+                </td>
+                <td class="col-actions nowrap">
+                    {% if analyzable(entry) %}{% set href = url_for('risk_graph.risk_graph_page', trade=p.key) %}<a class="risk-graph-link" href="{{ href }}" onclick='return window.riskLinkClick ? riskLinkClick(event, {{ href | tojson }}) : true' aria-label="Risk graph" title="Risk graph"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M6 16l4-6 4 3 6-8"/></svg></a>{% endif %}
+                    <button type="button" class="manage-gear" data-manage-panel="{{ url_for('journal.panel', key=p.key) }}" data-panel-key="{{ p.key }}" aria-label="Manage this trade" title="Manage this trade"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+                </td>
+            </tr>
+            {% endif %}
+            {% endfor %}
+        </tbody>
+    </table></div>
+    {{ pager(page, 'trades') }}
+    {% endif %}
+</section>
+
+{% if view.unmatched %}
+<section class="card">
+    <details>
+        <summary><strong>{{ view.unmatched | length }} broker record{{ 's' if view.unmatched | length != 1 }} not placed in a trade</strong>
+            <span class="muted small">Usually closes of trades opened before your synced history begins, or broker events such as stock splits.</span></summary>
+        <div class="table-scroll"><table class="table">
+            <tbody>
+                {% for order in view.unmatched %}
+                <tr>
+                    <td class="nowrap">{{ order.executed_at | market_time }}</td>
+                    <td>{{ account_cell(view.accounts, order.broker, order.account_number) }}</td>
+                    <td>
+                        <div>{{ order.name }}</div>
+                        {% for leg in order.legs %}<div class="muted small">{{ order.leg_label(leg) }}</div>{% endfor %}
+                    </td>
+                    <td>{{ order.action_label }}</td>
+                    <td class="num">{{ order.value | money }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table></div>
+    </details>
+</section>
+{% endif %}
+<script type="module" src="{{ url_for('static', filename='js/open_pl.js') }}"></script>
+<div class="select-bar" id="select-bar" hidden>
+    <span id="select-count"></span>
+    <form method="post" action="{{ url_for('journal.edit_many') }}" id="select-edit" class="select-bar__edit">
+        <input type="hidden" name="back" value="{{ request.full_path }}">
+        <input type="text" name="add_tags" placeholder="Add tags" aria-label="Tags to add, separated by commas" list="select-tag-names" data-tag-list="Tags to add" size="12">
+        <input type="text" name="remove_tags" placeholder="Remove tags" aria-label="Tags to remove, separated by commas" list="select-tag-names" data-tag-list="Tags to remove" size="12">
+        <datalist id="select-tag-names">{% for t in view.tags %}<option value="{{ t.name }}">{% endfor %}</datalist>
+        <button class="button button--quiet" type="submit">Save</button>
+    </form>
+    <span class="tip"><button class="button" type="button" id="select-analyze" aria-describedby="tip-journal-graph-together">Risk graph together</button>{{ tip_text('journal-graph-together', "Draws the ticked trades as one position, for example the put and call sides of an iron condor. You can untick any of them to see the rest.", more='/help/journal#risk-graphs') }}</span>
+    <button class="button button--quiet" type="button" id="select-clear">Clear</button>
+</div>
+<script src="{{ url_for('static', filename='js/journal_select.js') }}" defer></script>
+<script type="module" src="{{ url_for('static', filename='js/tag_list.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/journal_live.js') }}"></script>
+{% if page.items | selectattr('bot') | list %}
+<script type="module" src="{{ url_for('static', filename='js/bot_chips.js') }}"></script>
+{% endif %}
+{% include "_risk_drawer.html" %}
+{#- The gear's Manage panel (#174): journal.panel's HTML goes in here; manage_panel.js -#}
+<div id="manage-drawer" class="drawer hidden" role="dialog" aria-modal="true" aria-labelledby="manage-drawer-title" data-filter-fields-src="{{ url_for('static', filename='js/filter_fields.js') }}" data-alert-rows-src="{{ url_for('static', filename='js/alert_rows.js') }}">
+    <div data-manage-backdrop class="drawer__backdrop opacity-0"></div>
+    <div data-manage-panel-box class="drawer__panel drawer__panel--side translate-x-full">
+        <div class="drawer__header">
+            <h3 id="manage-drawer-title">Manage this trade</h3>
+            <button data-manage-close type="button" class="drawer__close" title="Close" aria-label="Close">✕</button>
+        </div>
+        <div data-manage-body class="drawer__body" aria-live="polite"></div>
+    </div>
+</div>
+<script type="module" src="{{ url_for('static', filename='js/manage_panel.js') }}"></script>
+{% endif %}
+{% include "_schedule_drawer.html" %}
+{% endblock %}

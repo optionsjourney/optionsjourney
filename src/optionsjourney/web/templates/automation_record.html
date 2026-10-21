@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% from "_macros.html" import pager %}
+{% from "_tooltip.html" import info %}
+{% block title %}{{ bot.name }} record · OptionsJourney{% endblock %}
+
+{% set SOURCE_TIP = "Where the trade came from: placed by this bot, matched to this bot by you, placed by another bot, or opened by hand. Trades by hand count here when they carry this bot's tag in its account." %}
+{% macro signed(value) %}<span class="{{ 'positive' if value and value > 0 else 'negative' if value and value < 0 }}">{{ value | money }}</span>{% endmacro %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ bot.name }}: record</h1>
+    <div class="inline-form">
+        <a class="button button--quiet" href="{{ url_for('automation.runs_page', bot_id=bot.id) }}">Runs</a>
+        <a class="button button--quiet" href="{{ url_for('automation.bot_page', bot_id=bot.id) }}">Back to the bot</a>
+    </div>
+</div>
+<p class="muted">The trades this bot placed or was matched to, plus every other trade with its tag ({{ bot_tag }}) in its account that no bot is linked to, including ones you opened by hand. Results are per lot (one contract of each leg), so different sizes compare fairly. P/L % is of the premium taken in or paid; Days counts New York days from open to close. <a class="link" href="{{ url_for('journal.journal_page', **journal_args) }}">See them in the journal</a>.</p>
+
+{% if record is none %}
+<section class="card"><p class="notice notice--warning small">The journal couldn't be read right now, so the record isn't shown. Try again in a moment.</p></section>
+{% else %}
+{% set s = record.summary %}
+<div class="stats">
+    <div class="stat-tile"><div class="stat__label">Closed P/L</div><div class="stat__value">{{ signed(s.closed_pl) }}</div></div>
+    <div class="stat-tile"><div class="stat__label">Win rate</div><div class="stat__value">{{ s.win_rate | percent }}</div><div class="muted small">{{ s.winners }} of {{ record.closed | length }} closed</div></div>
+    <div class="stat-tile"><div class="stat__label">Trades</div><div class="stat__value">{{ s.trades }}</div><div class="muted small">{{ record.open | length }} open</div></div>
+    <div class="stat-tile"><div class="stat__label">Average per lot {{ info('record-per-lot', "A lot is one contract of each leg, so a 3-contract trade counts as 3 lots. Averaging per lot lets trades of different sizes compare fairly.", 'Average per lot', more='/help/automation#a-bots-record') }}</div><div class="stat__value">{{ signed(s.avg_per_lot) }}</div></div>
+    <div class="stat-tile"><div class="stat__label">Average winner</div><div class="stat__value">{{ signed(s.avg_winner_per_lot) }}</div><div class="muted small">per lot</div></div>
+    <div class="stat-tile"><div class="stat__label">Average loser</div><div class="stat__value">{{ signed(s.avg_loser_per_lot) }}</div><div class="muted small">per lot</div></div>
+    <div class="stat-tile"><div class="stat__label">Best</div><div class="stat__value">{{ signed(s.max_winner_per_lot) }}</div><div class="muted small">per lot</div></div>
+    <div class="stat-tile"><div class="stat__label">Worst</div><div class="stat__value">{{ signed(s.max_loser_per_lot) }}</div><div class="muted small">per lot</div></div>
+</div>
+
+{% macro source(entry) %}{% if entry.bot and entry.bot.matched and entry.bot.bot_id == bot.id %}matched to this bot{% elif entry.bot and entry.bot.bot_id == bot.id %}<a class="link" href="{{ url_for('automation.run_page', run_id=entry.bot.run_id) }}">this bot</a>{% elif entry.bot %}another bot ({{ entry.bot.name }}){% else %}by hand{% endif %}{% endmacro %}
+
+{% if record.open %}
+<section class="card section-gap">
+    <h2 class="card__title">Open trades</h2>
+    <div class="table-scroll"><table class="table table--compact">
+        <thead><tr><th>Trade</th><th>Opened</th><th>Days so far</th><th>P/L so far</th><th>Source {{ info('record-source-open', SOURCE_TIP, 'Source', more='/help/automation#a-bots-record') }}</th></tr></thead>
+        <tbody>
+        {% for e in record.open %}
+        {% set f = figures.get(e.position.key, (none, none)) %}
+        <tr><td>{{ e.name }}</td><td>{{ e.position.opened_at | market_time }}</td><td class="num">{{ f[1] if f[1] is not none else '—' }}</td><td class="num">{{ signed(e.position.realized_pl) }}</td><td class="small">{{ source(e) }}</td></tr>
+        {% endfor %}
+        </tbody>
+    </table></div>
+</section>
+{% endif %}
+
+<section class="card section-gap">
+    <h2 class="card__title">Closed trades</h2>
+    <div class="chips">
+        {% for value, label in [('all', 'All'), ('winners', 'Winners'), ('losers', 'Losers')] %}
+        <a class="chip{% if result == value %} chip--picked{% endif %}" href="{{ url_for('automation.record_page', bot_id=bot.id, result=value) }}">{{ label }}</a>
+        {% endfor %}
+    </div>
+    {% if not page.items %}
+    <p class="muted">No closed trades{% if result != 'all' %} here{% endif %} yet.</p>
+    {% else %}
+    <div class="table-scroll"><table class="table table--compact">
+        <thead><tr><th>Trade</th><th>Opened</th><th>Closed</th><th>Days</th><th>P/L</th><th>P/L % {{ info('record-pl-pct', "The P/L as a share of the premium taken in or paid. A $200 credit closed for a $50 profit is 25%.", 'P/L %', more='/help/automation#a-bots-record') }}</th><th>Why it closed</th><th>Source {{ info('record-source', SOURCE_TIP, 'Source', more='/help/automation#a-bots-record') }}</th></tr></thead>
+        <tbody>
+        {% for e in page.items %}
+        {% set f = figures.get(e.position.key, (none, none)) %}
+        <tr>
+            <td>{{ e.name }}</td>
+            <td>{{ e.position.opened_at | market_time }}</td>
+            <td>{{ e.position.closed_at | market_time }}</td>
+            <td class="num">{{ f[1] if f[1] is not none else '—' }}</td>
+            <td class="num">{{ signed(e.position.realized_pl) }}</td>
+            <td class="num"><span class="{{ 'positive' if f[0] and f[0] > 0 else 'negative' if f[0] and f[0] < 0 }}">{{ f[0] | percent(1) }}</span></td>
+            <td class="small">{{ e.close_reason or '' }}</td>
+            <td class="small">{{ source(e) }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table></div>
+    {{ pager(page, 'closed trades') }}
+    {% endif %}
+</section>
+{% endif %}
+{% endblock %}

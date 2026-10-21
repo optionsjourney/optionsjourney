@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% block title %}Transactions · OptionsJourney{% endblock %}
+
+{% from "_macros.html" import pager %}
+{% from "_tooltip.html" import info %}
+{% block content %}
+<div class="page-header">
+    <h1>Transactions</h1>
+    <form method="post" action="{{ url_for('transactions.sync_now', **request.args) }}">
+        <button class="button" type="submit">Sync now</button>
+    </form>
+</div>
+
+<form class="filters" method="get">
+    <label>
+        Account
+        <select name="account" onchange="this.form.submit()">
+            <option value="">All accounts</option>
+            {% for key, account in view.accounts.items() %}
+            {% set value = key[0] ~ ':' ~ key[1] %}
+            <option value="{{ value }}" {{ 'selected' if value == selected_account }}>
+                {{ account.display_name }} {{ account.masked_number }}
+            </option>
+            {% endfor %}
+        </select>
+    </label>
+    <label>
+        Period
+        <select name="days" onchange="this.form.submit()">
+            {% for value, label in periods.items() %}
+            <option value="{{ value }}" {{ 'selected' if value == days }}>{{ label }}</option>
+            {% endfor %}
+        </select>
+    </label>
+    <label>
+        Show
+        <select name="view" onchange="this.form.submit()">
+            <option value="orders" {{ 'selected' if view_mode == 'orders' }}>Orders</option>
+            <option value="fills" {{ 'selected' if view_mode == 'fills' }}>Individual fills</option>
+        </select>
+    </label>
+    {{ info('transactions-show', "Orders groups the fills that share a broker order number into one row, with the legs listed under the trade. Individual fills lists each fill your broker reported, one row each.", 'Orders and individual fills', more='/help/transactions#picking-what-to-see') }}
+    <noscript><button class="button" type="submit">Show</button></noscript>
+</form>
+
+{% if view.unreadable %}
+<p class="notice notice--warning">
+    {{ view.unreadable }} stored transaction{{ 's' if view.unreadable != 1 }} couldn't be read and
+    {{ 'are' if view.unreadable != 1 else 'is' }} not shown. The details are in the app's log.
+</p>
+{% endif %}
+
+<section class="card">
+    {% if not view.fills %}
+    <p class="muted">
+        {% if not view.sync_states %}Nothing synced yet. Press <strong>Sync now</strong> to bring in
+        your transactions. History starts on the day of the app's first sync: trades from before it aren't brought in.{% else %}No trades in this period.{% endif %}
+    </p>
+    {% elif view_mode == 'orders' %}
+    <div class="table-scroll"><table class="table">
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Account</th>
+                <th>Trade</th>
+                <th>Action</th>
+                <th class="num">Value {{ info('transactions-value-' ~ view_mode, "The cash this " ~ ("order" if view_mode == 'orders' else "fill") ~ " moved: positive when you received money, negative when you paid it. Fees have their own column.", 'Value', more='/help/transactions#the-columns') }}</th>
+                <th class="num">Fees</th>
+                <th>Broker ID {{ info('transactions-broker-id-' ~ view_mode, "The IDs your broker gave these records, handy for finding them in the broker's own app. " ~ ("Order is the order number that groups the fills; the other lines are the fills' transaction IDs." if view_mode == 'orders' else "The first line is the fill's transaction ID; Order is the order number it belongs to."), 'Broker ID', more='/help/transactions#the-columns') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for order in page.items %}
+            {% set account = view.accounts.get((order.broker, order.account_number)) %}
+            <tr>
+                <td class="nowrap">{{ order.executed_at | market_time }}</td>
+                <td>
+                    <div>{{ account.display_name if account else order.broker }}</div>
+                    <div class="muted small">{{ account.masked_number if account else '' }}</div>
+                </td>
+                <td>
+                    <div>{{ order.name }}</div>
+                    {% for leg in order.legs %}
+                    <div class="muted small">{{ order.leg_label(leg) }}</div>
+                    {% endfor %}
+                </td>
+                <td>{{ order.action_label }}</td>
+                <td class="num {{ 'positive' if order.value > 0 else 'negative' if order.value < 0 }}">{{ order.value | money }}</td>
+                <td class="num muted">{{ order.fees | money }}</td>
+                <td class="small muted nowrap">
+                    {% if order.order_id %}Order {{ order.order_id }}{% endif %}
+                    {% for fill in order.fills | unique(attribute='transaction_id') %}
+                    <div>{{ fill.transaction_id }}</div>
+                    {% endfor %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table></div>
+    {{ pager(page, 'orders from ' ~ (view.fills | length) ~ ' fills') }}
+    {% else %}
+    <div class="table-scroll"><table class="table">
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Account</th>
+                <th>Instrument {{ info('transactions-instrument', "What was traded, as the app reads it from your broker's record: the underlying, then the expiration, strike and put or call. Shares and futures show only the underlying.", 'Instrument', more='/help/transactions#the-columns') }}</th>
+                <th>Action</th>
+                <th class="num">Qty</th>
+                <th class="num">Price</th>
+                <th class="num">Value {{ info('transactions-value-' ~ view_mode, "The cash this " ~ ("order" if view_mode == 'orders' else "fill") ~ " moved: positive when you received money, negative when you paid it. Fees have their own column.", 'Value', more='/help/transactions#the-columns') }}</th>
+                <th class="num">Fees</th>
+                <th>Broker ID {{ info('transactions-broker-id-' ~ view_mode, "The IDs your broker gave these records, handy for finding them in the broker's own app. " ~ ("Order is the order number that groups the fills; the other lines are the fills' transaction IDs." if view_mode == 'orders' else "The first line is the fill's transaction ID; Order is the order number it belongs to."), 'Broker ID', more='/help/transactions#the-columns') }}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for fill in page.items %}
+            {% set account = view.accounts.get((fill.broker, fill.account_number)) %}
+            <tr>
+                <td class="nowrap">{{ fill.executed_at | market_time }}</td>
+                <td>
+                    <div>{{ account.display_name if account else fill.broker }}</div>
+                    <div class="muted small">{{ account.masked_number if account else '' }}</div>
+                </td>
+                <td>{{ fill.instrument_label }}</td>
+                <td>{{ fill.action_label }}</td>
+                <td class="num">{{ fill.quantity | number }}</td>
+                <td class="num">{{ fill.price | number }}</td>
+                <td class="num {{ 'positive' if fill.value > 0 else 'negative' if fill.value < 0 }}">{{ fill.value | money }}</td>
+                <td class="num muted">{{ fill.fees | money }}</td>
+                <td class="small muted nowrap">
+                    <div>{{ fill.transaction_id }}</div>
+                    {% if fill.order_id %}<div>Order {{ fill.order_id }}</div>{% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table></div>
+    {{ pager(page, 'fills') }}
+    {% endif %}
+</section>
+
+{% if view.sync_states %}
+<section class="card">
+    <h2 class="card__title">Last sync</h2>
+    <div class="table-scroll"><table class="table">
+        <tbody>
+            {% for state in view.sync_states %}
+            {% set account = view.accounts.get((state.broker, state.account_number)) %}
+            <tr>
+                <td>{{ account.display_name if account else state.broker }} <span class="muted small">{{ account.masked_number if account else '' }}</span></td>
+                <td>{{ state.synced_through | market_time }}</td>
+                <td class="{{ 'negative' if state.last_error else 'muted' }}">{{ state.last_error or 'OK' }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table></div>
+</section>
+{% endif %}
+{% endblock %}

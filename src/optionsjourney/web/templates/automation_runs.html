@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% from "_tooltip.html" import info %}
+{% block title %}{{ bot.name }} runs · OptionsJourney{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ bot.name }}: runs</h1>
+    {% if not bot.per_trade %}<a class="button button--quiet" href="{{ url_for('automation.bot_page', bot_id=bot.id) }}">Back to the bot</a>{% endif %}
+</div>
+{% if not rows %}
+<section class="card"><p class="muted">No runs yet.</p></section>
+{% else %}
+<div class="table-scroll"><table class="table">
+    <thead><tr><th>When</th><th>Status {{ info('runs-status', "How the run went. Skipped: the bot didn't try, and Reason says why. Filled: the whole entry filled. Missed: sent and chased but never filled, so there is no trade. Error: something went wrong. Running: an order is out or may be; if it stays that way, check your broker.", 'Status', more='/help/automation#the-runs-page') }}</th><th>Reason</th><th>Entry price</th><th>Fill price</th><th>Strikes</th><th></th></tr></thead>
+    <tbody>
+    {% for run, tranche in rows %}
+    <tr{% if tranche %} class="run-row--tranche"{% endif %}>
+        <td>{% if tranche %}<span class="muted small">tranche {{ tranche }}</span> {% endif %}{{ run.trading_date.strftime('%m/%d/%y') }} {{ run.entry_time }}</td>
+        <td><span class="run-chip run-chip--{{ run.status }}">{{ 'handed back to you' if run.status == 'handed' else run.status }}</span>{% if run.live %} <span class="badge badge--live">Live</span>{% endif %}</td>
+        <td class="small">{{ run.reason or '' }}</td>
+        <td>{{ run.target_credit | premium }}</td>
+        <td>{{ run.fill_credit | premium }}</td>
+        <td class="small">{% include "_automation_strikes.html" %}</td>
+        <td><a class="link" href="{{ url_for('automation.run_page', run_id=run.id) }}">Details</a></td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table></div>
+{% endif %}
+{% endblock %}

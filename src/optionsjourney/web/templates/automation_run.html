@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% from "_macros.html" import pl %}
+{% from "_tooltip.html" import info, tip_text %}
+{% block title %}Run {{ run.entry_time }} · OptionsJourney{% endblock %}
+
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ bot.name if bot else 'Bot' }}: {{ run.trading_date.strftime('%m/%d/%y') }} {{ run.entry_time }}</h1>
+    {% if bot %}<a class="button button--quiet" href="{{ url_for('automation.runs_page', bot_id=bot.id) }}">All runs</a>{% endif %}
+</div>
+
+{% if banner or watch_live %}
+<div id="watch-banner" class="notice notice--{{ banner.tone if banner else 'quiet' }} watch-banner"{% if not banner %} hidden{% endif %} data-url="{{ url_for('automation.watch_status', run_id=run.id) }}" data-live="{{ '1' if watch_live else '0' }}" role="status" aria-live="polite">{{ banner.text if banner else '' }}</div>
+{% if watch_live %}<script type="module" src="{{ url_for('static', filename='js/watch_banner.js') }}"></script>{% endif %}
+{% endif %}
+{% if run.paper %}
+<p class="notice notice--warning" id="paper-notice">Paper trades are pretend. Fills are estimated at the mid price, and stops are watched by the app instead of resting at the broker, so real results would differ.</p>
+{% endif %}
+<section class="card">
+    {% include "_run_facts.html" %}
+    <p><a class="link" href="{{ url_for('journal.journal_page') }}">See its trades in the Journal</a></p>
+</section>
+
+{% if run.legs %}
+<section class="card section-gap">
+    <h2 class="card__title">Legs</h2>
+    {% set fills = {} %}
+    {% for f in run.filled_legs %}{% set _ = fills.update({f.symbol: f.fill_price}) %}{% endfor %}
+    <div class="table-scroll"><table class="table table--compact">
+        {% set deltas = run.legs | selectattr('delta', 'defined') | list %}
+        <thead><tr><th>Symbol</th><th>Buy or sell</th><th>Mid {{ info('run-mid', "The middle of the option's bid and ask when the bot picked its strikes (for a Live bot, re-read just before the order). The entry price is worked out from these.", 'Mid', more='/help/automation#a-runs-page-top-to-bottom') }}</th>{% if deltas %}<th>Delta</th>{% endif %}<th>Fill</th></tr></thead>
+        <tbody>
+        {% for leg in run.legs %}
+        <tr><td>{{ leg.symbol }}</td><td>{{ leg.side }}</td><td>{{ leg.mid }}</td>{% if deltas %}<td>{{ leg.delta or '—' }}</td>{% endif %}<td>{{ fills.get(leg.symbol, '—') }}</td></tr>
+        {% endfor %}
+        </tbody>
+    </table></div>
+</section>
+{% endif %}
+
+{% if paper_fills %}
+<section class="card section-gap" id="paper-fills">
+    <h2 class="card__title">Fills</h2>
+    <p class="muted small">Pretend fills, leg by leg, estimated at the mid price. An expired leg is worth what it was in the money at the close.</p>
+    <div class="table-scroll"><table class="table table--compact">
+        <thead><tr><th>Time</th><th>What</th><th>Leg</th><th>Action</th><th class="num">Contracts</th><th class="num">Price</th><th class="num">Amount</th></tr></thead>
+        <tbody>
+        {% for f in paper_fills %}
+        <tr>
+            <td class="nowrap">{{ f.at | market_time }}</td>
+            <td>{{ f.what }}</td>
+            <td title="{{ f.symbol }}">{{ f.leg }}</td>
+            <td>{{ f.action }}</td>
+            <td class="num">{{ f.contracts }}</td>
+            <td class="num">{{ f.price }}</td>
+            <td class="num">{{ pl(f.amount) }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table></div>
+</section>
+{% endif %}
+
+{% include "_run_steps.html" %}
+
+{% if sides %}
+{% include "_run_settings.html" %}
+{% include "_run_manage.html" %}
+{% endif %}
+
+{% if exits %}
+<section class="card section-gap">
+    <h2 class="card__title">Exits</h2>
+    <div class="table-scroll"><table class="table table--compact">
+        <thead><tr><th>Kind</th><th>Group</th><th>State</th><th>Trigger or limit {{ info('run-trigger-limit', "For a stop: the price the short option has to reach for the stop to fire. For a target or a close: the limit price of its closing order. A dash means neither applies yet.", 'Trigger or limit', more='/help/automation#which-exit-rests-at-the-broker') }}</th><th>How</th><th>Fill</th><th>Re-arms {{ info('run-rearms', "How many times the app has put this exit back after it went missing, for example when your broker cancelled the stop. It stops at 3 a day for each group and then leaves it to you.", 'Re-arms', more='/help/automation#what-happens-at-an-entry-time') }}</th></tr></thead>
+        <tbody>
+        {% for e in exits %}
+        {% set side = (bot.groups | selectattr('position', 'equalto', e.group_position) | map(attribute='name') | first) if bot else none %}
+        <tr>
+            <td>{{ kinds.get(e.id, e.kind) }}</td>
+            <td>{{ side or 'Group %d' % (e.group_position + 1) }}</td>
+            <td>
+                {% if e.kind in ('target', 'timed', 'close') and e.state == 'firing' %}
+                closing{% if e.cancel_requested_at %} (cancel asked){% else %}
+                {% include "_run_cancel_close.html" %}
+                {% endif %}
+                {% elif e.state == 'watching' %}watched by the app
+                {% elif e.kind == 'target' and e.state == 'working' %}rests at TastyTrade (order {{ e.broker_order_id }})
+                {% else %}{{ e.state }}{% endif %}
+            </td>
+            <td>{{ e.trigger if e.trigger is not none else (e.limit if e.limit is not none else '—') }}</td>
+            <td class="small">{{ calcs.get(e.id, []) | join(' · ') }}{% if e.state == 'left' %}left open{% endif %}</td>
+            <td>{{ e.fill_price if e.fill_price is not none else '—' }}</td>
+            <td>{{ e.rearms }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table></div>
+</section>
+{% endif %}
+
+{% if log %}
+<section class="card section-gap">
+    <h2 class="card__title">Orders</h2>
+    <div class="table-scroll"><table class="table table--compact">
+        <thead><tr><th>When</th><th>What</th><th>Result</th></tr></thead>
+        <tbody>
+        {% for row in log %}
+        <tr><td>{{ row.created_at | market_time }}</td><td>{{ row.action }}</td><td>{{ row.result }}</td></tr>
+        {% endfor %}
+        </tbody>
+    </table></div>
+</section>
+{% endif %}
+{% endblock %}

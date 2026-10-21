@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% from "_brokers.html" import tastytrade_card, schwab_card %}
+{% from "_tooltip.html" import info %}
+{% block title %}Set up · OptionsJourney{% endblock %}
+
+{% block content %}
+<div class="setup">
+    <ol class="setup__steps" aria-label="Setup steps">
+        {% for s in steps %}
+        <li class="{{ 'is-current' if s == step }}">{% if s == step %}<span aria-current="step">{{ titles[s] }}</span>{% else %}<a class="link" href="{{ url_for('setup.step', name=s) }}">{{ titles[s] }}</a>{% endif %}</li>
+        {% endfor %}
+    </ol>
+
+    <section class="card setup__card">
+        <h1>{{ titles[step] }}</h1>
+        {% for category, message in get_flashed_messages(with_categories=true) if category.startswith('broker-') %}
+        <p class="notice notice--{{ category[7:] }}" role="status">{{ message }}</p>
+        {% endfor %}
+
+        {% if step == 'welcome' %}
+        <p>OptionsJourney keeps a journal of your options trades: every trade from your broker, its P/L, and how each kind of trade is doing.</p>
+        <p>It runs only on this computer. Your trades and your broker logins stay here; nothing is sent anywhere except to your broker.</p>
+        <p>Setup takes a few minutes: tell it which brokers you use, connect them, and answer a question about how you trade. You can change everything later in Settings.</p>
+        <p><strong>Before you start:</strong> trading options carries real risk, and bots can behave in ways you don't expect: bugs, bad data, broker outages and fast markets. Start with paper trading. Read the <a class="link" href="/help/disclaimer">disclaimer</a>.</p>
+        {% if risk_accepted %}
+        <a class="button" href="{{ next_url }}">Start</a>
+        {% else %}
+        <form class="form" method="post" action="{{ url_for('setup.accept') }}">
+            <label class="check"><input type="checkbox" name="risk" value="1" required> I understand OptionsJourney is a tool, not financial advice, and that I am responsible for every order placed from my accounts, including orders sent by bots.</label>
+            <button class="button" type="submit">Start</button>
+        </form>
+        {% endif %}
+
+        {% elif step == 'brokers' %}
+        <p>Which brokers do you trade with? Trades at other brokers can be added by hand.</p>
+        <form class="form" method="post" action="{{ url_for('setup.save_brokers') }}">
+            <label class="check"><input type="checkbox" name="brokers" value="tastytrade" {{ 'checked' if 'tastytrade' in chosen }}> TastyTrade</label>
+            <label class="check"><input type="checkbox" name="brokers" value="schwab" {{ 'checked' if 'schwab' in chosen }}> Schwab</label>
+            <p class="muted small">Neither? Leave both unticked: you'll add trades by hand.</p>
+            <button class="button" type="submit">Next</button>
+        </form>
+
+        {% elif step == 'tastytrade' %}
+        {{ tastytrade_card(brokers, next=url_for('setup.step', name='tastytrade')) }}
+        <div class="setup__nav">
+            <a class="button" href="{{ next_url }}">{{ 'Next' if brokers.connected('tastytrade') else 'Skip for now' }}</a>
+        </div>
+
+        {% elif step == 'schwab' %}
+        <p class="muted">Schwab takes a few days to approve a new developer app. If yours isn't approved yet, click <strong>Finish later</strong> and come back to this step from Settings when it is.</p>
+        {{ schwab_card(brokers, next=url_for('setup.step', name='schwab')) }}
+        <div class="setup__nav">
+            <a class="button" href="{{ next_url }}">{{ 'Next' if brokers.connected('schwab') else 'Finish later' }}</a>
+        </div>
+
+        {% elif step == 'style' %}
+        <p>What do you trade? Each one becomes a tag you can put on your trades, to filter and compare them; you can rename, add or remove tags any time.</p>
+        <form class="form" method="post" action="{{ url_for('setup.save_style') }}">
+            {% for name, label in styles %}
+            <label class="check"><input type="checkbox" name="styles" value="{{ name }}" {{ 'checked' if name in current_styles }}> {{ label }}</label>
+            {% endfor %}
+            <button class="button" type="submit">Next</button>
+        </form>
+
+        {% elif step == 'backups' %}
+        <p>{{ backup_section.help }}</p>
+        <form class="form" method="post" action="{{ url_for('setup.save_backups') }}">
+            {% for s in backup_section.settings %}
+            <div class="setting">
+                <div class="setting-row__label"><label for="setup-{{ s.key }}">{{ s.label }}</label>{{ info(s.key, s.tip, s.label) }}</div>
+                {% if s.choices %}
+                <select id="setup-{{ s.key }}" name="{{ s.key }}">
+                    {% for value, label in s.choices %}<option value="{{ value }}" {{ 'selected' if values[s.key] == value }}>{{ label }}</option>{% endfor %}
+                </select>
+                {% else %}
+                <input id="setup-{{ s.key }}" type="text" name="{{ s.key }}" value="{{ values[s.key] }}">
+                {% endif %}
+                <div class="muted small">{{ s.help }}</div>
+            </div>
+            {% endfor %}
+            <button class="button" type="submit">Next</button>
+        </form>
+
+        {% elif step == 'done' %}
+        <p>That's it. Next, bring in your trades: <strong>Sync now</strong> reads them from each connected broker. History starts on the day of the app's first sync: earlier trades aren't brought in.</p>
+        <form method="post" action="{{ url_for('transactions.sync_now') }}">
+            <button class="button" type="submit">Sync now</button>
+        </form>
+        <form class="section-gap" method="post" action="{{ url_for('setup.finish') }}">
+            <button class="button button--quiet" type="submit">Go to the journal</button>
+        </form>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

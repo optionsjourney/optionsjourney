@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% from "_tooltip.html" import info %}
+{% block title %}{{ bot.name }} match trades · OptionsJourney{% endblock %}
+
+{% macro rows(candidates, ticked, tipkey) %}
+<div class="table-scroll"><table class="table table--compact">
+    <thead><tr><th></th><th>Trade</th><th>Opened</th><th>Status</th><th>Why it matches {{ info('match-why-' ~ tipkey, "What the trade has in common with this bot: the same legs, then, if the bot has entry times, that it opened within 2 minutes of one, and, if it trades chosen days, that day. With no entry times the legs are all there is to go on, so it says a guess and starts unticked.", 'Why it matches', more='/help/automation#finding-a-bots-past-trades') }}</th></tr></thead>
+    <tbody>
+    {% for c in candidates %}
+    {% set e = c.entry %}
+    <tr>
+        <td><input type="checkbox" name="key" value="{{ e.position.key }}" aria-label="Match {{ e.name }}"{% if ticked and c.match.strong %} checked{% endif %}></td>
+        <td>{{ e.name }}{% if e.tags %} <span class="muted small">({{ e.tags | map(attribute='name') | join(', ') }})</span>{% endif %}</td>
+        <td>{{ e.position.opened_at | market_time }}</td>
+        <td class="small">{{ e.position.status.value | lower }}</td>
+        <td class="small">{{ c.match.reason }}{% if not c.match.strong %} <span class="muted">(a guess: check it)</span>{% endif %}{% if c.matched_to %} <span class="muted">· matched to {{ c.matched_to }}</span>{% endif %}{% if c.also %} <span class="muted">· also matches {{ c.also | join(', ') }}</span>{% endif %}{% if c.splits %} <span class="muted">· will be split into put and call spreads</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table></div>
+{% endmacro %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ bot.name }}: match trades</h1>
+    <div class="inline-form">
+        <a class="button button--quiet" href="{{ url_for('automation.record_page', bot_id=bot.id) }}">Record</a>
+        <a class="button button--quiet" href="{{ url_for('automation.bot_page', bot_id=bot.id) }}">Back to the bot</a>
+    </div>
+</div>
+<p class="muted">Trades in your journal that look like this bot's: same account, underlying and legs{% if bot.entry_times %}, opened within 2 minutes of one of its entry times{% endif %}. Ticked ones are linked to this bot and get its tag, so the journal shows the bot's name and they count in its record. Nothing changes until you press Match selected. Trades a bot placed, or already matched to this bot, aren't listed.</p>
+
+{% if undo %}
+<form method="post" action="{{ url_for('automation.match_undo', bot_id=bot.id) }}" class="inline-form">
+    <span class="small">Filed the wrong ones?</span>
+    <button class="button button--quiet" type="submit">Undo</button>
+</form>
+{% endif %}
+
+{% if found is none %}
+<section class="card"><p class="notice notice--warning small">The journal couldn't be read right now. Try again in a moment.</p></section>
+{% elif not found.offered and not found.filed_elsewhere %}
+<section class="card"><p class="muted">No trades to match: none in your journal look like this bot's, or they're already in its record.</p></section>
+{% else %}
+<form method="post" action="{{ url_for('automation.match_save', bot_id=bot.id) }}">
+    <section class="card section-gap">
+        <h2 class="card__title">Not filed yet ({{ found.offered | length }})</h2>
+        {% if found.offered %}{{ rows(found.offered, true, 'offered') }}{% else %}<p class="muted">None.</p>{% endif %}
+    </section>
+    {% if found.filed_elsewhere %}
+    <details class="card section-gap">
+        <summary>Another bot's: matched to it or carrying its tag ({{ found.filed_elsewhere | length }})</summary>
+        <p class="muted small">Ticking one of these moves it to this bot: a trade has one bot. It also gets this bot's tag; any other tags stay.</p>
+        {{ rows(found.filed_elsewhere, false, 'elsewhere') }}
+    </details>
+    {% endif %}
+    <button class="button" type="submit">Match selected</button>
+</form>
+{% endif %}
+{% endblock %}

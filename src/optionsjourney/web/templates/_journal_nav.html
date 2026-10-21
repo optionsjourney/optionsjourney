@@ -1,0 +1,91 @@
+{# Dashboard tabs, filters and the Trades / P/L / Trading metrics switch,
+   shared by the journal's three views. Needs: view, filters, dashboard,
+   page_endpoint, statuses, periods, uncategorized. #}
+{% macro hidden_filters(filters) %}
+{% for name, value in filters.to_args().items() %}
+{% if value is iterable and value is not string %}
+{% for item in value %}<input type="hidden" name="{{ name }}" value="{{ item }}">{% endfor %}
+{% else %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endif %}
+{% endfor %}
+{% endmacro %}
+
+<nav class="tabs" aria-label="Dashboards">
+    <a class="tabs__tab {{ 'tabs__tab--active' if not dashboard and filters.kind != 'stocks' }}" href="{{ url_for(page_endpoint) }}">All trades</a>
+    <a class="tabs__tab {{ 'tabs__tab--active' if not dashboard and filters.kind == 'stocks' }}" href="{{ url_for(page_endpoint, kind='stocks') }}">Stocks</a>
+    {% for d in view.dashboards %}
+    <a class="tabs__tab {{ 'tabs__tab--active' if dashboard and dashboard.id == d.id }}"
+       href="{{ url_for(page_endpoint, dashboard=d.id) }}">{{ d.name }}</a>
+    {% endfor %}
+    <details class="tabs__add">
+        <summary class="tabs__tab">＋ Save view</summary>
+        <form class="popover" method="post" action="{{ url_for('journal.create_dashboard') }}">
+            {{ hidden_filters(filters) }}
+            <label>Name this dashboard
+                <input type="text" name="name" maxlength="60" required placeholder="e.g. 0DTE bots">
+            </label>
+            <p class="muted small">It keeps the filters you have set now.</p>
+            <button class="button" type="submit">Save</button>
+        </form>
+    </details>
+</nav>
+
+{% set holdings_only = filters.kind == 'stocks' and not dashboard %}
+<form class="filters" method="get">
+    {% if dashboard %}<input type="hidden" name="dashboard" value="{{ dashboard.id }}">{% endif %}
+    {% if filters.kind %}<input type="hidden" name="kind" value="{{ filters.kind }}">{% endif %}
+    {# The Stocks tab is holdings only: just the account filter applies (#58) #}
+    {% if not holdings_only %}
+    <input type="search" name="q" value="{{ filters.q }}" placeholder="Search (or #order)" aria-label="Search trades" class="filters__search">
+    <details class="dropdown">
+        <summary>Tags{% if filters.tags %} ({{ filters.tags | length }}){% endif %}</summary>
+        <div class="dropdown__menu">
+            {% for t in view.tags %}
+            <label class="check"><input type="checkbox" name="tag" value="{{ t.id }}" {{ 'checked' if t.id | string in filters.tags }}> {{ t.name }}</label>
+            {% endfor %}
+            <label class="check"><input type="checkbox" name="tag" value="{{ uncategorized }}" {{ 'checked' if uncategorized in filters.tags }}> <em>No tags</em></label>
+        </div>
+    </details>
+    {% endif %}
+    <select name="account" aria-label="Account">
+        <option value="">All accounts</option>
+        {% for key, account in view.accounts.items() %}
+        {% set value = key[0] ~ ':' ~ key[1] %}
+        <option value="{{ value }}" {{ 'selected' if value == filters.account }}>{{ account.display_name }} {{ account.masked_number }}</option>
+        {% endfor %}
+    </select>
+    {% if not holdings_only %}
+    <select name="status" aria-label="Status">
+        {# The page's default status goes out empty, so it isn't carried to the other views (#68) #}
+        {% for value, label in statuses.items() %}
+        <option value="{{ '' if value == filters.default_status else value }}" {{ 'selected' if value == filters.shown_status }}>{{ label }}</option>
+        {% endfor %}
+    </select>
+    <select name="days" aria-label="Period">
+        {% for value, label in periods.items() %}
+        <option value="{{ value }}" {{ 'selected' if value == filters.days }}>{{ label }}</option>
+        {% endfor %}
+    </select>
+    <label class="filters__dates">Opened
+        <input type="date" name="start" value="{{ filters.start.isoformat() if filters.start }}" aria-label="Opened on or after">
+        to <input type="date" name="end" value="{{ filters.end.isoformat() if filters.end }}" aria-label="Opened on or before">
+    </label>
+    {% endif %}
+    <button class="button button--quiet" type="submit">Apply</button>
+    {% if dashboard %}
+    <button class="button button--quiet" type="submit" formmethod="post"
+            formaction="{{ url_for('journal.update_dashboard', dashboard_id=dashboard.id) }}">Save to “{{ dashboard.name }}”</button>
+    <button class="button button--danger" type="submit" formmethod="post"
+            formaction="{{ url_for('journal.delete_dashboard', dashboard_id=dashboard.id) }}"
+            onclick='return confirm({{ ("Delete the " ~ dashboard.name ~ " dashboard? Your trades are not affected.") | tojson }})'>Delete dashboard</button>
+    {% endif %}
+</form>
+
+{% set view_args = dict(filters.to_args(), **({'dashboard': dashboard.id} if dashboard else {})) %}
+{% if not holdings_only %}
+<nav class="view-switch" aria-label="View">
+    <a class="view-switch__link {{ 'view-switch__link--active' if page_endpoint == 'journal.journal_page' }}" href="{{ url_for('journal.journal_page', **view_args) }}">Trades</a>
+    <a class="view-switch__link {{ 'view-switch__link--active' if page_endpoint == 'journal.pl_page' }}" href="{{ url_for('journal.pl_page', **view_args) }}">P/L</a>
+    <a class="view-switch__link {{ 'view-switch__link--active' if page_endpoint == 'journal.metrics_page' }}" href="{{ url_for('journal.metrics_page', **view_args) }}">Trading metrics</a>
+    <a class="view-switch__link" href="{{ url_for('journal.paper_page') }}">Paper trades</a>
+</nav>
+{% endif %}

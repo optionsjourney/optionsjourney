@@ -1,0 +1,20 @@
+{# Tooltips (#73). They show on hover, keyboard focus and tap (js/tooltips.js, which also
+   places them on screen), and screen readers read them through aria-describedby. Styles: .tip
+   in tooltips.css. Learn more opens the Help page in a new tab, so the screen keeps its place.
+   An id must be unique on the page: a tip inside a loop adds the loop's key ('x-' ~ side.position).
+
+   An ⓘ beside a label:        {{ info('backup_folder', 'The full explanation', 'Backup folder') }}
+   With a link to the Help page: {{ info('id', 'Text', 'About', more='/help/trade#the-ticket') }}
+   On a button or other control: wrap both in <span class="tip">, give the
+   control aria-describedby="tip-<id>", and add {{ tip_text('<id>', '…') }}.
+   Add tip--end to the wrapper when it sits at the right edge. #}
+
+{# A tip written as a {% set %} block is markup (a table, paragraphs), shown as is
+   (#133); a plain one keeps its line breaks. #}
+{% macro tip_text(id, text, more=None) -%}
+<span class="tip__text{{ ' tip__text--rich' if text is rich }}" role="tooltip" id="tip-{{ id }}">{{ text }}{% if more %}<a class="tip__more" href="{{ more }}" target="_blank" rel="noopener">Learn more</a>{% endif %}</span>
+{%- endmacro %}
+
+{% macro info(id, text, about, more=None) -%}
+<span class="tip tip--start"><button type="button" class="tip__icon" aria-label="More about {{ about }}" aria-describedby="tip-{{ id }}">i</button>{{ tip_text(id, text, more) }}</span>
+{%- endmacro %}

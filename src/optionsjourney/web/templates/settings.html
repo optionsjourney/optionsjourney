@@ -1,0 +1,213 @@
+{% extends "base.html" %}
+{% from "_brokers.html" import tastytrade_card, schwab_card %}
+{% from "_tooltip.html" import info, tip_text %}
+{% block title %}Settings · OptionsJourney{% endblock %}
+
+{% macro backup_list() %}
+<div class="settings__backups">
+    {% if backup_problem %}
+    <p class="notice notice--warning">The last scheduled backup didn't work ({{ backup_problem[0] | market_time }}): {{ backup_problem[1] }}</p>
+    {% endif %}
+    <div class="settings__subhead">
+        <h3>Backups in the folder</h3>
+        <form method="post" action="{{ url_for('settings.backup_now') }}">
+            <span class="tip tip--end">
+                <button class="button button--quiet" type="submit" aria-describedby="tip-backup-now">Back up now</button>
+                {{ tip_text('backup-now', 'Makes a backup straight away, in the folder above. Older ones beyond the number to keep are deleted.') }}
+            </span>
+        </form>
+    </div>
+    {% if not backups %}
+    <p class="muted">None yet.</p>
+    {% else %}
+    <p class="muted small">Restoring replaces your journal with the backup. The journal as it is now is backed up first, so you can go back.</p>
+    <div class="table-scroll"><table class="table">
+        <thead><tr><th>Made</th><th>File</th><th class="num">Size</th><th></th></tr></thead>
+        <tbody>
+            {% for b in backups %}
+            <tr>
+                <td class="nowrap">{{ b.made_at | market_time }}</td>
+                <td class="muted small">{{ b.name }}</td>
+                <td class="num">{{ '%.1f MB' % (b.size / 1048576) }}</td>
+                <td>
+                    <form method="post" action="{{ url_for('settings.restore') }}"
+                          onsubmit='return confirm({{ ("Restore the backup from " ~ (b.made_at | market_time) ~ "? Your journal as it is now is backed up first.") | tojson }})'>
+                        <input type="hidden" name="name" value="{{ b.name }}">
+                        <span class="tip tip--end">
+                            <button class="button button--quiet" type="submit" aria-describedby="tip-restore-{{ loop.index }}">Restore</button>
+                            {{ tip_text('restore-' ~ loop.index, 'Puts this backup in place of your journal. Your journal as it is now is backed up first, so you can go back.') }}
+                        </span>
+                    </form>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table></div>
+    {% endif %}
+</div>
+{% endmacro %}
+
+{% block content %}
+{% set titles = {'brokers': 'Brokers'} %}
+{% for section in sections %}{% set _ = titles.update({section.key: section.title}) %}{% endfor %}
+{# One section at a time, picked in the sidebar and kept in the address
+   (/settings#backups). Without JavaScript every section shows (#73). #}
+<div class="page-header"><h1>Settings</h1></div>
+<div class="settings" data-active="{{ active or 'brokers' }}">
+    <nav class="settings__nav" aria-label="Settings sections">
+        {% for key, title in titles.items() %}
+        <a class="settings__nav-link" href="#{{ key }}" data-section="{{ key }}">{{ title }}</a>
+        {% endfor %}
+        <span class="tip tip--start settings__nav-extra">
+            <a class="settings__nav-link" href="{{ url_for('setup.step', name='welcome') }}" aria-describedby="tip-setup-again">Run setup again</a>
+            {{ tip_text('setup-again', 'Walks through the first-start setup again, for example to add Schwab once Schwab has approved your app. Nothing is lost.') }}
+        </span>
+        <span class="tip tip--start">
+            <a class="settings__nav-link" href="{{ url_for('orders.order_log') }}" aria-describedby="tip-order-log">Order log</a>
+            {{ tip_text('order-log', 'Every order the app sent, previewed or refused, and why.') }}
+        </span>
+    </nav>
+
+    <div class="settings__panels">
+        <section class="settings__panel" id="brokers" aria-labelledby="brokers-title">
+            <h2 class="settings__title" id="brokers-title">Brokers</h2>
+            {% if not brokers %}
+            <p class="muted">Development mode: broker logins come from the Tracker2 server, so there's nothing to connect here.</p>
+            {% else %}
+            <p class="muted small">Your broker logins are kept in this computer's keychain, never in the app's files or backups.</p>
+            {% endif %}
+            {% if streams %}
+            <div class="settings__streams">
+                <span class="small">Live prices</span>
+                {% for name, state in streams.items() %}
+                {% set broker = {'tastytrade': 'TastyTrade', 'schwab': 'Schwab'}[name] %}
+                <span class="tip">
+                    <span class="pill {{ 'pill--ok' if state == 'streaming' }}" tabindex="0" aria-describedby="tip-stream-{{ name }}">{{ broker }} · {{ state }}</span>
+                    {{ tip_text('stream-' ~ name, "Live quotes come from TastyTrade first, with Schwab as backup. A stream starts when a page needs prices, so it can be idle until then.") }}
+                </span>
+                {% endfor %}
+            </div>
+            {% endif %}
+            {% if brokers %}
+            {% for category, message in get_flashed_messages(with_categories=true) if category.startswith('broker-') %}
+            <p class="notice notice--{{ category[7:] }}" role="status">{{ message }}</p>
+            {% endfor %}
+            {{ tastytrade_card(brokers) }}
+            {{ schwab_card(brokers) }}
+            {% endif %}
+        </section>
+
+        {% for section in sections %}
+        <section class="settings__panel" id="{{ section.key }}" aria-labelledby="{{ section.key }}-title">
+            <h2 class="settings__title" id="{{ section.key }}-title">{{ section.title }}</h2>
+            <p class="muted small">{{ section.help }}</p>
+            <form method="post" action="{{ url_for('settings.save', section_key=section.key) }}">
+                {% for s in section.settings %}
+                <div class="setting-row">
+                    <div class="setting-row__about">
+                        <div class="setting-row__label"><label for="setting-{{ s.key }}">{{ s.label }}</label>{{ info(s.key, s.tip, s.label) }}</div>
+                        <div class="muted small">{{ s.help }}</div>
+                    </div>
+                    <div class="setting-row__control">
+                        {% if s.choices %}
+                        <select id="setting-{{ s.key }}" name="{{ s.key }}">
+                            {% for value, label in s.choices %}
+                            <option value="{{ value }}" {{ 'selected' if values[s.key] == value }}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                        {% else %}
+                        {% if s.key == 'backup_folder' %}<div class="inline-form">{% endif %}
+                        <input id="setting-{{ s.key }}" type="{{ 'password' if s.secret else 'text' }}" autocomplete="off" name="{{ s.key }}" value="{{ values[s.key] }}"
+                               {% if problems[s.key] %}aria-invalid="true" aria-describedby="problem-{{ s.key }}"{% endif %}>
+                        {% if s.key == 'backup_folder' %}
+                        <span class="tip tip--end">
+                            <button type="button" class="button button--quiet" id="browse-folder" aria-describedby="tip-browse">Browse…</button>
+                            {{ tip_text('browse', "Opens this computer's folder picker. The folder you choose goes in the box; click Save to keep it.") }}
+                        </span>
+                        </div>
+                        {% endif %}
+                        {% endif %}
+                        {% if problems[s.key] %}<div class="notice notice--warning small" id="problem-{{ s.key }}">{{ problems[s.key] }}</div>{% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+                <div class="settings__actions">
+                    {% if section.key == 'notifications' %}
+                    <span class="tip tip--end">
+                        <button class="button button--quiet" type="submit" formaction="{{ url_for('settings.test_notifications') }}" aria-describedby="tip-send-test">Send a test</button>
+                        {{ tip_text('send-test', 'Sends a test alert to Discord and Telegram with the settings saved now. Save first if you just changed them.') }}
+                    </span>
+                    {% endif %}
+                    <button class="button" type="submit">Save</button>
+                </div>
+            </form>
+            {% if section.key == 'backups' %}{{ backup_list() }}{% endif %}
+            {% if section.key == 'sync' %}
+            <form class="section-gap" method="post" action="{{ url_for('transactions.sync_now') }}">
+                <input type="hidden" name="back" value="{{ url_for('settings.settings_page') }}#sync">
+                <button class="button button--quiet" type="submit">Sync now</button>
+                <span class="muted small">Reads new trades from your brokers straight away.</span>
+            </form>
+            {% endif %}
+            {% if section.key == 'market_calendar' %}
+            <div class="section-gap">
+                {% if calendar is none %}
+                <p class="notice notice--warning small">Market calendar unavailable right now: the app couldn't read it. Bots still use what's stored.</p>
+                {% else %}
+                <p class="muted small">The lists bots can use for specific dates and blackout days, and NYSE's holidays. The app reads them from the Fed, ForexFactory, NYSE (and FRED, with the key above) about once a week. If a list can't say whether today is in it, bots that black out its days skip their entries today.</p>
+                <div class="table-scroll"><table class="table table--compact">
+                    <thead><tr><th>List</th><th>Next days</th><th>Today</th></tr></thead>
+                    <tbody>
+                    {% for item in calendar.lists %}
+                    <tr>
+                        <td>{{ item.label }}</td>
+                        <td>{% for day in item.upcoming[:4] %}{{ day.strftime('%a %m/%d/%y') }}{% if not loop.last %}, {% endif %}{% else %}<span class="muted">none known</span>{% endfor %}</td>
+                        <td>{% if item.available %}known{% else %}<span class="badge badge--preview">can't tell</span>{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table></div>
+                <div class="table-scroll"><table class="table table--compact">
+                    <thead><tr><th>Source</th><th>Last refreshed</th><th>Last problem</th></tr></thead>
+                    <tbody>
+                    {% for item in calendar.sources %}
+                    <tr>
+                        <td>{{ item.label }}</td>
+                        <td>{% if item.refreshed_at %}{{ item.refreshed_at | market_time }}{% elif item.source == 'fred:CPI' and not calendar.fred_key %}<span class="muted">no key set</span>{% else %}Never{% endif %}</td>
+                        <td>{% if item.error %}<span class="small">{{ item.error }}</span>{% else %}<span class="muted">none</span>{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table></div>
+                <p class="small">Holidays: {% if calendar.calendar_years %}from NYSE's calendar for {{ calendar.calendar_years | join(', ') }}{% else %}the built-in table{% endif %}, through {{ calendar.calendar_through }}.</p>
+                <form method="post" action="{{ url_for('settings.calendar_refresh') }}">
+                    <button class="button button--quiet" type="submit">Refresh now</button>
+                </form>
+                {% endif %}
+            </div>
+            {% endif %}
+        </section>
+        {% endfor %}
+    </div>
+</div>
+<script src="{{ url_for('static', filename='js/settings_sections.js') }}" defer></script>
+<script>
+// Browse…: the app asks this computer's own folder picker and fills the field
+(function () {
+    const button = document.getElementById("browse-folder");
+    if (!button) return;
+    button.addEventListener("click", async () => {
+        button.disabled = true;
+        button.textContent = "Choose in the window that opened…";
+        try {
+            const response = await fetch("/settings/backups/browse", { method: "POST" });
+            const data = await response.json();
+            if (data.path) document.getElementById("setting-backup_folder").value = data.path;
+        } finally {
+            button.disabled = false;
+            button.textContent = "Browse…";
+        }
+    });
+})();
+</script>
+{% endblock %}

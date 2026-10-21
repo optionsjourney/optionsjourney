@@ -1,0 +1,28 @@
+{# The alert rows of a bot's Default alerts and of a manual bot (#158). Needs `alert_rows`
+   (rules, or none for a blank row) and `typed(name, current)`, which gives what was typed;
+   `alert_most` caps the rows (20 unless set). + Add alert (alert_rows.js) adds a blank row. #}
+<div data-alerts data-alert-most="{{ alert_most | default(20) }}">
+<input type="hidden" name="alerts" value="{{ alert_rows | length }}" data-alert-count>
+<div class="table-scroll"><table class="table table--compact">
+    <thead><tr><th>Alert</th><th>Goes off</th></tr></thead>
+    <tbody data-alert-rows>
+    {% for r in alert_rows %}{% set i = loop.index0 %}
+    {% set kind = typed('da-%d-type' % i, r.type if r else 'pnl_pct') %}
+    {% set way = typed('da-%d-direction' % i, r.direction if r else 'above') %}
+    <tr data-choice data-alert-row>
+        <td><select name="da-{{ i }}-type" aria-label="Default alert {{ i + 1 }}: kind" data-choice-by>
+            {% for value, label in [('pnl_pct', 'P&L %'), ('strike_offset', 'Near a short strike')] %}<option value="{{ value }}"{% if kind == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select></td>
+        <td class="nowrap">
+            <span data-when="pnl_pct"><select name="da-{{ i }}-direction" aria-label="Default alert {{ i + 1 }}: above or below">
+                {% for value in ['above', 'below'] %}<option value="{{ value }}"{% if way == value %} selected{% endif %}>{{ value }}</option>{% endfor %}
+            </select>
+            <input type="text" name="da-{{ i }}-value" inputmode="decimal" value="{{ typed('da-%d-value' % i, r.value if r else none) }}" class="narrow" aria-label="Default alert {{ i + 1 }}: P&amp;L %"> %</span>
+            <span data-when="strike_offset">within <input type="text" name="da-{{ i }}-points" inputmode="decimal" value="{{ typed('da-%d-points' % i, r.points if r else none) }}" class="narrow" aria-label="Default alert {{ i + 1 }}: points"> points</span>
+        </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table></div>
+<button class="button button--quiet button--small" type="button" data-add-alert hidden>+ Add alert</button>
+</div>

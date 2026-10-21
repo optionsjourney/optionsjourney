@@ -1,0 +1,5 @@
+{#- The Missing exits tip, on the Automation list and each run's Manage box (one text for both). -#}
+{% from "_tooltip.html" import info %}
+{% macro missing_exits_tip(id, more) -%}
+{{ info(id, "A stop or target can go missing: your broker cancelled it, it was refused, or it was already put back 3 times today. Check lists what is missing and sends nothing. Restore missing exits puts each one back at its last level, after a live-price check.", 'missing exits', more=more) }}
+{%- endmacro %}

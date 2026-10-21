@@ -1,0 +1,83 @@
+{#- Manage this trade's rules (manual bots, #158): its rules, change, remove, pick a manual bot or custom rules. The manage page and the journal's Manage panel (#174). -#}
+{% macro problem(key) %}{% if problems.get(key) %}<p class="notice notice--warning small">{{ problems[key] }}</p>{% endif %}{% endmacro %}
+{% macro unit_select(key, current) %}{% set unit = typed(key ~ '_unit', current or 'pct') %}<select name="{{ key }}_unit" aria-label="{{ key }} unit"><option value="pct"{{ ' selected' if unit == 'pct' }}>%</option><option value="usd"{{ ' selected' if unit == 'usd' }}>$</option></select>{% endmacro %}
+{% from "_manual_rule_tips.html" import rule_tip %}
+{% from "_tooltip.html" import info %}
+{% set next_field %}{% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}{% endset %}
+{% if rules %}
+<section class="card">
+    <h2 class="card__title">Its rules: {{ rules.name }}</h2>
+    <ul class="plain-list">
+        <li>Profit target: {% if rules.target_value is not none %}{{ rules.target_value }}{{ '%' if rules.target_unit == 'pct' else ' $' }}{% else %}none{% endif %}</li>
+        <li>Stop loss: {% if rules.stop_value is not none %}{{ rules.stop_value }}{{ '%' if rules.stop_unit == 'pct' else ' $' }}{% else %}none{% endif %}</li>
+        <li>Exit time: {% if rules.close_time %}{{ rules.close_dte }} days before expiration, at {{ rules.close_time }} New York{% else %}none{% endif %}</li>
+        <li>Alerts: {{ rules.alerts | length }}</li>
+    </ul>
+    <p class="small"><a class="link" href="{{ url_for('automation.run_page', run_id=run_id, _anchor='manage') }}">See its run and exits</a></p>
+    {% if closing %}
+    <p class="notice notice--warning" id="closing">A close is working on this trade. You can change its rules once it finishes.</p>
+    {% else %}
+    {% if warn %}
+    <div class="notice notice--warning" id="assignment">
+        <p>{{ warn }} options can be assigned. This has no exit time.</p>
+        <form method="post" action="{{ url_for('journal.manage_save', key=key) }}">{{ next_field }}
+            <input type="hidden" name="add_exit_time" value="1">
+            <input type="hidden" name="back" value="{{ back }}">
+            <button class="button" type="submit">Add an exit time</button>
+            <span class="muted small">Closes it on the expiration day at 15:45 New York.</span>
+        </form>
+    </div>
+    {% endif %}
+    <form method="post" action="{{ url_for('journal.manage_remove', key=key) }}" class="section-gap">{{ next_field }}
+        <input type="hidden" name="back" value="{{ back }}">
+        <button class="button button--quiet" type="submit">Remove its rules</button>
+        <span class="muted small">Its stop and target are cancelled at your broker. Nothing manages the trade after that.</span>
+    </form>
+    {% endif %}
+</section>
+{% endif %}
+
+{% if not closing %}
+<section class="card">
+    <h2 class="card__title">{{ 'Change its rules' if rules else 'Pick a manual bot' }}</h2>
+    {% if manual_bots %}
+    <form class="inline-form" method="post" action="{{ url_for('journal.manage_save', key=key) }}">{{ next_field }}
+        <input type="hidden" name="back" value="{{ back }}">
+        <select name="manual_bot_id" aria-label="Manual bot">
+            {% for bot_id, mb in manual_bots %}<option value="{{ bot_id }}">{{ mb.name }}</option>{% endfor %}
+        </select>
+        <button class="button" type="submit">Use these rules</button>
+    </form>
+    {% else %}
+    <p class="muted small">You have no manual bots yet. Make one on the <a class="link" href="{{ url_for('automation.automation_page') }}">Automation</a> page, or set custom rules below.</p>
+    {% endif %}
+    <p class="muted small section-gap">The rules are copied to this trade: editing the manual bot later doesn't change them.</p>
+</section>
+
+<section class="card">
+    <h2 class="card__title">Or custom rules for this trade only</h2>
+    <form class="bot-form" method="post" action="{{ url_for('journal.manage_save', key=key) }}">{{ next_field }}
+        <input type="hidden" name="custom" value="1">
+        <input type="hidden" name="back" value="{{ back }}">
+        <div class="bot-form__fields">
+            <label><span class="bot-form__label">Profit target</span>
+                <input type="text" name="target_value" inputmode="decimal" value="{{ typed('target_value', none) }}" class="narrow"> {{ unit_select('target', none) }}</label> {{ rule_tip('target', 'manage') }}
+            {{ problem('target_value') }}
+            <label><span class="bot-form__label">Stop loss</span>
+                <input type="text" name="stop_value" inputmode="decimal" value="{{ typed('stop_value', none) }}" class="narrow"> {{ unit_select('stop', none) }}</label> {{ rule_tip('stop', 'manage') }}
+            {{ problem('stop_value') }}
+            <div class="bot-form__exit" data-filter{% if problems.get('close_dte') or problems.get('close_time') %} data-filter-problem{% endif %}>
+                <label class="check"><input type="checkbox" name="exit_on" data-filter-use {{ 'checked' if typed('exit_on', '') }}> <span class="bot-form__label">Exit time</span></label> {{ rule_tip('exit', 'manage') }}
+                <span data-filter-fields><input type="text" name="close_dte" inputmode="numeric" value="{{ typed('close_dte', 0) }}" class="narrow" aria-label="Days before expiration"> days before expiration, at
+                <input type="text" name="close_time" value="{{ typed('close_time', '15:45') }}" class="narrow" aria-label="Exit time, New York"> New York time</span>
+            </div>
+            {{ problem('close_dte') }}{{ problem('close_time') }}
+        </div>
+        <h3 class="card__title">Alerts {{ rule_tip('alerts', 'manage') }}</h3>
+        {% include "_alert_rows.html" %}
+        {{ problem('alerts') }}
+        <p class="muted small">Percentages are of the trade's net credit or debit when it opened. These rules aren't saved as a manual bot.</p>
+        <button class="button" type="submit">Use custom rules</button>
+    </form>
+</section>
+{% endif %}

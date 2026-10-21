@@ -1,0 +1,21 @@
+{#- The journal's risk-graph drawer (#62, #91): the risk graph in a frame (/risk-graph?trade=…&embed=1).
+    Tracker2's _analyzer_drawer.html, in this app's styles; its script, risk_drawer.js,
+    toggles the hidden / translate-x-full / opacity-0 classes. -#}
+<div id="risk-drawer" class="drawer hidden" role="dialog" aria-modal="true" aria-label="Risk graph">
+    <div data-risk-backdrop class="drawer__backdrop opacity-0"></div>
+    <div data-risk-panel class="drawer__panel translate-x-full">
+        <div class="drawer__header">
+            <h3>Risk graph</h3>
+            <div class="inline-form">
+                <button data-risk-popout type="button" class="link" title="Its own window, to keep up while you trade">Pop out ⧉</button>
+                <button data-risk-close type="button" class="drawer__close" title="Close" aria-label="Close">✕</button>
+            </div>
+        </div>
+        <iframe data-risk-frame title="Risk graph" src="about:blank" class="drawer__frame"></iframe>
+    </div>
+</div>
+<script src="{{ url_for('static', filename='js/popout.js') }}"></script>
+<script type="module">
+    import { installRiskDrawer } from "{{ url_for('static', filename='js/risk_drawer.js') }}";
+    installRiskDrawer(document, window);
+</script>

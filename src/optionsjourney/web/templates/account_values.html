@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% from "_macros.html" import pl %}
+{% from "_tooltip.html" import info %}
+{% block title %}Account values · OptionsJourney{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Account values</h1>
+    <a class="link" href="{{ url_for('accounts.accounts_page') }}">← Accounts</a>
+</div>
+
+<form class="filters" method="get">
+    <select name="account" aria-label="Account">
+        <option value="">All accounts</option>
+        {% for a in view.accounts %}
+        {% set value = a.broker ~ ':' ~ a.number %}
+        <option value="{{ value }}" {{ 'selected' if value == account }}>{{ a.nickname or a.account_type or 'Account' }} ••{{ a.number[-4:] }}</option>
+        {% endfor %}
+    </select>
+    <select name="days" aria-label="Period">
+        {% for value, label in periods.items() %}
+        <option value="{{ value }}" {{ 'selected' if value == days }}>{{ label }}</option>
+        {% endfor %}
+    </select>
+    <button class="button button--quiet" type="submit">Apply</button>
+</form>
+
+{% if view.schwab_since or view.accounts | selectattr('broker', 'equalto', 'schwab') | list %}
+<p class="notice">
+    Schwab doesn't keep a history of account values, so the app records your Schwab balance each day it syncs or you open Accounts{% if view.schwab_since %}, starting {{ view.schwab_since.strftime('%b') }} {{ view.schwab_since.day }}, {{ view.schwab_since.year }}{% endif %}.
+    Days the app isn't running are left out; the last recorded value stands in for them.
+</p>
+{% endif %}
+
+{% if not view.points %}
+<section class="card">
+    <p class="muted">No values recorded yet. Click <strong>Sync now</strong> on the <a class="link" href="{{ url_for('transactions.transactions_page') }}">Transactions</a> page: TastyTrade accounts get a year of daily values, and Schwab accounts start from today.</p>
+</section>
+{% else %}
+{% set perf = view.performance %}
+<div class="stats">
+    <div class="stat-tile"><div class="stat__label">Value now</div><div class="stat__value">{{ perf.end | money }}</div><div class="muted small">{{ view.points[-1].day.strftime('%b') }} {{ view.points[-1].day.day }}, {{ view.points[-1].day.year }}</div></div>
+    <div class="stat-tile"><div class="stat__label">At the start</div><div class="stat__value">{{ perf.start | money }}</div><div class="muted small">{{ view.points[0].day.strftime('%b') }} {{ view.points[0].day.day }}, {{ view.points[0].day.year }}</div></div>
+    <div class="stat-tile"><div class="stat__label">Money in / out {{ info('values-money-in-out', "Deposits less withdrawals over the period you chose, including transfers between your accounts. The chart marks those days with hollow dots, and Gain leaves this money out.", 'Money in / out', more='/help/accounts#account-values-over-time') }}</div><div class="stat__value">{{ perf.net_flows | money }}</div><div class="muted small">deposits less withdrawals</div></div>
+    <div class="stat-tile"><div class="stat__label">Gain</div><div class="stat__value">{{ pl(perf.gain) }}</div><div class="muted small">change, not counting money moved{% if perf.joined %} or accounts added{% endif %}</div></div>
+</div>
+
+<section class="card" aria-labelledby="values-title">
+    <h2 class="card__title" id="values-title">Value over time</h2>
+    <figure class="chart" data-line-chart="account-values-data"
+            data-tooltip='[["Value", "value", "money"], ["Money in / out", "flow", "flow"]]'>
+        <svg class="chart__plot" data-series="value" data-mark="end" data-signed="no" data-zero="no" data-flows="flow"
+             role="img" aria-label="Account value by day"></svg>
+        <div class="chart__tooltip" role="status" hidden></div>
+    </figure>
+    <p class="muted small">Hollow dots mark days money moved in or out.</p>
+    <script type="application/json" id="account-values-data">{{ view.chart_data() | tojson }}</script>
+    <script src="{{ url_for('static', filename='js/line_chart.js') }}" defer></script>
+
+    <div class="table-scroll"><table class="table section-gap">
+        <thead><tr><th>Month</th><th class="num">Value at month end</th><th class="num">Money in / out</th><th class="num">Gain</th></tr></thead>
+        <tbody>
+            {% for row in view.months %}
+            <tr>
+                <td>{{ row.month.strftime('%b %Y') }}</td>
+                <td class="num">{{ row.end | money }}</td>
+                <td class="num">{{ row.flows | money if row.flows else '—' }}</td>
+                <td class="num">{{ pl(row.change) }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table></div>
+</section>
+{% endif %}
+{% endblock %}

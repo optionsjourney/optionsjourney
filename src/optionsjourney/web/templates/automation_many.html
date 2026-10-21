@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% from "_tooltip.html" import info %}
+{% block title %}{{ 'Arm' if arming else 'Switch to Live:' }} {{ bots | length }} bots · OptionsJourney{% endblock %}
+
+{% block content %}
+{% set any_live = bots | selectattr('live') | list | length > 0 %}
+{% set any_watched = namespace(v=false) %}
+{% for bot in bots %}{% if app_watched(bot) %}{% set any_watched.v = true %}{% endif %}{% endfor %}
+<div class="page-header">
+    <h1>{{ 'Arm' if arming else 'Switch to Live' }} {{ bots | length }} bot{{ 's' if bots | length != 1 }}?</h1>
+</div>
+<section class="card">
+    {% if arming %}
+    <p>{% if any_live %}The bots marked <strong>Live</strong> will send <strong>real orders</strong> at their entry times (or in their entry windows).{% endif %} Paper bots only pretend. Bots that are already armed stay as they are.</p>
+    {% else %}
+    <p>Each bot's open paper trades close at the mid price. They switch to Live <strong>switched off</strong>: nothing is sent until you arm them.</p>
+    {% endif %}
+    <div class="table-scroll"><table class="table">
+        <thead><tr><th>Bot</th><th>Mode {{ info('many-mode', "Live bots send real orders to your broker when they're armed. Paper bots only pretend: the app records a fill at the middle price and sends nothing. Armed means switched on.", 'Mode', more='/help/automation#live-and-paper') }}</th><th>Account</th><th class="num">Per trade {{ info('many-per-trade', "The most contracts the bot can send in one trade, counted in its biggest leg. It's the bot's own limit, or when that's blank, what its size works out to.", 'Per trade') }}</th><th class="num">A day {{ info('many-per-day', "The most contracts the bot can send in a day, counted the same way. It's the bot's own limit, or when blank, what its entry times add up to.", 'A day') }}</th><th>Stops {{ info('many-stops', "At your broker means the stop rests there and works even if this computer is off. Watched by this app means only this app holds it, so it works only while the app is running and connected.", 'Stops', more='/help/automation#which-exit-rests-at-the-broker') }}</th></tr></thead>
+        <tbody>
+        {% for bot in bots %}
+        <tr>
+            <td>{{ bot.name }}</td>
+            <td>{% if bot.live %}<strong>Live</strong>{% else %}Paper{% endif %}{% if bot.enabled %} · armed{% endif %}</td>
+            <td>{{ account_label(bot.broker, bot.account_number) }}</td>
+            <td class="num">{{ trade_cap(bot) }}</td>
+            <td class="num">{{ day_cap(bot) }}</td>
+            <td>{% if app_watched(bot) %}<strong>Watched by this app:</strong> {{ watched_groups(bot) | map(attribute='name') | join(', ') }}{% else %}At your broker{% endif %}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table></div>
+    {% if any_watched.v %}
+    <p class="small">Stops watched by this app work only while this computer is on and awake and the app is running and connected. If the app stops, nothing closes those groups.</p>
+    {% endif %}
+    <p class="small"><strong>No new trades</strong> and <strong>Freeze all orders</strong> stop them at any time.</p>
+    <form class="inline-form section-gap" method="post" action="{{ url_for('automation.arm_many') if arming else url_for('automation.mode_many') }}">
+        {% for bot in bots %}<input type="hidden" name="bot_id" value="{{ bot.id }}">{% endfor %}
+        {% if arming %}<input type="hidden" name="on" value="1">{% else %}<input type="hidden" name="mode" value="live">{% endif %}
+        <input type="hidden" name="confirmed" value="1">
+        {% if arming or any_watched.v %}
+        <label class="small"><input type="checkbox" name="understood" value="1" required>
+            I understand{% if arming and any_live %} the Live bots send real orders{% endif %}{% if arming and any_live and any_watched.v %} and{% endif %}{% if any_watched.v %} the stops marked are watched by this app, not held at my broker{% endif %}{% if arming and not any_live and not any_watched.v %} these bots will be armed{% endif %}.</label>
+        {% endif %}
+        {% if not arming and risk_needed %}
+        <label class="small"><input type="checkbox" name="risk" value="1" required> I understand OptionsJourney is not financial advice and I am responsible for every order these bots send. <a class="link" href="/help/disclaimer" target="_blank" rel="noopener">Disclaimer</a></label>
+        {% endif %}
+        <button class="button" type="submit">{{ 'Arm them' if arming else 'Switch to Live' }}</button>
+    </form>
+    <p class="section-gap"><a class="button button--quiet" href="{{ url_for('automation.automation_page') }}">Cancel</a></p>
+</section>
+{% endblock %}

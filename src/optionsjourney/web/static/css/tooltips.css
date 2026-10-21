@@ -1,0 +1,74 @@
+/* Tooltips (#73): templates/_tooltip.html, js/tip.js. Loaded by all three layouts; the
+   var() fallbacks are for the Trade and Charts pages, which do not load app.css.
+   The rules below place a tip above its ⓘ; that is only the fallback. js/tooltips.js puts a
+   shown tip on the screen itself (tip__text--placed, at the end), so it is never cut off. */
+.tip { position: relative; display: inline-flex; align-items: center; }
+.tip__icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.05rem;
+    height: 1.05rem;
+    margin-left: 0.4rem;
+    padding: 0;
+    border: 1px solid var(--text-muted, #9ca3af);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-muted, #9ca3af);
+    font: italic 700 0.65rem/1 Georgia, "Times New Roman", serif;
+    cursor: help;
+}
+.tip__icon:hover, .tip--open .tip__icon { color: var(--text, #f3f4f6); border-color: var(--text, #f3f4f6); }
+.tip__text {
+    position: absolute;
+    bottom: calc(100% + 0.5rem);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 50;
+    width: max-content;
+    max-width: min(18rem, calc(100vw - 16px));
+    padding: 0.5rem 0.7rem;
+    border: 1px solid var(--border, #374151);
+    border-radius: 0.4rem;
+    background: #0b1220;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    color: var(--text, #f3f4f6);
+    font-size: 0.8rem;
+    font-weight: 400;
+    font-style: normal;
+    text-transform: none;  /* a tip in a table heading or a label keeps plain text */
+    letter-spacing: normal;
+    line-height: 1.45;
+    text-align: left;
+    white-space: normal;
+    display: none;  /* #140: hidden, it takes no room (it widened the page at the edge) */
+    pointer-events: none;
+}
+/* #128: a long tip is written as short lines and bullets; the bot form's run wider */
+.tip__text { white-space: pre-line; }
+.bot-form .tip__text { max-width: min(26rem, calc(100vw - 16px)); }
+/* #132, #133: a tip written as markup (a table) keeps normal spacing, and gets more room */
+.tip__text--rich { white-space: normal; }
+.bot-form .tip__text--rich { max-width: min(34rem, calc(100vw - 16px)); }
+.tip__text--rich p { margin: 0 0 0.4rem; }
+.tip__text--rich p:last-child { margin-bottom: 0; }
+.tip-table { width: 100%; border-collapse: collapse; margin: 0.3rem 0 0.5rem; font-size: 0.78rem; }
+.tip-table th, .tip-table td { text-align: left; vertical-align: top; padding: 0.25rem 0.4rem;
+  border-bottom: 1px solid var(--border, #374151); }
+.tip-table th { color: var(--text-muted, #9ca3af); font-weight: 600; }
+.tip-table td:first-child { white-space: nowrap; font-weight: 600; }
+.tip--start .tip__text { left: 0; transform: none; }
+.tip--end .tip__text { left: auto; right: 0; transform: none; }
+.tip:hover > .tip__text, .tip--hover > .tip__text, .tip:has(:focus-visible) > .tip__text,
+.tip--open > .tip__text { display: block; }
+/* A shown tip takes the pointer, so its Learn more link can be followed. The bridge covers the
+   gap to its ⓘ or button, and tooltips.js keeps a hovered tip a moment after the pointer leaves. */
+.tip:hover > .tip__text, .tip--hover > .tip__text, .tip--open > .tip__text { pointer-events: auto; }
+.tip__text::before { content: ""; position: absolute; left: 0; right: 0; top: 100%; height: 0.6rem; }
+.tip__text--below::before { top: auto; bottom: 100%; }
+.tip__more { display: block; margin-top: 0.35rem; color: #93c5fd; text-decoration: underline; }
+.tip__more:hover { color: #bfdbfe; }
+
+/* Placed by tooltips.js: fixed to the screen at the left and top it works out (tip.js
+   placeTip), so a scroll box, a drawer or the screen's edge can't cut it off. */
+.tip .tip__text.tip__text--placed { position: fixed; right: auto; bottom: auto; transform: none; z-index: 1000; }

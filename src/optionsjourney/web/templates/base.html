@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}OptionsJourney{% endblock %}</title>
+    {% include '_icons.html' %}
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/nav.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/tooltips.css') }}">
+</head>
+<body>
+    {% if gateway_mode %}
+    <div class="dev-banner" role="status">DEVELOPMENT · no trading · broker data borrowed from the Tracker2 server</div>
+    {% endif %}
+
+    {% include '_trading_banners.html' %}
+
+    {% include '_nav.html' %}
+
+    <main class="container main {% block main_class %}{% endblock %}">
+        {% for category, message in get_flashed_messages(with_categories=true) if not category.startswith('broker-') %}
+        <p class="notice notice--{{ category }}">{{ message }}</p>
+        {% endfor %}
+        {% block content %}{% endblock %}
+    </main>
+    {% include '_footer.html' %}
+    <script type="module" src="{{ url_for('static', filename='js/tooltips.js') }}"></script>
+    <script src="{{ url_for('static', filename='vendor/socket.io-4.7.4.min.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/trade_toasts.js') }}"></script>
+    <script type="module" src="{{ url_for('static', filename='js/alert_badge.js') }}"></script>
+</body>
+</html>

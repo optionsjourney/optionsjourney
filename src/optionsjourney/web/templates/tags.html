@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "_tooltip.html" import info %}
+{% block title %}Tags · OptionsJourney{% endblock %}
+
+{% block content %}
+<p><a class="link" href="{{ url_for('journal.journal_page') }}">← Back to the journal</a></p>
+<div class="page-header"><h1>Tags {{ info('tags-bot-tag', "Every bot has a Journal tag. Each trade it places gets that tag, and the bot's record also counts trades with that tag in its account that no bot is linked to, including ones you opened by hand. That's why a tag a bot uses can't be deleted here.", "a bot's tag", more='/help/tags#tags-that-come-by-themselves') }}</h1></div>
+
+<section class="card">
+    <p class="muted small">Tags are how you group your trades: give a trade as many as you like, then filter the journal or save a dashboard by them. A bot puts its tag on every trade it places. Stock trades always show the Stocks tag.</p>
+    {% if tags %}
+    <div class="table-scroll"><table class="table">
+        <tbody>
+            {% for t in tags %}
+            {% set n = counts.get(t.id, 0) %}
+            <tr>
+                <td>
+                    <form class="inline-form" method="post" action="{{ url_for('journal.rename_tag', tag_id=t.id) }}">
+                        <input type="text" name="name" value="{{ t.name }}" maxlength="60" aria-label="Tag name" required>
+                        <button class="button button--quiet" type="submit">Rename</button>
+                    </form>
+                </td>
+                <td class="muted small">{{ n }} trade{{ 's' if n != 1 }}{% if bots.get(t.id) %} · bot: {% for bot_id, name, deleted in bots[t.id] %}{% if deleted %}{{ name }} (deleted){% else %}<a class="link" href="{{ url_for('automation.bot_page', bot_id=bot_id) }}#basics" title="Change the tag {{ name }} files its trades under">{{ name }}</a>{% endif %}{{ ', ' if not loop.last }}{% endfor %}{% endif %}</td>
+                <td class="num">
+                    {% if bots.get(t.id) %}
+                    <span class="muted small">A bot files its trades under this tag, so it can't be deleted. To move a bot off it, open the bot and pick another Journal tag.</span>
+                    {% else %}
+                    <form method="post" action="{{ url_for('journal.delete_tag', tag_id=t.id) }}"
+                          onsubmit='return confirm({{ ("Delete the " ~ t.name ~ " tag? It comes off every trade.") | tojson }})'>
+                        <button class="button button--danger" type="submit">Delete</button>
+                    </form>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table></div>
+    {% else %}
+    <p class="muted">No tags yet.</p>
+    {% endif %}
+    <form class="inline-form section-gap" method="post" action="{{ url_for('journal.add_tag') }}">
+        <input type="text" name="name" maxlength="60" placeholder="New tag, e.g. MEIC" aria-label="New tag" required>
+        <button class="button" type="submit">Add tag</button>
+    </form>
+</section>
+{% endblock %}

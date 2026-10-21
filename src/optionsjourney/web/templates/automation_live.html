@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% from "_tooltip.html" import tip_text %}
+{% block title %}{{ 'Arm' if arming else 'Switch to Live:' }} {{ bot.name }} · OptionsJourney{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ 'Arm ' ~ bot.name ~ '?' if arming else 'Switch ' ~ bot.name ~ ' to Live?' }}</h1>
+</div>
+<section class="card">
+    <ul>
+        <li>It will send <strong>real orders</strong> from your {{ 'Schwab' if bot.broker == 'schwab' else 'TastyTrade' }} account {{ account_label(bot.broker, bot.account_number, with_broker=False) }} at its entry times (or in its entry window), up to {{ trade_cap(bot) }} per trade and {{ day_cap(bot) }} a day{% if bot.max_per_trade is none or bot.max_per_day is none %} (Auto, from its size and entry times){% endif %}.</li>
+        {% if app_watched(bot) %}
+        <li><strong>The stops of {{ watched_groups(bot) | map(attribute='name') | join(', ') }} are watched by this app, not held at {{ 'Schwab' if bot.broker == 'schwab' else 'TastyTrade' }}.</strong> They work only while this computer is on and awake and the app is running and connected. If the app stops, nothing closes those groups. Any other group's stop rests at your broker.</li>
+        {% else %}
+        <li>Each trade gets its stops at your broker, and the app watches its profit targets.</li>
+        {% endif %}
+        <li><strong>No new trades</strong> and <strong>Freeze all orders</strong> stop it at any time.</li>
+    </ul>
+    <div class="inline-form section-gap">
+        {% if arming %}
+        <form method="post" action="{{ url_for('automation.arm', bot_id=bot.id) }}">
+            <input type="hidden" name="on" value="1">
+            <input type="hidden" name="next" value="{{ next_page }}">
+            <input type="hidden" name="confirmed" value="1">
+            {% if app_watched(bot) %}
+            <label class="small"><input type="checkbox" name="understood" value="1" required> {{ understood_words(bot) }}</label>
+            {% else %}
+            <label class="small"><input type="checkbox" name="understood" value="1" required> I understand this bot sends real orders.</label>
+            {% endif %}
+            <span class="tip tip--start"><button class="button" type="submit" aria-describedby="tip-live-arm">Arm it</button>{{ tip_text('live-arm', "Switches the bot on. From now on it acts at its entry times, and a Live bot sends real orders to your broker.", more='/help/automation#live-and-paper') }}</span>
+        </form>
+        {% else %}
+        <form method="post" action="{{ url_for('automation.set_live', bot_id=bot.id) }}">
+            <input type="hidden" name="on" value="1">
+            {% if app_watched(bot) %}
+            <label class="small"><input type="checkbox" name="understood" value="1" required> {{ understood_words(bot) }}</label>
+            {% endif %}
+            {% if risk_needed %}
+            <label class="small"><input type="checkbox" name="risk" value="1" required> I understand OptionsJourney is not financial advice and I am responsible for every order this bot sends. <a class="link" href="/help/disclaimer" target="_blank" rel="noopener">Disclaimer</a></label>
+            {% endif %}
+            <span class="tip tip--start"><button class="button" type="submit" aria-describedby="tip-live-switch">Switch to Live</button>{{ tip_text('live-switch', "First closes this bot's open paper trades at the middle price, then makes it Live and switched off. Nothing is sent until you arm it, and once armed it sends real orders.", more='/help/automation#switching-to-live') }}</span>
+        </form>
+        {% endif %}
+        <a class="button button--quiet" href="{{ url_for('automation.bot_page', bot_id=bot.id) }}">Cancel</a>
+    </div>
+</section>
+{% endblock %}

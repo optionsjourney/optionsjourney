@@ -1,0 +1,392 @@
+/* IBM Plex, stored in the app (vendor/fonts, SIL Open Font License) so the page works offline;
+   Tracker2 loads the same faces from Google Fonts. */
+@font-face { font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url('../vendor/fonts/ibm-plex-mono-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 500; font-display: swap;
+  src: url('../vendor/fonts/ibm-plex-mono-latin-500-normal.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 600; font-display: swap;
+  src: url('../vendor/fonts/ibm-plex-mono-latin-600-normal.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Sans Condensed'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url('../vendor/fonts/ibm-plex-sans-condensed-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Sans Condensed'; font-style: normal; font-weight: 500; font-display: swap;
+  src: url('../vendor/fonts/ibm-plex-sans-condensed-latin-500-normal.woff2') format('woff2'); }
+@font-face { font-family: 'IBM Plex Sans Condensed'; font-style: normal; font-weight: 600; font-display: swap;
+  src: url('../vendor/fonts/ibm-plex-sans-condensed-latin-600-normal.woff2') format('woff2'); }
+
+/* Multi-Chart Grid and its pop-outs. One dark "terminal" palette:
+   panes sit on hairline seams, chrome is quiet until hovered, numbers are monospaced.
+   The chart canvas can't read these, so pane.js repeats the bg / text / line values.
+   Tracker2's file (c1105aed), except: IBM Plex from vendor/fonts instead of Google Fonts
+   (this app works offline), --cg-nav-h is this app's top bar, and the tip rows (.ind-has-tip). */
+:root {
+  --cg-bg: #07090d;          /* page + seams between panes */
+  --cg-chrome: #0a0d12;      /* toolbar, pane headers, drawers */
+  --cg-pane: #0b0e14;        /* chart canvas */
+  --cg-raise: #121722;       /* hovered / active surfaces */
+  --cg-line: #1a1f29;
+  --cg-line-2: #262d3a;
+  --cg-text: #c9d1dc;
+  --cg-bright: #eef2f7;
+  --cg-dim: #7d8696;
+  --cg-faint: #4a5466;
+  --cg-accent: #3ee0a4;
+  --cg-accent-soft: rgba(62, 224, 164, 0.10);
+  --cg-up: #22c39a;
+  --cg-down: #f2545b;
+  --cg-amber: #f5b544;
+  --cg-blue: #6aa8ff;
+  --cg-ui: 'IBM Plex Sans Condensed', ui-sans-serif, system-ui, sans-serif;
+  --cg-num: 'IBM Plex Mono', ui-monospace, Menlo, monospace;
+  --cg-nav-h: 61px;          /* tracker_base.html's top bar (_nav.html) */
+}
+
+.chart-grid-root { color: var(--cg-text); background: var(--cg-bg); font-family: var(--cg-ui);
+  display: flex; flex-direction: column; height: calc(100vh - var(--cg-nav-h)); min-height: 420px; }
+.chart-grid-root.bare { flex: 1; height: auto; min-height: 0; }
+.chart-grid-root button, .chart-grid-root input, .chart-grid-root select,
+.pane button, .pane input, .pane select { font-family: inherit; }
+
+/* ---- Toolbar: tabs on the left, layout + window controls on the right ---- */
+.grid-header { display: flex; align-items: stretch; gap: 10px; height: 36px; flex: none;
+  padding: 0 8px 0 0; background: var(--cg-chrome); border-bottom: 1px solid var(--cg-line); }
+.grid-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.grid-header-left, .grid-header-right { display: flex; align-items: center; gap: 6px; flex: none; }
+.grid-header-left { margin-left: auto; }
+.grid-header-right { padding-left: 10px; border-left: 1px solid var(--cg-line); }
+
+/* Shared quiet button look for every toolbar control */
+.layout-picker-btn, .shape-picker-btn, .grid-popout-btn, .grid-watchlist-btn {
+  display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px;
+  background: transparent; color: var(--cg-text); border: 1px solid var(--cg-line-2);
+  border-radius: 4px; font-size: 12px; letter-spacing: 0.01em; cursor: pointer;
+  transition: border-color .12s, color .12s, background .12s; }
+.layout-picker-btn:hover, .shape-picker-btn:hover, .grid-popout-btn:hover, .grid-watchlist-btn:hover {
+  border-color: var(--cg-faint); color: var(--cg-bright); background: var(--cg-raise); }
+.grid-watchlist-btn.on { color: var(--cg-accent); border-color: rgba(62, 224, 164, 0.45); background: var(--cg-accent-soft); }
+
+/* Layout picker (named dashboard layouts) */
+.layout-picker { position: relative; }
+.layout-picker-btn::before { content: 'Layout'; color: var(--cg-faint); font-size: 10px;
+  text-transform: uppercase; letter-spacing: 0.08em; }
+.layout-picker-name { color: var(--cg-bright); font-weight: 600; max-width: 180px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.layout-picker-caret { color: var(--cg-faint); font-size: 9px; }
+.layout-picker-menu, .grid-tab-add-menu { position: absolute; top: 100%; right: 0; margin-top: 6px;
+  min-width: 230px; background: var(--cg-chrome); border: 1px solid var(--cg-line-2); border-radius: 6px;
+  z-index: 100; padding: 4px; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6); }
+.layout-picker-menu.hidden, .grid-tab-add-menu.hidden { display: none; }
+.layout-menu-row { padding: 6px 10px; font-size: 12px; color: var(--cg-text); cursor: pointer;
+  display: flex; align-items: center; gap: 6px; border-radius: 4px; }
+.layout-menu-row:hover { background: var(--cg-raise); }
+.layout-menu-row.active { color: var(--cg-accent); font-weight: 600; }
+.layout-menu-row.active .layout-menu-row-name::before { content: '● '; font-size: 8px; vertical-align: 2px; }
+.layout-menu-row.disabled { color: var(--cg-faint); cursor: default; }
+.layout-menu-row.disabled:hover { background: transparent; }
+.layout-menu-row-name { flex: 1; }
+.layout-menu-row-dup { color: var(--cg-faint); font-size: 13px; padding: 0 2px; }
+.layout-menu-row:hover .layout-menu-row-dup { color: var(--cg-dim); }
+.layout-menu-row-dup:hover { color: var(--cg-accent); }
+.layout-menu-action { color: var(--cg-dim); }
+.layout-menu-divider { height: 1px; background: var(--cg-line); margin: 4px 2px; }
+
+/* Grid shape picker */
+.shape-picker { position: relative; }
+.shape-picker-btn { padding: 0 7px; }
+.shape-menu { position: absolute; top: 100%; right: 0; margin-top: 6px; z-index: 30;
+  display: grid; grid-template-columns: repeat(4, auto); gap: 4px; padding: 6px;
+  background: var(--cg-chrome); border: 1px solid var(--cg-line-2); border-radius: 6px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6); }
+.shape-menu.hidden { display: none; }
+.shape-option { background: transparent; border: 1px solid transparent; padding: 4px; cursor: pointer; border-radius: 4px; }
+.shape-option:hover { background: var(--cg-raise); }
+.shape-option.active { border-color: rgba(62, 224, 164, 0.5); background: var(--cg-accent-soft); }
+.shape-thumb { width: 44px; height: 28px; gap: 2px; }
+.shape-picker-btn .shape-thumb { width: 26px; height: 16px; gap: 1.5px; }
+.shape-thumb span { background: var(--cg-line-2); border-radius: 1px; min-width: 0; min-height: 0; }
+.shape-picker-btn .shape-thumb span { background: var(--cg-dim); }
+.shape-option.active .shape-thumb span { background: var(--cg-accent); }
+
+/* ---- Tab strip: one tab per open layout; only the active one streams ---- */
+/* Last in the DOM (after the layout picker), shown first. */
+.grid-tabs { order: -1; display: flex; align-items: stretch; flex: 1 1 auto; min-width: 0; background: none; }
+.grid-tab { position: relative; display: inline-flex; align-items: center; gap: 7px; padding: 0 10px 0 14px;
+  font-size: 12px; color: var(--cg-dim); border-right: 1px solid var(--cg-line);
+  cursor: pointer; white-space: nowrap; flex: 0 1 auto; min-width: 64px; max-width: 240px;
+  transition: color .12s, background .12s; }
+.grid-tab:hover { color: var(--cg-text); background: rgba(255, 255, 255, 0.02); }
+.grid-tab.active { color: var(--cg-bright); background: var(--cg-pane); }
+.grid-tab.active::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 2px; background: var(--cg-accent); }
+/* The active tab opens into the grid below it */
+.grid-tab.active::after { content: ''; position: absolute; left: 0; right: 0; bottom: -1px; height: 1px; background: var(--cg-pane); }
+.grid-tab-name { overflow: hidden; text-overflow: ellipsis; }
+.grid-tab-ticker { font-family: var(--cg-num); font-size: 11px; font-weight: 600; color: var(--cg-faint); }
+.grid-tab.active .grid-tab-ticker { color: var(--cg-accent); }
+.grid-tab-close { color: transparent; font-size: 14px; line-height: 1; padding: 0 2px; border-radius: 3px; }
+.grid-tab:hover .grid-tab-close, .grid-tab.active .grid-tab-close { color: var(--cg-faint); }
+.grid-tab-close:hover { color: var(--cg-down) !important; }
+.grid-tab-add { position: relative; flex: none; align-self: center; margin-left: 4px; }
+.grid-tab-add-btn { background: transparent; color: var(--cg-faint); border: 1px solid transparent; border-radius: 4px;
+  width: 24px; height: 24px; font-size: 16px; line-height: 1; cursor: pointer; }
+.grid-tab-add-btn:hover { color: var(--cg-bright); background: var(--cg-raise); }
+.grid-tab-add-menu { left: 0; right: auto; margin-top: 7px; }
+
+/* ---- The grid: panes on 1px seams ---- */
+.grid-body { display: flex; flex: 1; min-height: 0; }
+.grid-main { flex: 1; min-width: 0; height: 100%; gap: 1px; padding: 0; box-sizing: border-box;
+  position: relative; background: var(--cg-line); }
+.grid-paused { display: flex; align-items: center; justify-content: center; height: 100%;
+  color: var(--cg-dim); font-size: 13px; letter-spacing: 0.04em; background: var(--cg-bg);
+  grid-column: 1 / -1; grid-row: 1 / -1; }
+
+/* Drag handles between columns/rows (resize.js), centred on the seams. */
+.grid-resize-layer { position: absolute; inset: 0; pointer-events: none; z-index: 20; }
+.grid-resize-handle { position: absolute; pointer-events: auto; }
+.grid-resize-handle.col { width: 8px; margin-left: -4px; cursor: col-resize; }
+.grid-resize-handle.row { height: 8px; margin-top: -4px; cursor: row-resize; }
+.grid-resize-handle::after { content: ''; position: absolute; background: transparent; transition: background 0.12s; }
+.grid-resize-handle.col::after { left: 3px; width: 2px; top: 0; bottom: 0; }
+.grid-resize-handle.row::after { top: 3px; height: 2px; left: 0; right: 0; }
+.grid-resize-handle:hover::after, .grid-resize-handle.dragging::after { background: var(--cg-accent); }
+body.grid-resizing-col, body.grid-resizing-col * { cursor: col-resize !important; user-select: none; }
+body.grid-resizing-row, body.grid-resizing-row * { cursor: row-resize !important; user-select: none; }
+
+/* ---- A chart pane ---- */
+.pane { display: flex; flex-direction: column; background: var(--cg-pane); color: var(--cg-text);
+  font-family: var(--cg-ui); position: relative; min-width: 0; min-height: 0; overflow: hidden;
+  container: pane / inline-size; }
+/* Outside the grid (pop-outs) a pane has no seams around it, so it gets its own edge. */
+:not(.grid-main) > .pane { border: 1px solid var(--cg-line); }
+.pane-chrome { display: flex; gap: 2px; align-items: center; height: 28px; padding: 0 6px 0 4px;
+  background: var(--cg-chrome); border-bottom: 1px solid var(--cg-line); font-size: 11px; flex-shrink: 0; }
+
+/* Symbol reads as a ticker label until you go to edit it */
+.pane-symbol-wrap { position: relative; display: inline-flex; align-items: center; }
+.pane-symbol { width: 76px; height: 22px; background: transparent; color: var(--cg-bright);
+  border: 1px solid transparent; border-radius: 4px; padding: 0 16px 0 6px;
+  font-family: var(--cg-num) !important; font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
+  text-transform: uppercase; transition: border-color .12s, background .12s; }
+.pane-symbol:hover { border-color: var(--cg-line-2); }
+.pane-symbol:focus { outline: none; border-color: rgba(62, 224, 164, 0.6); background: var(--cg-pane); }
+.pane-symbol[readonly] { width: 60px; padding-right: 6px; border-color: transparent; background: transparent; cursor: default; }
+.pane-symbol-clear { position: absolute; right: 3px; background: transparent; border: 0; padding: 0;
+  color: var(--cg-faint); cursor: pointer; font-size: 13px; line-height: 1; opacity: 0; transition: opacity .12s; }
+.pane-symbol-wrap:hover .pane-symbol-clear, .pane-symbol:focus + .pane-symbol-clear { opacity: 1; }
+.pane-symbol-clear:hover { color: var(--cg-bright); }
+
+.pane-tf { height: 22px; background: transparent; color: var(--cg-dim); border: 1px solid transparent;
+  border-radius: 4px; padding: 0 4px; font-family: var(--cg-num) !important; font-size: 11px; cursor: pointer; }
+.pane-tf:hover, .pane-tf:focus { color: var(--cg-bright); border-color: var(--cg-line-2); outline: none; }
+.pane-tf option { background: var(--cg-chrome); color: var(--cg-text); }
+
+/* Icon buttons in the pane header */
+.pane-indicators-btn, .pane-link { background: transparent; color: var(--cg-faint); border: 1px solid transparent;
+  padding: 0; cursor: pointer; border-radius: 4px; height: 22px; width: 22px;
+  display: inline-flex; align-items: center; justify-content: center; transition: color .12s, background .12s; }
+.pane-indicators-btn svg, .pane-link svg { display: block; }
+.pane-indicators-btn:hover, .pane-link:hover { color: var(--cg-bright); background: var(--cg-raise); }
+.pane-indicators-btn { color: var(--cg-dim); }
+.pane-indicators-btn.drawing { color: var(--cg-amber); border-color: rgba(245, 181, 68, 0.5); background: rgba(245, 181, 68, 0.1); }
+.pane-link.on { color: var(--cg-amber); background: rgba(245, 181, 68, 0.1); }
+
+/* Price + change, monospaced so ticking digits don't jitter */
+.pane-price { margin-left: auto; font-family: var(--cg-num); font-size: 13px; font-weight: 600;
+  color: var(--cg-bright); white-space: nowrap; font-variant-numeric: tabular-nums; padding-left: 6px; }
+.pane-price.up, .pane-change.up { color: var(--cg-up); }
+.pane-price.down, .pane-change.down { color: var(--cg-down); }
+.pane-change { font-family: var(--cg-num); font-size: 11px; font-weight: 500; white-space: nowrap;
+  flex-shrink: 0; display: inline-flex; gap: 5px; padding-left: 6px; font-variant-numeric: tabular-nums; }
+.pane-change .chg-pct { padding: 0 4px; border-radius: 3px; background: rgba(255, 255, 255, 0.04); }
+.pane-change.up .chg-pct { background: rgba(34, 195, 154, 0.12); }
+.pane-change.down .chg-pct { background: rgba(242, 84, 91, 0.12); }
+.pane-popout { background: transparent; color: var(--cg-faint); border: none; cursor: pointer;
+  font-size: 13px; padding: 0 2px 0 6px; transition: color .12s; }
+.pane-popout:hover { color: var(--cg-accent); }
+
+.pane-chart { flex: 1; min-height: 0; position: relative; }
+/* Crosshair read-out over the top-left of the candles */
+.pane-legend { position: absolute; top: 5px; left: 6px; z-index: 5; pointer-events: none;
+  display: flex; flex-wrap: wrap; gap: 9px; font-family: var(--cg-num); font-size: 10.5px; color: var(--cg-dim);
+  font-variant-numeric: tabular-nums;
+  /* A faint band so candles and indicator lines underneath don't fight the numbers. */
+  background: rgba(11, 14, 20, 0.9); padding: 2px 6px; border-radius: 3px; }
+.pane-legend:empty { display: none; }
+.pane-legend b { font-weight: 500; color: var(--cg-text); }
+.pane-legend .lg-time, .pane-legend .lg-cursor { color: var(--cg-text); }
+.pane-legend .up { color: var(--cg-up); }
+.pane-legend .down { color: var(--cg-down); }
+
+/* ---- Indicators drawer, slides over the left of the pane ---- */
+.pane-ind-drawer { position: absolute; top: 28px; left: 0; bottom: 0; width: 228px;
+  background: rgba(10, 13, 18, 0.97); border-right: 1px solid var(--cg-line-2); padding: 6px 10px 10px;
+  overflow-y: auto; z-index: 10; box-shadow: 12px 0 28px rgba(0, 0, 0, 0.45);
+  animation: cg-drawer-in .14s ease-out; }
+@keyframes cg-drawer-in { from { transform: translateX(-10px); opacity: 0; } to { transform: none; opacity: 1; } }
+.pane-ind-drawer.hidden { display: none; }
+.ind-group h4 { font-size: 10px; font-weight: 600; text-transform: uppercase; color: var(--cg-faint);
+  margin: 10px 0 4px; letter-spacing: 0.09em; }
+.ind-row { display: flex; align-items: center; font-size: 12px; padding: 3px 0; cursor: pointer; color: var(--cg-text); }
+.ind-row:hover { color: var(--cg-bright); }
+.ind-row input { margin-right: 6px; accent-color: var(--cg-accent); }
+.ind-multi-header { display: flex; align-items: center; justify-content: space-between; cursor: default; }
+.ind-add { background: transparent; color: var(--cg-accent); border: 1px solid var(--cg-line-2);
+  padding: 0 6px; font-size: 12px; line-height: 16px; cursor: pointer; border-radius: 3px; }
+.ind-add:hover { border-color: var(--cg-accent); background: var(--cg-accent-soft); }
+/* A row with a tip (chart_tips.js): the row, then its ⓘ. tooltips.js places the tip itself. */
+.ind-has-tip { display: flex; align-items: center; }
+.ind-has-tip > .ind-row { flex: 1; }
+.ind-multi-header.ind-has-tip { justify-content: space-between; }
+.ind-multi-header .tip { display: inline-flex; vertical-align: middle; }
+.ind-multi-instance { display: flex; align-items: center; gap: 6px; padding-left: 8px; cursor: default; }
+.ind-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0;
+  position: relative; cursor: pointer; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.15); }
+.ind-swatch:hover { box-shadow: 0 0 0 1px var(--cg-text); }
+/* The native picker sits invisibly over the swatch, so a click on the swatch opens it. */
+.ind-swatch input[type=color] { position: absolute; inset: 0; width: 100%; height: 100%;
+  opacity: 0; border: 0; padding: 0; cursor: pointer; }
+.ind-period { font-family: var(--cg-num); color: var(--cg-accent); cursor: pointer;
+  text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px; }
+.ind-remove { background: transparent; color: var(--cg-faint); border: none; cursor: pointer; font-size: 14px;
+  margin-left: auto; padding: 0 4px; }
+.ind-remove:hover { color: var(--cg-down); }
+
+.pane-draw-group h4 { margin-top: 2px; }
+.pane-tools { display: flex; flex-wrap: wrap; gap: 4px; }
+.pane-tools button { font-size: 12px; min-width: 28px; height: 24px; padding: 0 6px; background: transparent;
+  color: var(--cg-dim); border: 1px solid var(--cg-line-2); border-radius: 4px; cursor: pointer; }
+.pane-tools button:hover { color: var(--cg-bright); border-color: var(--cg-faint); }
+.pane-tools button[class*="border-amber"] { color: var(--cg-amber); border-color: rgba(245, 181, 68, 0.6); background: rgba(245, 181, 68, 0.12); }
+/* In the indicators drawer the fit toggle is a labelled row. */
+.pane-fit { background: transparent; color: var(--cg-dim); border: 1px solid var(--cg-line-2); cursor: pointer;
+  border-radius: 4px; height: 24px; padding: 0 8px; gap: 6px; font-size: 12px;
+  display: inline-flex; align-items: center; justify-content: center; }
+.pane-fit:hover { color: var(--cg-bright); }
+.pane-fit.on { color: var(--cg-blue); border-color: rgba(106, 168, 255, 0.6); background: rgba(106, 168, 255, 0.1); }
+
+.grid-trade-btn.hidden { display: none; }
+.chart-popout-root { background: var(--cg-bg); }
+.chart-popout-root .pane { height: 100%; border: 0; }
+
+/* ---- Watchlist drawer (static/js/chart_grid/watchlist.js) ---- */
+/* Right-hand column: watchlist on top, news below (news.js SideColumn sets the split). */
+.side-col { width: 380px; flex: none; height: 100%; display: flex; flex-direction: column; min-height: 0;
+  background: var(--cg-chrome); border-left: 1px solid var(--cg-line); }
+.side-col.hidden, .side-split.hidden, .news-panel.hidden { display: none; }
+.watchlist-drawer, .news-panel { flex: 1 1 0; min-height: 0; overflow-y: auto;
+  background: var(--cg-chrome); font-size: 12px; color: var(--cg-text);
+  scrollbar-width: thin; scrollbar-color: var(--cg-line-2) transparent; }
+.watchlist-drawer.hidden { display: none; }
+.side-split { flex: none; height: 6px; cursor: row-resize; background: var(--cg-line); position: relative;
+  touch-action: none; }
+.side-split::after { content: ''; position: absolute; left: 50%; top: 2px; width: 32px; height: 2px;
+  margin-left: -16px; border-radius: 1px; background: var(--cg-faint); }
+.side-split:hover, .side-split.dragging { background: var(--cg-accent-soft); }
+.side-split:hover::after, .side-split.dragging::after { background: var(--cg-accent); }
+
+/* News panel */
+.nw-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px;
+  height: 36px; padding: 0 10px; background: var(--cg-chrome); border-bottom: 1px solid var(--cg-line); }
+.nw-title { font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--cg-bright); }
+.nw-symbol { font-family: var(--cg-num); font-size: 11px; color: var(--cg-accent); }
+.nw-refresh { margin-left: auto; background: transparent; border: 0; color: var(--cg-dim); cursor: pointer;
+  font-size: 13px; padding: 2px 4px; }
+.nw-refresh:hover { color: var(--cg-bright); }
+.news-panel.loading .nw-refresh { animation: cg-pulse 1s ease-in-out infinite; }
+.nw-item { display: flex; flex-direction: column; gap: 3px; padding: 8px 10px; text-decoration: none;
+  border-bottom: 1px solid var(--cg-line); color: var(--cg-text); }
+.nw-item:hover { background: var(--cg-raise); }
+.nw-item:hover .nw-headline { color: var(--cg-bright); }
+.nw-headline { font-size: 12.5px; line-height: 1.35; }
+.nw-meta { font-family: var(--cg-num); font-size: 10px; color: var(--cg-dim); }
+.nw-note { padding: 14px 10px; color: var(--cg-dim); font-size: 12px; }
+.wl-head { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 8px;
+  height: 36px; padding: 0 10px; background: var(--cg-chrome); border-bottom: 1px solid var(--cg-line); }
+.wl-title { font-size: 11px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--cg-bright); }
+.wl-source { font-family: var(--cg-num); font-size: 10px; padding: 1px 7px; border-radius: 10px;
+  background: var(--cg-raise); color: var(--cg-dim); }
+.wl-source[data-source="live"], .wl-source[data-source="dxlink"] { color: var(--cg-accent); background: var(--cg-accent-soft); }
+.wl-source[data-source="live"]::before, .wl-source[data-source="dxlink"]::before {
+  content: ''; display: inline-block; width: 5px; height: 5px; margin-right: 5px; vertical-align: 1px;
+  border-radius: 50%; background: currentColor; animation: cg-pulse 2s ease-in-out infinite; }
+@keyframes cg-pulse { 50% { opacity: 0.3; } }
+.wl-source[data-source="stale"] { color: var(--cg-amber); }
+.wl-source[data-source="none"] { color: var(--cg-down); }
+.wl-add-group { margin-left: auto; background: none; border: 1px solid var(--cg-line-2); color: var(--cg-dim);
+  cursor: pointer; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+.wl-add-group:hover { color: var(--cg-bright); border-color: var(--cg-faint); }
+.wl-cols, .wl-row { display: grid; grid-template-columns: 1.1fr 1fr 1fr 1.2fr 1fr 1.3fr 16px; gap: 4px;
+  align-items: center; padding: 3px 10px; }
+.wl-cols { position: sticky; top: 36px; z-index: 1; background: var(--cg-chrome); padding-top: 6px; padding-bottom: 5px;
+  font-size: 9.5px; letter-spacing: 0.07em; color: var(--cg-faint); text-transform: uppercase;
+  border-bottom: 1px solid var(--cg-line); }
+.wl-cols span:not(:first-child), .wl-row span:not(.wl-sym) { text-align: right; font-variant-numeric: tabular-nums; }
+.wl-row span:not(.wl-sym) { font-family: var(--cg-num); font-size: 11px; }
+.wl-group-head { display: flex; align-items: center; gap: 6px; padding: 6px 10px; background: var(--cg-bg);
+  border-top: 1px solid var(--cg-line); font-size: 11px; font-weight: 600; letter-spacing: 0.04em;
+  color: var(--cg-text); cursor: grab; }
+.wl-caret { background: none; border: 0; color: var(--cg-faint); cursor: pointer; padding: 0; width: 12px; }
+.wl-count { font-family: var(--cg-num); color: var(--cg-faint); font-weight: 400; }
+.wl-group-actions { margin-left: auto; display: none; gap: 4px; }
+.wl-auto { margin-left: auto; font-size: 9.5px; color: var(--cg-faint); text-transform: uppercase; letter-spacing: 0.08em; }
+.wl-group-head:hover .wl-group-actions { display: flex; }
+.wl-group-actions button, .wl-remove { background: none; border: 0; color: var(--cg-faint); cursor: pointer; padding: 0 2px; }
+.wl-group-actions button:hover, .wl-remove:hover { color: var(--cg-bright); }
+.wl-row { cursor: pointer; box-shadow: inset 2px 0 0 transparent; transition: background .08s; }
+.wl-row:hover { background: var(--cg-raise); }
+.wl-row.on-chart { box-shadow: inset 2px 0 0 var(--cg-accent); }
+.wl-row.on-chart .wl-sym { color: var(--cg-accent); }
+.wl-row.picked { background: rgba(106, 168, 255, 0.12); }
+.wl-sym { font-family: var(--cg-num); font-size: 11.5px; font-weight: 600; color: var(--cg-bright); }
+.wl-remove { visibility: hidden; }
+.wl-row:hover .wl-remove { visibility: visible; }
+.wl-row .up { color: var(--cg-up); }
+.wl-row .down { color: var(--cg-down); }
+
+/* Phones: the toolbar wraps (tabs get their own row) instead of running off the right edge,
+   the second-monitor "Pop out grid" is dropped, and the page scrolls. */
+@media (max-width: 639px) {
+  .chart-grid-root { height: auto; }
+  .grid-header { flex-wrap: wrap; height: auto; padding: 0; gap: 0; }
+  .grid-tabs { flex-basis: 100%; height: 34px; border-bottom: 1px solid var(--cg-line); }
+  .grid-header-left { margin-left: 0; padding: 5px 8px; }
+  .grid-header-right { padding: 5px 8px 5px 0; border-left: 0; margin-left: auto; flex-wrap: wrap; }
+  .grid-popout-grid-btn { display: none; }
+  .layout-picker-btn::before { display: none; }
+  .layout-picker-menu { right: auto; left: 0; }
+  /* The saved layout's columns would leave each chart a sliver: stack the charts one per
+     row instead (the inline grid styles from shapes.js are overridden, not changed). */
+  .grid-main { display: flex !important; flex-direction: column; height: auto; }
+  .grid-main > .pane { flex: none; height: 60vh; min-height: 320px; }
+  .grid-resize-layer { display: none; }
+  .side-col { height: 70vh; }
+}
+
+/* Narrow panes (a 5-wide grid and up), and every pane on a phone: the header keeps
+   price + % only, and the legend is one line of O H L C with no date, no change (the
+   header has it) and no cursor price. The two blocks below are the same rules. */
+@container pane (max-width: 360px) {
+  .pane-change .chg-abs, .pane-change:empty { display: none; }
+  .pane-legend { flex-wrap: nowrap; gap: 6px; font-size: 10px; white-space: nowrap; }
+  .pane-legend .lg-time, .pane-legend .lg-chg, .pane-legend .lg-cursor { display: none; }
+}
+@media (max-width: 639px) {
+  .pane-change .chg-abs, .pane-change:empty { display: none; }
+  .pane-legend { flex-wrap: nowrap; gap: 6px; font-size: 10px; white-space: nowrap; }
+  .pane-legend .lg-time, .pane-legend .lg-chg, .pane-legend .lg-cursor { display: none; }
+}
+/* Narrower still, the header can't fit the price too; the axis tag already shows it. A
+   status message ('…', 'no data') still shows, because the change is empty then. */
+@container pane (max-width: 280px) {
+  .pane-price:has(+ .pane-change:not(:empty)) { display: none; }
+  .pane-change { margin-left: auto; }
+}
+@media (hover: hover) {
+  @container pane (max-width: 360px) {
+    .pane-popout { display: none; }
+    .pane:hover .pane-popout { display: inline; }
+  }
+  /* Too narrow even for one line: the readout shows only while the pointer is on the chart. */
+  @container pane (max-width: 220px) {
+    .pane-legend { opacity: 0; transition: opacity 0.1s; }
+    .pane:hover .pane-legend { opacity: 1; }
+  }
+}

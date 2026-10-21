@@ -1,0 +1,14 @@
+{% extends "chart_bare_base.html" %}
+{% block title %}Chart{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{{ asset_url('css/chart_grid.css') }}">
+<script src="{{ url_for('static', filename='vendor/lightweight-charts-5.0.0.standalone.production.js') }}"></script>
+{% endblock %}
+{% block content %}
+<div id="chart-popout-root" class="chart-popout-root flex-1 min-h-0"></div>
+<script type="module">
+  import { installGridPopout } from "{{ asset_url('js/chart_grid/popout.js') }}";
+  installGridPopout(document.getElementById('chart-popout-root'),
+    { ...{{ {'layoutId': layout_id, 'paneId': pane_id, 'tabId': tab_id} | tojson }}, socket: io() });
+</script>
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends "tracker_base.html" %}
+{# The risk graph (Tracker2's _risk_graph_panel.html + risk_graph.js). ?embed=1: the journal
+   drawer's and grid's iframe, without the site nav. #}
+{% block title %}Risk graph · OptionsJourney{% endblock %}
+{% set embed = request.args.get('embed') == '1' %}
+{% block nav %}{% if not embed %}{{ super() }}{% endif %}{% endblock %}
+{% block footer %}{% if not embed %}{{ super() }}{% endif %}{% endblock %}
+{% block main_pad %}{% if embed %}px-0 py-0{% else %}{{ super() }}{% endif %}{% endblock %}
+{% block content %}
+<div id="risk-graph" data-trades="{{ keys | join(',') }}"
+     class="flex flex-col bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg">
+    {% include '_risk_graph_panel.html' %}
+</div>
+{% endblock %}
+{% block scripts %}
+<script type="module">
+  import { toModelerLeg, buildPayoffFns, expiryMs, strikeIncrement, curveStats } from "{{ url_for('static', filename='js/modeler/pricing.js') }}";
+  import { renderPayoffChart } from "{{ url_for('static', filename='js/modeler/render.js') }}";
+  window.__modeler = { toModelerLeg, buildPayoffFns, expiryMs, renderPayoffChart, strikeIncrement, curveStats };
+</script>
+<script src="{{ url_for('static', filename='js/risk_graph.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/risk_graph_page.js') }}"></script>
+{% endblock %}

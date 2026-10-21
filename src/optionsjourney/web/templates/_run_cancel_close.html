@@ -1,0 +1,3 @@
+{#- Cancel a running close, for exit `e` (run page's Exits table and the Manage panel, #174) -#}
+{% set next_field %}{% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}{% endset %}
+<form class="inline-form" method="post" action="{{ url_for('automation.cancel_close', run_id=run.id, exit_id=e.id) }}">{{ next_field }}<button class="button button--quiet" type="submit">Cancel</button></form>

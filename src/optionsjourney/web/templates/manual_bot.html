@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}{{ name or 'New manual bot' }} · OptionsJourney{% endblock %}
+
+{% from "_manual_rule_tips.html" import rule_tip %}
+{% macro problem(key) %}{% if problems.get(key) %}<p class="notice notice--warning small">{{ problems[key] }}</p>{% endif %}{% endmacro %}
+{% macro unit_select(key) %}{% set unit = typed(key ~ '_unit', 'pct') %}<select name="{{ key }}_unit" aria-label="{{ key }} unit"><option value="pct"{{ ' selected' if unit == 'pct' }}>%</option><option value="usd"{{ ' selected' if unit == 'usd' }}>$</option></select>{% endmacro %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ name or 'New manual bot' }}</h1>
+    <a class="button button--quiet" href="{{ url_for('automation.automation_page') }}">All bots</a>
+</div>
+<p class="muted">A manual bot is a set of exit rules you attach to a trade you already have (or choose under Manage with on the Trade page). It never opens trades. Percentages are measured from the trade's net credit or debit when it filled. Leave a rule empty to skip it.</p>
+{% if bot_id %}
+<p class="notice small" id="changes-note">Changes apply to trades you attach from now on. Trades already using this bot keep their rules.</p>
+{% endif %}
+
+<form class="bot-form card" method="post" action="{{ url_for('automation.manual_save') }}">
+    <input type="hidden" name="id" value="{{ bot_id or '' }}">
+    <div class="bot-form__fields">
+        <label class="field--wide"><span class="bot-form__label">Name</span> <input type="text" name="name" value="{{ typed('name', name) }}" maxlength="100"></label>
+        {{ problem('name') }}
+        <label><span class="bot-form__label">Profit target</span>
+            <input type="text" name="target_value" inputmode="decimal" value="{{ typed('target_value', rules.target_value) }}" class="narrow"> {{ unit_select('target') }}</label> {{ rule_tip('target', 'manual') }}
+        {{ problem('target_value') }}{{ problem('target_unit') }}
+        <label><span class="bot-form__label">Stop loss</span>
+            <input type="text" name="stop_value" inputmode="decimal" value="{{ typed('stop_value', rules.stop_value) }}" class="narrow"> {{ unit_select('stop') }}</label> {{ rule_tip('stop', 'manual') }}
+        {{ problem('stop_value') }}{{ problem('stop_unit') }}
+        {% set exit_on = (typed('exit_on', 'on' if rules.close_time else '') if posted else ('on' if rules.close_time else '')) %}
+        <div class="bot-form__exit" data-filter{% if problems.get('close_dte') or problems.get('close_time') %} data-filter-problem{% endif %}>
+            <label class="check"><input type="checkbox" name="exit_on" data-filter-use {{ 'checked' if exit_on }}> <span class="bot-form__label">Exit time</span></label> {{ rule_tip('exit', 'manual') }}
+            <span data-filter-fields><input type="text" name="close_dte" inputmode="numeric" value="{{ typed('close_dte', rules.close_dte) }}" class="narrow" aria-label="Days before expiration"> days before expiration, at
+            <input type="text" name="close_time" value="{{ typed('close_time', rules.close_time or '15:45') }}" class="narrow" aria-label="Exit time, New York"> New York time
+            <span class="muted small">0 days is the expiration day. With several expirations it counts from the nearest.</span></span>
+        </div>
+        {{ problem('close_dte') }}{{ problem('close_time') }}
+    </div>
+    <h2 class="card__title">Alerts {{ rule_tip('alerts', 'manual') }}</h2>
+    {% include "_alert_rows.html" %}
+    <p class="muted small">Clear an alert's number to remove it.</p>
+    {{ problem('alerts') }}
+    <div class="inline-form">
+        <button class="button" type="submit">Save</button>
+        <a class="button button--quiet" href="{{ url_for('automation.automation_page') }}">Cancel</a>
+    </div>
+</form>
+
+{% if bot_id %}
+<form method="post" action="{{ url_for('automation.manual_delete', bot_id=bot_id) }}" class="section-gap">
+    <button class="button button--quiet" type="submit">Delete this manual bot</button>
+    <span class="muted small">Trades already using it keep their rules.</span>
+</form>
+{% endif %}
+<script type="module" src="{{ url_for('static', filename='js/filter_fields.js') }}"></script>
+<script type="module" src="{{ url_for('static', filename='js/alert_rows.js') }}"></script>
+{% endblock %}

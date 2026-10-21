@@ -1,0 +1,210 @@
+{% from "_tooltip.html" import info, tip_text %}
+{% from "_missing_exits_tip.html" import missing_exits_tip %}
+{#- Manage this trade: close it, its missing exits and each side's stop, target and actions (run page and Manage panel, #174).
+    Laid out as Tracker2's manage drawer: a box per side, its levels in its header, Stop and Target side by side. -#}
+{% set next_field %}{% if next_url %}<input type="hidden" name="next" value="{{ next_url }}">{% endif %}{% endset %}
+{% if run.paper %}
+<section class="card section-gap" id="manage">
+    <h2 class="card__title">Manage this trade</h2>
+    <p class="muted small">This is a paper trade: nothing is held at your broker, so there's nothing here to close or change. Its pretend stop, target, timed close and rules run on their own, and switching the bot to Live closes it.</p>
+</section>
+{% else %}
+<section class="card section-gap" id="manage">
+    <div class="manage-head">
+        <h2 class="card__title">Manage this trade</h2>
+        <div class="inline-form">
+            <span class="muted small">Missing exits: {{ missing_exits_tip('run-missing-exits', '/help/automation#managing-a-trade') }}</span>
+            <form class="inline-form" method="post" action="{{ url_for('automation.restore_run', run_id=run.id) }}">{{ next_field }}
+                <input type="hidden" name="apply" value="0">
+                <button class="button button--quiet button--small" type="submit">Check</button>
+            </form>
+            <form class="inline-form" method="post" action="{{ url_for('automation.restore_run', run_id=run.id) }}">{{ next_field }}
+                <input type="hidden" name="apply" value="1">
+                <button class="button button--quiet button--small" type="submit">Restore missing exits</button>
+            </form>
+        </div>
+    </div>
+    <p class="muted small">Changes here are for this trade only; the bot keeps its own settings. Each one is checked before anything is sent, and a change that can't be made changes nothing.</p>
+    <div class="manage-sides">
+    {% for side in sides %}
+    <div class="manage-side">
+        <div class="manage-side__head">
+            <h3>{{ side.name }}</h3>
+            {% if not side.futures and side.state != 'closed' %}
+            <span class="manage-side__levels">
+                <span><span class="muted">Open</span> <strong class="num">{{ side.size }}</strong></span>
+                <span><span class="muted">Stop</span> <strong class="num">{{ 'off' if side.stop_off else (side.stop if side.stop is not none else 'none') }}</strong>{% if side.stop_state == 'pending' %} <span class="muted small">(waiting to be placed)</span>{% elif side.stop_state == 'watching' %} <span class="muted small">(watched by the app)</span>{% endif %}</span>
+                <span><span class="muted">Target</span> <strong class="num">{{ 'off' if side.target_off else (side.target if side.target is not none else 'none') }}</strong></span>
+            </span>
+            {% endif %}
+        </div>
+        {% if side.note %}<p class="notice notice--warning small">{{ side.note }}</p>{% endif %}
+        {% if side.target_order and not side.futures %}<p class="muted small">Target rests at TastyTrade (order {{ side.target_order }}); {% if side.stop_off %}its stop is off.{% elif side.stop is none %}this group has no stop.{% else %}the stop is watched by the app.{% endif %}</p>{% endif %}
+        {% if side.watched %}<p class="muted small">Stop watched by the app: a stop % here is the % of the entry price lost.</p>{% endif %}
+        {% if side.futures %}<p class="small">Target: {{ 'off' if side.target_off else (side.target if side.target is not none else 'none') }}{% if side.target_order %}, rests at TastyTrade (order {{ side.target_order }}){% endif %} · no stop.</p>
+        {% if side.state == 'open' and not side.held %}
+        {% if side.target_off %}
+        <div class="notice notice--danger">
+            <p><strong>The target is off.</strong> This futures trade has no stop, so it has no exit at all.</p>
+            <form class="inline-form" method="post" action="{{ url_for('automation.manage_side', run_id=run.id, position=side.position, action='target-on') }}">{{ next_field }}
+                <button class="button" type="submit">Switch the target back on</button>
+            </form>
+        </div>
+        {% else %}
+        <form class="inline-form" method="post" action="{{ url_for('automation.manage_side', run_id=run.id, position=side.position, action='target') }}">{{ next_field }}
+            <label>Target {{ target_words }} <input type="number" name="pct" min="1" max="{{ target_max }}" step="any" required></label>
+            <button class="button button--small" type="submit" title="Cancels the resting target at TastyTrade, checks the cancel went through, then places the new one: never two closing orders. For a second or two there is none.">Change target</button>
+        </form>
+        <form class="inline-form" method="post" action="{{ url_for('automation.manage_side', run_id=run.id, position=side.position, action='target-off') }}">{{ next_field }}
+            <button class="button button--quiet button--small" type="submit" title="Cancels the resting target at TastyTrade. With no stop, the trade then has no exit.">Target off</button>
+        </form>
+        {% endif %}
+        {% endif %}
+        <p class="muted small">{{ futures_not_yet }}</p>{% endif %}
+        {% if side.chips %}<div class="chips">{% for chip in side.chips %}<span class="chip chip--{{ 'off' if chip.warning else 'changed' }}" title="{{ chip.title }}">{{ chip.label }}</span>{% endfor %}</div>{% endif %}
+        {% if side.state == 'closed' %}
+        <p class="muted">This group is closed.</p>
+        {% if closed_how.get(side.position) %}<ul class="plain-list small">{% for line in closed_how[side.position] %}<li>{{ line }}</li>{% endfor %}</ul>{% endif %}
+        {% elif side.state == 'selling' %}
+        <p class="notice notice--warning small">Still held: the app's order to sell it is working at the broker. It's closed once that order fills.</p>
+        {% if closed_how.get(side.position) %}<ul class="plain-list small">{% for line in closed_how[side.position] %}<li>{{ line }}</li>{% endfor %}</ul>{% endif %}
+        {% elif side.state == 'busy' %}
+        <p class="muted">A close is running on this group (or its exits are being placed). Its actions come back when it's done.</p>
+        {% elif side.held %}
+        <div class="notice notice--warning">
+            <p><strong>Held back.</strong> A close, stop move or profit target on this group may still be working at your broker, so the app isn't sending anything for it. It checks again every 30 seconds. Once your broker shows that order over, the group is released, but no stop is put back: check your broker, then set a stop (or close) here.</p>
+            <form class="inline-form" method="post" action="{{ url_for('automation.manage_side', run_id=run.id, position=side.position, action='recheck') }}">{{ next_field }}
+                <button class="button" type="submit">I've checked my broker: re-check now</button>
+            </form>
+        </div>
+        {% elif side.off %}
+        <div class="notice notice--danger">
+            <p><strong>Exits are off.</strong> This group has no stop and no target: it is not protected from a loss.{% if bot and bot.close_time %} Its timed close at {{ bot.close_time }} still closes it, and its watch rules and profit actions still run.{% else %} Its watch rules and profit actions still run.{% endif %}</p>
+            <form class="inline-form" method="post" action="{{ url_for('automation.manage_side', run_id=run.id, position=side.position, action='exits-on') }}">{{ next_field }}
+                <label>New stop % (optional) <input type="number" name="pct" min="1" max="1000" step="any" placeholder="as before"></label>
+                <button class="button button--small" type="submit">Turn exits back on</button>
+            </form>
+        </div>
+        {% elif not side.futures %}
+        {% if side.stop_off %}
+        <div class="notice notice--danger">
+            <p><strong>The stop is off.</strong> Nothing closes this group on a loss. Its target, timed close{% if bot and bot.close_time %} ({{ bot.close_time }}){% endif %} and rules still work.</p>
+            <form class="inline-form" method="post" action="{{ url_for('automation.manage_side', run_id=run.id, position=side.position, action='stop-on') }}">{{ next_field }}
+                <label>New stop % (optional) <input type="number" name="pct" min="1" max="1000" step="any" placeholder="as before"></label>
+                <button class="button button--small" type="submit">Switch the stop back on</button>
+            </form>
+        </div>
+        {% endif %}
+        {% if side.target_off %}
+        <div class="notice notice--warning">
+            <p><strong>The target is off.</strong> The app won't take this group's profit at its target. Its stop still works.</p>
+            <form class="inline-form" method="post" action="{{ url_for('automation.manage_side', run_id=run.id, position=side.position, action='target-on') }}">{{ next_field }}
+                <button class="button button--small" type="submit">Switch the target back on</button>
+            </form>
+        </div>
+        {% endif %}
+        {% endif %}
+        {% if side.state == 'open' and not side.held and not side.futures %}
+        {% set can_stop = not side.off and not side.stop_off %}
+        {% set can_target = not side.off and not side.target_off %}
+        {% if can_stop or can_target %}
+        <div class="manage-side__grid">
+            {% if can_stop %}
+            <div class="manage-field">
+                <span class="manage-field__label">Stop loss</span>
+                <form class="inline-form" method="post" action="{{ url_for('automation.manage_side', run_id=run.id, position=side.position, action='stop') }}">{{ next_field }}
+                    <input type="number" name="pct" min="0.01" max="1000" step="any" required aria-label="Stop" placeholder="new stop">
+                    <select name="unit" aria-label="Stop unit"><option value="pct">%</option><option value="usd">$ a contract</option></select>
+                    <button class="button button--quiet button--small" type="submit" formaction="{{ url_for('automation.manage_side', run_id=run.id, position=side.position, action='preview-stop') }}" title="Shows the stop this would set, and whether it would fire now. Nothing is saved or sent.">Preview</button>
+                    <button class="button button--small" type="submit">Change stop</button>
+                </form>
+                {% if side.co_mode %}
+                <span class="manage-field__label">Closing order <span class="muted">($ off the entry credit)</span></span>
+                <form class="inline-form" method="post" action="{{ url_for('automation.manage_side', run_id=run.id, position=side.position, action='closing-order') }}">{{ next_field }}
+                    <select name="mode" aria-label="Closing order">
+                        {% for value, words in (('off', 'Off'), ('both', 'Replaces each stop'), ('tighter', 'Whichever fires first')) %}<option value="{{ value }}"{% if value == side.co_mode %} selected{% endif %}>{{ words }}</option>{% endfor %}
+                    </select>
+                    <input type="number" name="amount" min="0.01" step="any" value="{{ side.co_amount if side.co_amount is not none else '' }}" aria-label="$ off the entry credit">
+                    <span class="tip"><button class="button button--small" type="submit" aria-describedby="tip-run-closing-order-{{ side.position }}">Set</button>{{ tip_text('run-closing-order-' ~ side.position, "Gives this trade its own closing order and moves the stop now, after checking it against live prices. The bot keeps its own setting.", more='/help/automation#managing-a-trade') }}</span>
+                </form>
+                {% endif %}
+            </div>
+            {% endif %}
+            {% if can_target %}
+            <div class="manage-field">
+                <span class="manage-field__label">Profit target <span class="muted">({{ target_words }})</span></span>
+                <form class="inline-form" method="post" action="{{ url_for('automation.manage_side', run_id=run.id, position=side.position, action='target') }}">{{ next_field }}
+                    <input type="number" name="pct" min="1" max="{{ target_max }}" step="any" required aria-label="Target {{ target_words }}" placeholder="new target">
+                    <button class="button button--small" type="submit">Change target</button>
+                </form>
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+        {% if side.wing_mode %}
+        <div class="manage-field">
+            <span class="manage-field__label">After the stop fills, the other legs are</span>
+            <form class="inline-form" method="post" action="{{ url_for('automation.manage_side', run_id=run.id, position=side.position, action='wing') }}">{{ next_field }}
+                <select name="mode" aria-label="After the stop">
+                    {% for value, words in wing_words.items() %}<option value="{{ value }}"{% if value == side.wing_mode %} selected{% endif %}>{{ words }}</option>{% endfor %}
+                </select>
+                <label>at <input type="number" name="limit" min="0.01" step="any" placeholder="the bid" value="{{ side.wing_limit if side.wing_limit is not none else '' }}"></label>
+                <button class="button button--small" type="submit" title="What this trade does with the group's other legs when its stop fills. The bot keeps its own rule.">Save</button>
+                {% if side.wing_own %}<button class="button button--quiet button--small" type="submit" formaction="{{ url_for('automation.manage_side', run_id=run.id, position=side.position, action='wing-revert') }}">Back to the bot's</button>{% endif %}
+            </form>
+        </div>
+        {% endif %}
+        <details class="small manage-side__more">
+            <summary>Profit actions for this trade{% if side.profit_own %} (this trade's own){% endif %}</summary>
+            <form method="post" action="{{ url_for('automation.manage_side', run_id=run.id, position=side.position, action='profits') }}">{{ next_field }}
+                <input type="hidden" name="group-{{ side.position }}-profits" value="5">
+                <label><input type="checkbox" name="group-{{ side.position }}-use-profit" value="on"{% if side.profit_use %} checked{% endif %}> Use profit actions</label>
+                <table class="table table--compact"><thead><tr><th>At {{ '$' if side.profit_unit == 'usd' else '%' }}</th><th>Close %</th><th>Move stop to {{ info('run-move-stop-to-' ~ side.position, "After this row's profit is reached and its share is closed, the stop moves to this loss on what is left, as a % of the entry price (0 is about break-even). Pick $ P&L for dollars per contract instead. Blank leaves the stop where it is.", 'Move stop to', more='/help/automation#profit-actions') }}</th><th></th></tr></thead><tbody>
+                {% for i in range(5) %}{% set a = side.profit_rows[i] if i < side.profit_rows | length else none %}
+                <tr>
+                    <td><input type="number" step="any" name="pa-{{ side.position }}-{{ i }}-at" value="{{ a.at if a else '' }}" aria-label="Level {{ i + 1 }}"></td>
+                    <td><input type="number" step="1" min="0" max="99" name="pa-{{ side.position }}-{{ i }}-close" value="{{ a.close_pct if a else '' }}" aria-label="Close % {{ i + 1 }}"></td>
+                    <td><input type="number" step="any" name="pa-{{ side.position }}-{{ i }}-stop" value="{{ (a.stop_usd if a.stop_usd is not none else (a.stop_pct if a.stop_pct is not none else '')) if a else '' }}" aria-label="New stop {{ i + 1 }}"></td>
+                    <td><select name="pa-{{ side.position }}-{{ i }}-stop-unit" aria-label="Stop unit {{ i + 1 }}"><option value="pct">% loss</option><option value="usd"{% if a and a.stop_usd is not none %} selected{% endif %}>$ P&amp;L</option></select></td>
+                </tr>
+                {% endfor %}
+                </tbody></table>
+                <button class="button button--small" type="submit" title="Replaces this group's profit actions for this trade only. An action that already ran stays as it was.">Save</button>
+                {% if side.profit_own %}<button class="button button--quiet button--small" type="submit" formaction="{{ url_for('automation.manage_side', run_id=run.id, position=side.position, action='profits-revert') }}">Back to the bot's</button>{% endif %}
+            </form>
+        </details>
+        <div class="manage-side__actions">
+            {% if side.size > 0 %}
+            <form class="inline-form" method="post" action="{{ url_for('automation.manage_side', run_id=run.id, position=side.position, action='close') }}">{{ next_field }}
+                <label>Close <input type="number" name="quantity" min="1" max="{{ side.size }}" value="{{ side.size }}" step="1" required> of {{ side.size }}{% if side.unit == 'contract' %} contract{{ 's' if side.size != 1 }}{% endif %}</label>
+                <select name="order_type" aria-label="Order type"><option value="limit">Limit</option><option value="market">Market (0DTE)</option></select>
+                <button class="button button--stop button--small" type="submit">Close</button>
+            </form>
+            {% endif %}
+            {% if not side.off %}
+            <div class="inline-form">
+                {% if not side.stop_off %}
+                <form class="inline-form" method="post" action="{{ url_for('automation.manage_side', run_id=run.id, position=side.position, action='stop-off') }}">{{ next_field }}
+                    <span class="tip"><button class="button button--quiet button--small" type="submit" aria-describedby="tip-run-stop-off-{{ side.position }}">Stop off</button>{{ tip_text('run-stop-off-' ~ side.position, "Cancels this group's stop. Nothing closes it on a loss, but its target, timed close and rules still work.", more='/help/automation#managing-a-trade') }}</span>
+                </form>
+                {% endif %}
+                {% if not side.target_off %}
+                <form class="inline-form" method="post" action="{{ url_for('automation.manage_side', run_id=run.id, position=side.position, action='target-off') }}">{{ next_field }}
+                    <span class="tip"><button class="button button--quiet button--small" type="submit" aria-describedby="tip-run-target-off-{{ side.position }}">Target off</button>{{ tip_text('run-target-off-' ~ side.position, "Switches this group's profit target off. Its stop, if it has one, still works. If the target rests at your broker, it is cancelled there first, and it's off only once the broker confirms.", more='/help/automation#managing-a-trade') }}</span>
+                </form>
+                {% endif %}
+                {% if not side.stop_off and not side.target_off %}
+                <form class="inline-form" method="post" action="{{ url_for('automation.manage_side', run_id=run.id, position=side.position, action='exits-off') }}">{{ next_field }}
+                    <span class="tip"><button class="button button--quiet button--small" type="submit" aria-describedby="tip-run-all-exits-off-{{ side.position }}">Turn all exits off</button>{{ tip_text('run-all-exits-off-' ~ side.position, "Cancels this group's stop and switches its target off: nothing protects it from a loss until you turn them back on." ~ (" The timed close at " ~ bot.close_time ~ " still closes it." if bot and bot.close_time else ""), more='/help/automation#managing-a-trade') }}</span>
+                </form>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+    {% endfor %}
+    </div>
+    {% if not next_url %}<div class="manage-close">{% include "_run_close_trade.html" %}</div>{% endif %}
+</section>
+{% endif %}

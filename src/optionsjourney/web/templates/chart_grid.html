@@ -1,0 +1,18 @@
+{% extends "chart_bare_base.html" if bare else "tracker_base.html" %}
+{% block title %}Charts · OptionsJourney{% endblock %}
+{% block main_width %}w-full{% endblock %}
+{% block main_pad %}p-0{% endblock %}
+{% block extra_head %}
+<link rel="stylesheet" href="{{ asset_url('css/chart_grid.css') }}">
+<script src="{{ url_for('static', filename='vendor/lightweight-charts-5.0.0.standalone.production.js') }}"></script>
+{% endblock %}
+{% block content %}
+<div id="chart-grid-root" class="chart-grid-root{% if bare %} bare{% endif %}">
+  <noscript>The charts need JavaScript.</noscript>
+</div>
+<script type="module">
+  import { GridDashboard } from "{{ asset_url('js/chart_grid/dashboard.js') }}";
+  const socket = io();
+  new GridDashboard({ root: document.getElementById('chart-grid-root'), socket, ...{{ {'bare': bare} | tojson }} });
+</script>
+{% endblock %}

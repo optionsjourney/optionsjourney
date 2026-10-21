@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% from "_tooltip.html" import info %}
+{% block title %}Add a trade · OptionsJourney{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Add a trade</h1>
+    <a class="link" href="{{ url_for('journal.journal_page') }}">← Journal</a>
+</div>
+
+<p class="muted">For trades the app can't sync, such as at a broker it doesn't connect. Trades in your TastyTrade and Schwab accounts come in by themselves.</p>
+
+<form class="card manual-form" method="post" action="{{ url_for('manual.add_entry') }}">
+    <div class="manual-form__row">
+        <label>Account
+            <select name="account" required>
+                {% for a in accounts %}
+                <option value="{{ a.number }}" {{ 'selected' if a.number == form.account }}>{{ a.nickname }}</option>
+                {% endfor %}
+                <option value="new" {{ 'selected' if form.account == 'new' or not accounts }}>New account…</option>
+            </select>
+        </label>
+        <label>New account name <span class="muted small">(if new)</span>
+            <input type="text" name="new_account" maxlength="100" value="{{ form.new_account or '' }}" placeholder="e.g. Fidelity IRA">
+        </label>
+    </div>
+    <div class="manual-form__row">
+        <fieldset class="choice">
+            <legend>This trade</legend>
+            <label><input type="radio" name="effect" value="open" {{ 'checked' if form.effect == 'open' }}> Opens a position</label>
+            <label><input type="radio" name="effect" value="close" {{ 'checked' if form.effect == 'close' }}> Closes one</label>
+        </fieldset>
+        <label>Date <input type="date" name="date" required value="{{ form.date or '' }}"></label>
+        <label>Time <span class="muted small">(New York)</span> <input type="time" name="time" value="{{ form.time or '' }}"></label>
+        <label>Fees, total <input type="text" name="fees" inputmode="decimal" value="{{ form.fees or '0' }}"></label>
+        {{ info('manual-fees', "The fees for the whole trade, added up, not per leg or per contract. Enter them once; the app takes them off the trade's P/L.", 'Fees') }}
+    </div>
+
+    <div class="table-scroll"><table class="table manual-legs">
+        <thead>
+            <tr><th>Leg</th><th>Type</th><th>Buy / sell {{ info('manual-buy-sell', "Sell takes cash in (a credit) and buy pays cash out (a debit), at the leg's price. A short leg is a sell, a long leg is a buy.", 'Buy and sell', more='/help/journal#adding-a-trade-by-hand') }}</th><th class="num">Quantity</th><th>Underlying</th><th class="num">Strike</th><th>Expiration</th><th class="num">Price</th></tr>
+        </thead>
+        <tbody>
+            {% for leg in legs %}
+            {% set n = loop.index %}
+            <tr>
+                <td class="muted">{{ n }}</td>
+                <td><select name="leg-{{ n }}-type" aria-label="Leg {{ n }} type">
+                    {% for t in ['put', 'call', 'shares'] %}<option value="{{ t }}" {{ 'selected' if leg.type == t }}>{{ t | title }}</option>{% endfor %}
+                </select></td>
+                <td><select name="leg-{{ n }}-side" aria-label="Leg {{ n }} buy or sell">
+                    <option value="sell" {{ 'selected' if leg.side == 'sell' }}>Sell</option>
+                    <option value="buy" {{ 'selected' if leg.side == 'buy' }}>Buy</option>
+                </select></td>
+                <td><input class="num" type="text" inputmode="decimal" name="leg-{{ n }}-quantity" value="{{ leg.quantity or '' }}" aria-label="Leg {{ n }} quantity" size="5"></td>
+                <td><input type="text" name="leg-{{ n }}-underlying" value="{{ leg.underlying or '' }}" aria-label="Leg {{ n }} underlying" size="7" placeholder="SPX"></td>
+                <td><input class="num" type="text" inputmode="decimal" name="leg-{{ n }}-strike" value="{{ leg.strike or '' }}" aria-label="Leg {{ n }} strike" size="7"></td>
+                <td><input type="date" name="leg-{{ n }}-expiration" value="{{ leg.expiration or '' }}" aria-label="Leg {{ n }} expiration"></td>
+                <td><input class="num" type="text" inputmode="decimal" name="leg-{{ n }}-price" value="{{ leg.price or '' }}" aria-label="Leg {{ n }} price" size="6" placeholder="0.00"></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table></div>
+    <p class="muted small">Leave unused legs empty. Option prices are per share (2.00 = $200 a contract). Shares don't need a strike or expiration.</p>
+    <button class="button" type="submit">Save trade</button>
+</form>
+{% endblock %}

@@ -1,0 +1,417 @@
+{% extends "base.html" %}
+{% block title %}Automation · OptionsJourney{% endblock %}
+{% block main_class %}main--wide{% endblock %}
+
+{% block content %}
+{% from "_tooltip.html" import info, tip_text %}
+{% from "_missing_exits_tip.html" import missing_exits_tip %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/automation.css') }}">
+{# #216 (Tracker2's strategies page, 81d4475c / 15518435): a command bar, today's entries on a
+   time axis, then the bots under their strategy (the journal tag they file under), one row per
+   bot kept in several accounts with an account chip each (bots/strategy_rows.py). Each bot's
+   own controls are in its row's expanded table; the row's buttons and menus only press them
+   (automation_board.js), so every confirmation stays. Without JavaScript the tables show open. #}
+{% set icon_eye %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>{% endset %}
+{% set icon_power %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v9"/><path d="M6.4 6.4a8 8 0 1 0 11.2 0"/></svg>{% endset %}
+{% set icon_bolt %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2 4 14h7l-1 8 9-12h-7z"/></svg>{% endset %}
+{% set icon_copy %}<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>{% endset %}
+{% set icon_paper %}<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2h9l5 5v15H6z"/><path d="M14 2v6h6"/><path d="M9 13h7M9 17h7"/></svg>{% endset %}
+{% set icon_play %}<svg viewBox="0 0 24 24" aria-hidden="true"><polygon points="6 4 19 12 6 20"/></svg>{% endset %}
+{% set icon_more %}<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>{% endset %}
+{% set paused = trading_switches.freeze or trading_switches.no_new_trades %}
+
+<div class="st-root" id="st-root" data-today-dow="{{ today_dow }}" data-paused="{{ '1' if paused else '0' }}"
+     data-schedule-url="{{ url_for('automation.schedule_day') }}">
+<script>document.getElementById('st-root').classList.add('js');</script>
+
+{# Command bar: the page's state in one line. #}
+<div class="st-cmd">
+    <h1>Automation{% if show_archived %} <small>archived bots</small>{% endif %}</h1>
+    <div class="st-stat st-gate{% if paused %} is-paused{% endif %}">
+        <span class="k">New entries {{ info('automation-new-entries', "Whether bots may open new trades right now. No new trades stops new entries, but trades already open keep their stops and targets. Frozen sends no orders at all. Change it from the switches menu in the top bar.", 'new entries', more='/help/automation#no-new-trades-and-freeze') }}</span>
+        <span class="v">{% if trading_switches.freeze %}Frozen{% elif trading_switches.no_new_trades %}No new trades{% else %}Allowed{% endif %}</span>
+        {% if leave.shown %}<a class="st-mon{% if leave.paused %} is-warn{% endif %}" href="#wings">{% if leave.paused %}Wings sold{% if leave.until %} until {{ leave.until }}{% endif %}{% else %}Wings left open{% endif %}</a>{% endif %}
+    </div>
+    <div class="st-stat">
+        <span class="k">Armed {{ info('automation-armed', "A bot only enters at its times while it is armed. A new bot starts switched off. The second number counts the armed bots that are Live: they send real orders. A Paper bot only pretends.", 'armed bots', more='/help/automation#arming') }}</span>
+        <span class="v st-num">{{ armed_count }} <small>of {{ total if not show_archived else '—' }} · {{ live_armed_count }} live</small></span>
+    </div>
+    <div class="st-stat">
+        <span class="k">Today</span>
+        <span class="v st-num" id="st-today-v">—</span>
+    </div>
+    <div class="st-stat st-next">
+        <span class="k">Next entry</span>
+        <span class="v" id="st-next-v">—</span>
+    </div>
+    <div class="st-stat st-integ">
+        <span class="k">Integrity {{ info('automation-integrity', "Every 30 seconds the app checks your open bot trades for a side left without protection, such as a stop that filled with nothing done about its wing. It never changes an order itself: anything it finds is listed under Needs a look, and you check your broker.", 'integrity', more='/help/automation#when-the-app-checks-itself') }}</span>
+        {% if findings %}<a class="v bad" href="#findings">{{ findings | length }} to look at</a>{% else %}<span class="v ok">Nothing found</span>{% endif %}
+    </div>
+    <div class="st-cmd-actions">
+        <button class="st-btn" type="button" data-schedule-open title="What each armed bot does today, or on another day">📅 Schedule</button>
+        <span class="tip"><a class="st-btn" href="{{ url_for('automation.match_all_page') }}" aria-describedby="tip-automation-match-all">Match all bots</a>{{ tip_text('automation-match-all', "Lists the journal trades that no bot is linked to, under the live bot each looks most like. Nothing is linked until you tick trades and press Match selected.", more='/help/automation#match-all-bots') }}</span>
+        <a class="st-btn" href="{{ url_for('automation.import_page') }}">Import a bot</a>
+        <a class="st-btn primary" href="{{ url_for('automation.new_page') }}">New bot</a>
+    </div>
+</div>
+<p class="muted small st-intro">Bots trade through TastyTrade or Schwab. New bots start Live but switched off: arm one and it sends real orders. A Paper bot checks its orders with the broker and pretends the fills.</p>
+
+{% if audit.checked and not audit.ok %}
+<section class="notice notice--warning">
+    <strong>Bots may not run:</strong>
+    {% for problem in audit.problems %}{{ problem.text }} {% endfor %}Check the app's log, then restart it.
+</section>
+{% endif %}
+{% if findings %}
+<section class="card section-gap" id="findings">
+    <h2 class="card__title">Needs a look {{ info('automation-needs-look', "Something the app found on an open bot trade, such as a side with no working stop. Each one links to its run and sends you one alert. It goes away once it is sorted. The app never changes an order because of it: check your broker.", 'Needs a look', more='/help/troubleshooting#what-does-needs-a-look-mean') }}</h2>
+    <p class="muted small">The app checks its open bot trades for anything left unprotected. It never changes an order on its own; check these with your broker.</p>
+    <ul>
+        {% for f in findings %}
+        <li><a class="link" href="{{ url_for('automation.run_page', run_id=f.run_id) }}">{{ f.bot }}, run {{ f.run_id }}</a>: {{ f.summary }} <span class="muted small">(since {{ f.since | market_time }})</span></li>
+        {% endfor %}
+    </ul>
+</section>
+{% endif %}
+
+{% if not show_archived and armed_count %}
+{# Today's entries on a time axis, one lane per strategy, from the schedule drawer's data. #}
+<section class="st-tape" id="st-tape" aria-label="Today's entries">
+    <div class="st-tape-head">
+        <h2 id="st-tape-title">Today</h2>
+        <span class="st-tape-msg" id="st-tape-msg">Loading today's schedule…</span>
+        <div class="st-legend">
+            <span><i class="st-dot done"></i>Filled</span>
+            <span><i class="st-dot pending"></i>To come</span>
+            <span><i class="st-dot skipped"></i>Skipped or blocked</span>
+            <span><i class="st-dot unfilled"></i>Not filled or missed</span>
+        </div>
+    </div>
+    <div class="st-tape-scroll"><div class="st-tape-plot" id="st-tape-plot"></div></div>
+</section>
+{% endif %}
+
+{% if open_trades %}
+<section class="card section-gap" id="open-trades">
+    <h2 class="card__title">Open bot trades</h2>
+    <form method="post" action="{{ url_for('automation.close_selected') }}">
+    <ul>
+        {% for t in open_trades %}
+        <li>{% if t.zero_dte %}<input type="checkbox" name="run_id" value="{{ t.run_id }}" aria-label="Select run {{ t.run_id }}"> {% endif %}<a class="link" href="{{ url_for('automation.run_page', run_id=t.run_id) }}">{{ t.bot_name }}, run {{ t.run_id }}</a>: {{ t.groups | join(', ') }} open{% if t.zero_dte %} <span class="muted small">(0DTE)</span>{% endif %}</li>
+        {% endfor %}
+    </ul>
+    {% if open_trades | selectattr('zero_dte') | list %}
+    <div class="inline-form">
+        <span class="muted small">Close the ticked 0DTE trades in full, each on its own (at most 15):</span>
+        <select name="order_type" aria-label="Order type"><option value="limit">Limit</option><option value="market">Market</option></select>
+        <button class="button button--quiet" type="submit">Close selected</button>
+    </div>
+    {% endif %}
+    </form>
+    <div class="inline-form">
+        <span class="muted small">Missing exits on any of these: {{ missing_exits_tip('automation-restore-missing', '/help/automation#open-bot-trades') }}</span>
+        <form class="inline-form" method="post" action="{{ url_for('automation.restore_all') }}">
+            <input type="hidden" name="apply" value="0">
+            <button class="button button--quiet" type="submit">Check missing exits</button>
+        </form>
+        <form class="inline-form" method="post" action="{{ url_for('automation.restore_all') }}">
+            <input type="hidden" name="apply" value="1">
+            <button class="button button--quiet" type="submit">Restore missing exits</button>
+        </form>
+    </div>
+</section>
+{% endif %}
+
+{% if any_bots %}
+<div class="st-tools">
+    <form class="st-search" method="get" action="{{ url_for('automation.automation_page') }}" role="search">
+        {% if tag %}<input type="hidden" name="tag" value="{{ tag }}">{% endif %}
+        {% if show_archived %}<input type="hidden" name="archived" value="1">{% endif %}
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input type="search" name="q" value="{{ query }}" placeholder="Search name, account, symbol, day" aria-label="Search bots">
+        <button class="st-btn" type="submit">Search</button>
+        {{ info('automation-search', "Every word must match. A day word like tue finds the bots that enter on that day.", 'searching bots') }}
+        {% if query %}<a class="link small" href="{{ url_for('automation.automation_page', tag=tag or none, archived='1' if show_archived else none) }}">Clear</a>{% endif %}
+    </form>
+    <div class="st-seg" role="group" aria-label="Group by" data-js-only>
+        <span>Group</span>
+        <button type="button" data-group="strategy" aria-pressed="true">Strategy</button>
+        <button type="button" data-group="day" aria-pressed="false">Day</button>
+    </div>
+    <span data-js-only>{{ info('automation-group', "Strategy is the journal tag a bot files its trades under. Day lists the bots by the weekday they enter instead. The page remembers your choice.", 'grouping', more='/help/automation#the-automation-page') }}</span>
+    <span class="st-count">{% if bots | length != total %}{{ bots | length }} of {{ total }} bots{% else %}{{ total }} bot{{ 's' if total != 1 }}{% endif %}</span>
+</div>
+<div class="chips st-tags" aria-label="Filter by tag">
+    <a class="chip{% if not tag %} chip--picked{% endif %}" href="{{ url_for('automation.automation_page', archived='1' if show_archived else none) }}">All</a>
+    {% for word in reserved | list + tags %}
+    <a class="chip{% if word | lower == tag | lower %} chip--picked{% endif %}" href="{{ url_for('automation.automation_page', tag=word, archived='1' if show_archived else none) }}">{{ word }}</a>
+    {% endfor %}
+</div>
+{% endif %}
+
+{% if not bots %}
+<section class="card"><p class="muted">{% if query %}No bots match “{{ query }}”.{% elif tag %}No bots with that tag.{% elif show_archived %}No archived bots.{% else %}No bots yet.{% endif %}</p></section>
+{% else %}
+<div class="st-board" id="st-board">
+    <div class="st-cols">
+        <span><input type="checkbox" data-tick-all aria-label="Select all bots" title="Select all / none"></span>
+        <span>Bot</span>
+        <span>Schedule</span>
+        <span class="c-exit">Exit</span>
+        <span>Accounts</span>
+        <span class="r">P/L</span>
+        <span class="r">Today</span>
+        <span></span>
+    </div>
+    <div id="st-groups">
+    {% for group, rows in groups %}
+    <section class="st-group">
+        <div class="st-group-h{% if group == 'Off' %} muted{% endif %}"><h3>{{ group }}</h3>
+            {% set n = rows | map(attribute='members') | map('length') | sum %}
+            <span class="meta">{{ n }} bot{{ 's' if n != 1 }}</span></div>
+        <div class="st-group-body">
+        {% for row in rows %}
+        <div class="st-item{% if not row.armed %} is-off{% elif row.paper %} is-paper{% endif %}{% if row.archived %} is-archived{% endif %}"
+             data-row-key="{{ row.key }}" data-bot-ids="{{ row.members | map(attribute='bot.id') | join(',') }}"
+             data-strategy="{{ row.strategy }}" data-armed="{{ '1' if row.armed else '0' }}"
+             data-weekly="{{ '1' if row.weekly else '0' }}" data-days="{{ row.days | join(',') }}">
+            <div class="st-row" tabindex="0" aria-expanded="false">
+                <input type="checkbox" class="st-row-select" aria-label="Select every bot in {{ row.name }}" title="Select {{ 'its ' ~ row.members | length ~ ' bots' if row.multi else 'it' }}">
+                <div class="st-name">
+                    <div class="t">
+                        <a href="{{ url_for('automation.bot_page', bot_id=row.members[0].bot.id) }}">{{ row.name }}</a>
+                        {% if row.underlying %}<span class="st-und">{{ row.underlying }}</span>{% endif %}
+                        {% if row.paper %}<span class="st-pill paper">Paper</span>{% endif %}
+                        {% if row.archived %}<span class="st-pill">Archived</span>{% endif %}
+                    </div>
+                    <div class="s" title="{{ row.legs | join('\n') }}">{{ row.legs | join(' · ') }}</div>
+                    {% if row.tags %}<div class="chips">{% for t in row.tags %}<span class="chip">{{ t }}</span>{% endfor %}</div>{% endif %}
+                </div>
+                <div class="st-sched">
+                    {% if row.weekly %}
+                    <div class="st-week" title="{{ row.days_label }}">
+                        {% for d in range(1, 6) %}<i class="{{ 'on' if d in row.days }}{{ ' today' if d == today_dow }}">{{ 'MTWTF'[d - 1] }}</i>{% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="st-days-label">{{ row.days_label }}</div>
+                    {% endif %}
+                    {% if row.shared_times %}
+                    <div class="st-times">{% for t in row.members[0].times %}<span data-time="{{ t }}">{{ t }}</span>{% else %}<em>no entry times</em>{% endfor %}</div>
+                    {% else %}
+                    {% for m in row.members %}
+                    <div class="st-times"><em>{{ m.account }}</em>{% for t in m.times %}<span data-time="{{ t }}">{{ t }}</span>{% else %}<em>none</em>{% endfor %}</div>
+                    {% endfor %}
+                    {% endif %}
+                </div>
+                <div class="st-exit">{% for e in row.exits %}<span>{{ e }}</span>{% endfor %}</div>
+                <div class="st-accts">
+                    {% for m in row.members %}
+                    <a class="st-acct{% if not m.bot.enabled %} off{% elif not m.bot.live %} paper{% endif %}" data-bot-id="{{ m.bot.id }}"
+                       href="{{ url_for('automation.bot_page', bot_id=m.bot.id) }}"
+                       title="{{ m.bot.name }}: {% if not m.bot.enabled %}off{% elif m.bot.live %}armed, Live{% else %}armed, Paper{% endif %}"><i></i>{{ m.account }} <b>{{ '$' if m.bot.sizing == 'dollars' else '×' ~ m.bot.contracts }}</b></a>
+                    {% endfor %}
+                    {% if row.multi and row.lots %}<span class="st-lots" title="Contracts per entry across these accounts">{{ row.lots }}{{ '+' if row.lots_partial }} lots</span>{% endif %}
+                </div>
+                <div class="st-pl">
+                    {% if row.pl_shared %}<span class="muted" title="Two of these bots share an account, so their records overlap: see each below">—</span>
+                    {% elif row.pl is not none %}<span class="{{ 'positive' if row.pl > 0 else 'negative' if row.pl < 0 }}">{{ row.pl | money }}</span>
+                    {% elif row.paper_pl is not none %}<span class="{{ 'positive' if row.paper_pl > 0 else 'negative' if row.paper_pl < 0 }}">{{ row.paper_pl | money }}</span> <span class="badge badge--preview">paper</span>
+                    {% else %}<span class="muted">—</span>{% endif %}
+                </div>
+                <div class="st-today" data-today><span class="none">—</span></div>
+                <div class="st-acts">
+                    <button type="button" class="st-ib" data-row-act="preview" title="Preview order" aria-label="Preview order">{{ icon_eye }}</button>
+                    {% if row.members | selectattr('bot.live') | rejectattr('bot.archived') | list %}
+                    <button type="button" class="st-ib go" data-row-act="trade" title="Trade now (on the bot's page)" aria-label="Trade now">{{ icon_play }}</button>
+                    {% endif %}
+                    <button type="button" class="st-ib" data-row-act="more" title="More" aria-label="More actions">{{ icon_more }}</button>
+                </div>
+            </div>
+
+            <div class="st-detail">
+                <div>
+                    {% if row.legs_differ %}
+                    {% for m in row.members %}<h4>Legs · {{ m.account }}</h4><div class="st-legs">{% for s in bot_legs(m.bot) %}<div>{{ s }}</div>{% endfor %}</div>{% endfor %}
+                    {% else %}
+                    <h4>Legs</h4><div class="st-legs">{% for s in row.legs %}<div>{{ s }}</div>{% else %}<div>—</div>{% endfor %}</div>
+                    {% endif %}
+                    <h4>Exit</h4>
+                    <div class="st-legs">{% if row.exits | length > 1 %}{% for m in row.members %}<div><span class="acct">{{ m.account }}:</span> {{ bot_exits(m.bot) | join(' · ') or '—' }}</div>{% endfor %}{% else %}{{ row.exits[0] }}{% endif %}</div>
+                </div>
+                <div class="table-scroll"><table class="table st-dt">
+                    <thead><tr><th>Account</th><th>Schedule</th><th class="num">P/L</th><th class="bot-list__actions">Preview · Arm · Mode · Clone</th></tr></thead>
+                    <tbody>
+                    {% for m in row.members %}
+                    {% set bot = m.bot %}
+                    {% set stat = stats.get(bot.id) %}
+                    {% set days, times = bot_schedule(bot) %}
+                    <tr data-bot-id="{{ bot.id }}">
+                        <td><label class="st-dt-acct"><input type="checkbox" form="skip-form" name="bot_id" value="{{ bot.id }}" data-tags="{{ bot.tags | join(',') }}" aria-label="Select {{ bot.name }}">
+                            <a class="link" data-act="open" href="{{ url_for('automation.bot_page', bot_id=bot.id) }}" title="{{ bot.name }}">{{ account_label(bot.broker, bot.account_number) }}</a></label>
+                            {% if row.multi %}<div class="muted small">{{ bot.name }}</div>{% endif %}</td>
+                        <td>{{ days }}<div class="muted small">{{ times }}</div></td>
+                        {% if stat and stat.paper and stat.closed %}
+                        <td class="num"><a class="link {{ 'positive' if stat.paper.pl > 0 else 'negative' if stat.paper.pl < 0 }}" data-act="record" href="{{ url_for('journal.paper_page', bot=bot.id) }}">{{ stat.paper.pl | money }}</a> <span class="badge badge--preview">paper</span></td>
+                        {% elif stat and stat.closed %}
+                        <td class="num"><a class="link {{ 'positive' if stat.summary.closed_pl > 0 else 'negative' if stat.summary.closed_pl < 0 }}" data-act="record" href="{{ url_for('automation.record_page', bot_id=bot.id) }}">{{ stat.summary.closed_pl | money }}</a></td>
+                        {% else %}
+                        <td class="num"><a class="link muted" data-act="record" href="{{ url_for('automation.record_page', bot_id=bot.id) }}">—</a></td>
+                        {% endif %}
+                        <td class="bot-list__actions"><div class="icon-actions">
+                            {% if app_watched(bot) and bot.live %}
+                            <a class="icon-button" data-act="preview" href="{{ url_for('automation.bot_page', bot_id=bot.id) }}#preview" title="Preview order on its page" aria-label="Preview order on its page">{{ icon_eye }}</a>
+                            {% else %}
+                            <form method="post" action="{{ url_for('automation.preview_now', bot_id=bot.id) }}">
+                                <button class="icon-button" data-act="preview" type="submit" title="Preview order" aria-label="Preview order">{{ icon_eye }}</button>
+                            </form>
+                            {% endif %}
+                            {% if bot.archived %}
+                            <span class="badge badge--preview">Archived</span>
+                            {% elif app_watched(bot) and not bot.enabled %}
+                            {# Arming a bot whose stops the app watches means ticking the box on its page #}
+                            <a class="icon-button" data-act="arm" data-label="Arm (on its page)" href="{{ url_for('automation.bot_page', bot_id=bot.id) }}#arm" title="Off: arm on its page" aria-label="Off: arm on its page">{{ icon_power }}</a>
+                            {% else %}
+                            {% set arm_tip = 'Armed: turn off' if bot.enabled else ('Off: arm it. Live: sends real orders' if bot.live else 'Off: arm it') %}
+                            <form method="post" action="{{ url_for('automation.arm', bot_id=bot.id) }}">
+                                <input type="hidden" name="next" value="list">
+                                <input type="hidden" name="on" value="{{ '0' if bot.enabled else '1' }}">
+                                <button class="icon-button {{ 'icon-button--on' if bot.enabled }}" data-act="arm" data-label="{{ 'Turn off' if bot.enabled else 'Arm' }}" type="submit" title="{{ arm_tip }}" aria-label="{{ arm_tip }}">{{ icon_power }}</button>
+                            </form>
+                            {% endif %}
+                            {% if bot.live %}
+                            <form method="post" action="{{ url_for('automation.set_live', bot_id=bot.id) }}">
+                                <input type="hidden" name="on" value="0">
+                                <button class="icon-button icon-button--live" data-act="mode" data-label="Switch to Paper" type="submit" title="Live: switch to Paper" aria-label="Live: switch to Paper">{{ icon_bolt }}</button>
+                            </form>
+                            {% else %}
+                            {# Going Live always shows its summary page first #}
+                            <a class="icon-button" data-act="mode" data-label="Go Live…" href="{{ url_for('automation.live_page', bot_id=bot.id) }}" title="Paper: go Live" aria-label="Paper: go Live">{{ icon_paper }}</a>
+                            {% endif %}
+                            {% if bot.live and not bot.archived %}
+                            <a class="icon-button" data-act="trade" href="{{ url_for('automation.bot_page', bot_id=bot.id) }}#trade-now" title="Trade now: on its page, once you type TRADE" aria-label="Trade {{ bot.name }} now">{{ icon_play }}</a>
+                            {% endif %}
+                            <form method="post" action="{{ url_for('automation.clone', bot_id=bot.id) }}">
+                                <button class="icon-button" data-act="clone" type="submit" title="Clone: a copy, switched off" aria-label="Clone {{ bot.name }}">{{ icon_copy }}</button>
+                            </form>
+                        </div></td>
+                    </tr>
+                    {% endfor %}
+                    </tbody>
+                </table></div>
+            </div>
+        </div>
+        {% endfor %}
+        </div>
+    </section>
+    {% endfor %}
+    </div>
+</div>
+{# #144 (Tracker2's select bar, the Journal's .select-bar): what to do with the ticked bots,
+   floating at the bottom once one is ticked (always there without JavaScript).
+   Skip day and tagging are separate forms, so Enter in the Tags box can never press Skip day;
+   the ticked boxes belong to the skip form and are copied into the tag form when it is sent. #}
+<div class="select-bar" id="bulk-bar">
+    <span data-ticked>With the ticked bots:</span>
+    <form id="skip-form" method="post" action="{{ url_for('automation.skip_many') }}">
+<span class="tip"><button class="button button--quiet" type="submit" aria-describedby="tip-automation-bulk-skip">Skip day</button>{{ tip_text('automation-bulk-skip', "Skips the next day the market is open for the ticked bots that are armed: none of their entries open that day. Trades already open are still looked after. There is no bulk undo.", more='/help/automation#blackout-days-and-skip-a-day') }}</span>
+        {# decision 0075: Arm and Live list the ticked bots on one page and ask for its box first #}
+<span class="tip"><button class="button button--quiet" type="submit" formaction="{{ url_for('automation.arm_many') }}" name="on" value="1" aria-describedby="tip-automation-bulk-arm">Arm</button>{{ tip_text('automation-bulk-arm', "Arms the ticked bots so they enter at their times. If any are Live, a page lists them first and asks you to tick a box: Live bots send real orders.", more='/help/automation#arming') }}</span>
+<span class="tip"><button class="button button--quiet" type="submit" formaction="{{ url_for('automation.arm_many') }}" name="on" value="0" aria-describedby="tip-automation-bulk-off">Turn off</button>{{ tip_text('automation-bulk-off', "Turns the ticked bots off, at once. They won't enter at their times until you arm them again.") }}</span>
+<span class="tip"><button class="button button--quiet" type="submit" formaction="{{ url_for('automation.mode_many') }}" name="mode" value="paper" aria-describedby="tip-automation-bulk-paper">Paper</button>{{ tip_text('automation-bulk-paper', "Switches the ticked bots to Paper, at once: from their next entry they pretend instead of sending orders. A trade a bot already has open keeps its real stops and targets.", more='/help/automation#live-and-paper') }}</span>
+<span class="tip"><button class="button button--quiet" type="submit" formaction="{{ url_for('automation.mode_many') }}" name="mode" value="live" aria-describedby="tip-automation-bulk-live">Live</button>{{ tip_text('automation-bulk-live', "Switches the ticked bots to Live and leaves them off. A page lists them first. Any open paper trades are closed. Arm them afterwards to send real orders.", more='/help/automation#live-and-paper') }}</span>
+    </form>
+    <form id="tag-form" class="inline-form" method="post" action="{{ url_for('automation.tag_many') }}">
+        {# Ticks show the ticked bots' tags (a dash: only some have it). Tick to add, untick
+           to remove, then Apply. bot_tag_menu.js sends the changes as add / remove. #}
+        <details class="dropdown tag-list" id="tag-menu">
+            <summary class="button button--quiet">Tags</summary>
+            <div class="dropdown__menu">
+                {% for word in tags %}<label class="check"><input type="checkbox" value="{{ word }}"> {{ word }}</label>{% endfor %}
+                <input type="text" data-new-tag placeholder="New tag" maxlength="40" aria-label="New tag">
+                <button class="button button--small" type="submit">Apply</button>
+            </div>
+        </details>
+        <input type="hidden" name="add">
+        <input type="hidden" name="remove">
+    </form>
+    <button class="button button--quiet" type="button" data-clear>Clear</button>
+</div>
+<script type="module" src="{{ url_for('static', filename='js/bot_tag_menu.js') }}"></script>
+<script>
+(() => {
+    const bar = document.getElementById('bulk-bar');
+    const label = bar.querySelector('[data-ticked]');
+    const boxes = () => document.querySelectorAll('input[type=checkbox][form=skip-form]:checked');
+    const update = () => {
+        const n = boxes().length;
+        bar.hidden = n === 0;
+        label.textContent = `With ${n} bot${n === 1 ? '' : 's'}:`;
+        const all = document.querySelectorAll('input[type=checkbox][form=skip-form]').length;
+        tickAll.checked = n > 0 && n === all;
+        tickAll.indeterminate = n > 0 && n < all;
+    };
+    const tickAll = document.querySelector('[data-tick-all]');
+    tickAll.addEventListener('change', () => {
+        document.querySelectorAll('input[type=checkbox][form=skip-form]')
+            .forEach(box => { box.checked = tickAll.checked; });
+        update();
+    });
+    document.addEventListener('change', (e) => { if (e.target.form?.id === 'skip-form') update(); });
+    bar.querySelector('[data-clear]').addEventListener('click', () => {
+        boxes().forEach(box => { box.checked = false; });
+        update();
+        document.dispatchEvent(new Event('bots-ticked'));
+    });
+    update();
+    document.getElementById('tag-form').addEventListener('submit', (e) => {
+        const form = e.currentTarget;
+        form.querySelectorAll('input[data-copied]').forEach(el => el.remove());
+        boxes().forEach(box => {
+            const copy = Object.assign(document.createElement('input'), { type: 'hidden', name: box.name, value: box.value });
+            copy.dataset.copied = '1';
+            form.appendChild(copy);
+        });
+    });
+})();
+</script>
+{% endif %}
+<script type="module">
+    import { installAutomationBoard } from "{{ url_for('static', filename='js/automation_board.js') }}";
+    installAutomationBoard(document, window);
+</script>
+</div>
+<p class="small section-gap">{% if show_archived %}<a class="link" href="{{ url_for('automation.automation_page') }}">Back to the bots</a>{% elif archived_count %}<a class="link" href="{{ url_for('automation.automation_page', archived='1') }}">Show archived ({{ archived_count }})</a>{% endif %}</p>
+
+<section class="card section-gap" id="manual-bots">
+    <header class="page-header">
+        <h2 class="card__title">Manual bots</h2>
+        <a class="button button--quiet" href="{{ url_for('automation.manual_new') }}">New manual bot</a>
+    </header>
+    <p class="muted small">Exit rules (profit target, stop loss, exit time, alerts) you attach to a trade you already have. They never open trades.</p>
+    {% if manual_bots %}
+    <ul class="plain-list">
+        {% for id, rules in manual_bots %}<li><a class="link" href="{{ url_for('automation.manual_page', bot_id=id) }}">{{ rules.name }}</a></li>{% endfor %}
+    </ul>
+    {% else %}<p class="muted">No manual bots yet.</p>{% endif %}
+</section>
+
+{% if leave.shown %}
+<section class="card section-gap" id="wings">
+    <h2 class="card__title">Wings left open after a stop {{ info('automation-wings', "The wing is the option you bought for protection. A group set to Left alone keeps its wing in your account when its stop fills. Pause sells those wings instead (and any already left open) while you are away; Resume goes back to leaving them.", 'wings left open', more='/help/automation#pausing-left-open') }}</h2>
+    {% if leave.paused %}
+    <p>Paused{% if leave.until %} until {{ leave.until }} New York time{% endif %}: groups set to "Left alone" sell their wing when their stop fills, and wings already left open are sold.</p>
+    <form method="post" action="{{ url_for('automation.leave_resume') }}">
+        <button class="button button--quiet" type="submit">Resume</button>
+    </form>
+    {% else %}
+    <p class="muted small">Some bots or trades are set to leave the wing (the option bought for protection) in your account when a stop fills. Pause this when you step away and those wings are sold instead.</p>
+    <form method="post" action="{{ url_for('automation.leave_pause') }}">
+        <label>Until, New York time (optional) <input type="time" name="until"></label>
+        <button class="button button--quiet" type="submit">Pause</button>
+    </form>
+    {% endif %}
+</section>
+{% endif %}
+{% include "_schedule_drawer.html" %}
+{% endblock %}

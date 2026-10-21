@@ -1,0 +1,15 @@
+{% from "_tooltip.html" import tip_text %}
+{# The Freeze / No new trades banners, on every page (order path). Styles: css/nav.css. #}
+{% if trading_switches.freeze %}
+<div class="banner banner--freeze" role="status">
+    <span><strong>Frozen:</strong> the app isn't sending orders or watching your trades. Orders already at your broker are still active.</span>
+    <a href="{{ url_for('orders.order_log') }}">Order log</a>
+    <form method="post" action="{{ url_for('orders.switch', name='freeze') }}"><input type="hidden" name="on" value="0"><input type="hidden" name="next" value="{{ request.path }}"><span class="tip tip--end"><button type="submit" aria-describedby="tip-banner-unfreeze">Unfreeze</button>{{ tip_text('banner-unfreeze', "Turns Freeze off. The app can send orders again and goes back to watching your open trades. Stops that were waiting for a trade that filled while frozen are placed then, so check your broker first.", more='/help/pausing-trading#what-to-do-while-frozen') }}</span></form>
+</div>
+{% elif trading_switches.no_new_trades %}
+<div class="banner banner--no-new" role="status">
+    <span><strong>No new trades:</strong> bots won't open trades. Open trades are still watched.</span>
+    <a href="{{ url_for('orders.order_log') }}">Order log</a>
+    <form method="post" action="{{ url_for('orders.switch', name='no_new_trades') }}"><input type="hidden" name="on" value="0"><input type="hidden" name="next" value="{{ request.path }}"><span class="tip tip--end"><button type="submit" aria-describedby="tip-banner-no-new">Turn off</button>{{ tip_text('banner-no-new', "Turns No new trades off. Bots can open trades again at their next entry time. Nothing is sent at the moment you press it.", more='/help/pausing-trading#no-new-trades') }}</span></form>
+</div>
+{% endif %}

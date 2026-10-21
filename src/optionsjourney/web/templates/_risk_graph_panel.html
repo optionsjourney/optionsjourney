@@ -1,0 +1,117 @@
+{% from "_tooltip.html" import info, tip_text %}
+{# Enlarged risk graph panel: header, controls, chart, Greeks, slices, stats. Included by
+   risk_graph.html. static/js/risk_graph.js drives it by these element ids.
+   OptionsJourney: Tracker2's _risk_graph_panel.html without its "Open in Analyzer" link. #}
+<!-- Header -->
+<div class="px-3 sm:px-6 py-4 border-b border-gray-200 dark:border-gray-700 flex justify-between items-center flex-shrink-0">
+    <div>
+        <h3 class="text-base sm:text-lg font-semibold text-gray-900 dark:text-white" id="pl-chart-title">Risk Graph</h3>
+        <p class="text-xs text-gray-500 dark:text-gray-400 mt-0.5" id="pl-chart-subtitle"></p>
+    </div>
+    <div class="flex items-center gap-4">
+        <div class="text-right">
+            <div class="text-xs text-gray-500 dark:text-gray-400"><span class="live-dot" data-live-key="modal"></span>Theoretical P&amp;L <span class="tip tip--end"><button type="button" class="tip__icon" aria-label="More about Theoretical P&amp;L" aria-describedby="tip-risk-theoretical-pl">i</button>{{ tip_text('risk-theoretical-pl', "The dashed Theoretical line at today's price, for the Time and IV you have set, plus anything already made or lost on closed legs. It is a model's estimate, not your broker's number.", more='/help/journal#risk-graphs') }}</span></div>
+            <div class="font-mono text-sm font-semibold" id="pl-header-theo-pl">—</div>
+        </div>
+    </div>
+</div>
+
+<!-- Loading -->
+<div id="pl-chart-loading" class="flex items-center justify-center py-16">
+    <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-gray-300 border-t-blue-600"></div>
+</div>
+
+<!-- Error -->
+<div id="pl-chart-error" class="hidden px-3 sm:px-6 py-8 text-center">
+    <p class="text-red-500 dark:text-red-400" id="pl-chart-error-text"></p>
+</div>
+
+<!-- Content -->
+<div id="pl-chart-content" class="hidden flex flex-col overflow-y-auto" style="flex:1;">
+    <!-- Underlyings (pop-out spanning more than one: one tab each) -->
+    <div id="pl-symbols" class="hidden px-3 sm:px-6 pt-3 flex-shrink-0"></div>
+    <!-- Orders (pop-out of a group: one checkbox per order) -->
+    <div id="pl-orders" class="hidden px-3 sm:px-6 pt-3 space-y-0.5 flex-shrink-0"></div>
+    <!-- Legend -->
+    <div class="px-3 sm:px-6 pt-3 pb-1 flex gap-4 flex-shrink-0 text-xs text-gray-500 dark:text-gray-400">
+        <div><span class="inline-block w-6 border-t-2 border-emerald-400 mr-1 align-middle"></span>At expiry {{ info('risk-at-expiry', "The green line: what the trade makes or loses at each price if you hold to expiration. It does not change with the Time or IV sliders.", 'At expiry', more='/help/journal#risk-graphs') }}</div>
+        <div><span class="inline-block w-6 border-t-2 border-dashed border-blue-400 mr-1 align-middle"></span>Theoretical {{ info('risk-theoretical', "The dashed blue line: the trade's estimated P/L at each price for the Time and IV you set (Time starts at now, IV at the model's own). It shows where the trade stands today, before expiry.", 'Theoretical', more='/help/journal#risk-graphs') }}</div>
+        <div><span class="inline-block w-4 border-l-2 border-white/40 dark:border-white/30 mr-1 align-middle" style="height:10px;display:inline-block;vertical-align:middle;"></span>Current price</div>
+    </div>
+    <!-- Controls -->
+    <div class="px-3 sm:px-6 pb-2 flex flex-wrap items-center gap-x-6 gap-y-2 flex-shrink-0 text-xs text-gray-500 dark:text-gray-400">
+        <div class="flex items-center gap-2">
+            <span>Time:</span>
+            <input id="pl-time-slider" type="range" min="0" max="0" value="0" step="60"
+                class="w-32 accent-blue-600" oninput="_onPlSliderInput()">
+            <span id="pl-time-label" class="font-mono">now</span>
+        </div>
+        <div class="flex items-center gap-2">
+            <span>IV:</span>
+            <input id="pl-iv-slider" type="range" min="0" max="80" value="0" step="1"
+                class="w-32 accent-blue-600" oninput="_onPlSliderInput()">
+            <span id="pl-iv-label" class="font-mono">model</span>
+        </div>
+        <div id="pl-breakevens" class="font-mono"></div>
+        <div class="flex items-center gap-1 ml-auto">
+            <button id="pl-add-slice" onclick="_openPlSliceMenu(this)" title="Price slices — add one, or drop one at every break-even"
+                class="w-6 h-6 rounded border text-xs font-bold leading-none flex items-center justify-center cursor-pointer bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400">⊹</button>
+            <button id="pl-toggle-sd" onclick="_togglePlSD()" title="Shade the ±1 standard-deviation expected move to expiration"
+                class="w-6 h-6 rounded border text-xs font-bold leading-none flex items-center justify-center cursor-pointer bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400">σ</button>
+            <span class="tip tip--end"><button id="pl-toggle-greeks" onclick="_togglePlGreeks()" aria-describedby="tip-risk-greeks-toggle"
+                class="w-6 h-6 rounded border text-xs font-bold leading-none flex items-center justify-center cursor-pointer bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400">Δ</button>{{ tip_text('risk-greeks-toggle', "Show or hide the row of Greeks (Delta, Gamma, Theta, Vega) for the whole trade at the current price. They follow the Time and IV sliders.", more='/help/journal#risk-graphs') }}</span>
+        </div>
+    </div>
+    <!-- Chart -->
+    {# The minimum height sits on this flex item, not the canvas: a canvas taller than its box
+       had its bottom -- the price axis and current-price tag -- clipped in a short window. A short
+       window now scrolls the panel instead. The canvas box is pinned absolutely to it: a
+       height:100% child only resolves inside a fixed-height column (the modal, the pop-out);
+       in the strategy preview drawer it fell back to the canvas's ~2:1 aspect -- 150px tall on
+       a phone, the rest of the box left empty. #}
+    <div class="flex-1" style="position:relative; min-height:436px; overflow:hidden;">
+        <div class="absolute inset-x-3 sm:inset-x-6 top-0 bottom-4">
+            <canvas id="pl-chart-canvas" style="width:100%; height:100%;"></canvas>
+        </div>
+    </div>
+    <!-- Greeks row (hidden unless toggled on) -->
+    <div id="pl-greeks-row" class="hidden px-3 sm:px-6 pb-3 grid grid-cols-4 gap-3 text-center flex-shrink-0 text-xs">
+        <div>
+            <div class="text-gray-500 dark:text-gray-400">Delta {{ info('risk-delta', "How many shares the whole trade acts like. A Delta of +50 means it gains about $50 if the price rises $1, and loses about $50 if it falls $1. Each contract counts as 100 shares, added up across all legs.", 'Delta', more='/help/journal#risk-graphs') }}</div>
+            <div class="font-mono text-sm text-gray-900 dark:text-white" id="pl-greek-delta"></div>
+        </div>
+        <div>
+            <div class="text-gray-500 dark:text-gray-400">Gamma {{ info('risk-gamma', "How much the Delta changes for a $1 move in the price, with each contract counted as 100 shares and all legs added up. A big number means the trade's gain or loss per dollar can change quickly.", 'Gamma', more='/help/journal#risk-graphs') }}</div>
+            <div class="font-mono text-sm text-gray-900 dark:text-white" id="pl-greek-gamma"></div>
+        </div>
+        <div>
+            <div class="text-gray-500 dark:text-gray-400">Theta {{ info('risk-theta', "Dollars the trade gains (green) or loses (red) from one more trading day passing, for the whole trade, other things equal. Weekends do not count as days.", 'Theta', more='/help/journal#risk-graphs') }}</div>
+            <div class="font-mono text-sm" id="pl-greek-theta"></div>
+        </div>
+        <div>
+            <div class="text-gray-500 dark:text-gray-400">Vega {{ info('risk-vega', "Dollars the trade gains or loses if volatility rises one point, for the whole trade. A negative number means the trade loses when volatility rises.", 'Vega', more='/help/journal#risk-graphs') }}</div>
+            <div class="font-mono text-sm text-gray-900 dark:text-white" id="pl-greek-vega"></div>
+        </div>
+    </div>
+    <!-- Price slices strip (hidden unless at least one slice exists; its table starts collapsed) -->
+    <div id="pl-slices-strip" class="hidden px-3 sm:px-6 pb-3 flex-shrink-0 overflow-x-auto"></div>
+    <!-- Stats row -->
+    <div id="pl-stats" class="px-3 sm:px-6 pb-4 grid grid-cols-4 gap-3 text-center flex-shrink-0 border-t border-gray-100 dark:border-gray-800 pt-3">
+        <div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">Cost Basis {{ info('risk-cost-basis', "What the open legs brought in or cost when you opened them, plus anything already made or lost on closed legs. cr means a net credit received; db means a net debit paid.", 'Cost Basis', more='/help/journal#risk-graphs') }}</div>
+            <div class="font-mono text-sm text-gray-900 dark:text-white" id="pl-stat-cost"></div>
+        </div>
+        <div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">Max Profit (at expiry)</div>
+            <div class="font-mono text-sm text-green-600 dark:text-green-400" id="pl-stat-maxprofit"></div>
+        </div>
+        <div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">Max Loss (at expiry)</div>
+            <div class="font-mono text-sm text-red-500 dark:text-red-400" id="pl-stat-maxloss"></div>
+        </div>
+        <div>
+            <div class="text-xs text-gray-500 dark:text-gray-400">S/L Ratio {{ info('risk-sl-ratio', "Max profit divided by max loss at expiry. A 2.00 ratio means you stand to make $2 for every $1 at risk. It shows a dash when either side is unlimited or the trade can't both win and lose.", 'S/L Ratio', more='/help/journal#risk-graphs') }}</div>
+            <div class="font-mono text-sm text-gray-900 dark:text-white" id="pl-stat-ratio"></div>
+        </div>
+    </div>
+</div>
