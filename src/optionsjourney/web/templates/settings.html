@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_brokers.html" import tastytrade_card, schwab_card %}
+{% from "_brokers.html" import tastytrade_card, schwab_card, demo_note %}
 {% from "_tooltip.html" import info, tip_text %}
 {% block title %}Settings · OptionsJourney{% endblock %}
 
@@ -10,12 +10,16 @@
     {% endif %}
     <div class="settings__subhead">
         <h3>Backups in the folder</h3>
+        {% if demo_mode %}
+        <span class="demo-off">Not in the demo</span>
+        {% else %}
         <form method="post" action="{{ url_for('settings.backup_now') }}">
             <span class="tip tip--end">
                 <button class="button button--quiet" type="submit" aria-describedby="tip-backup-now">Back up now</button>
                 {{ tip_text('backup-now', 'Makes a backup straight away, in the folder above. Older ones beyond the number to keep are deleted.') }}
             </span>
         </form>
+        {% endif %}
     </div>
     {% if not backups %}
     <p class="muted">None yet.</p>
@@ -30,6 +34,9 @@
                 <td class="muted small">{{ b.name }}</td>
                 <td class="num">{{ '%.1f MB' % (b.size / 1048576) }}</td>
                 <td>
+                    {% if demo_mode %}
+                    <span class="demo-off">Not in the demo</span>
+                    {% else %}
                     <form method="post" action="{{ url_for('settings.restore') }}"
                           onsubmit='return confirm({{ ("Restore the backup from " ~ (b.made_at | market_time) ~ "? Your journal as it is now is backed up first.") | tojson }})'>
                         <input type="hidden" name="name" value="{{ b.name }}">
@@ -38,6 +45,7 @@
                             {{ tip_text('restore-' ~ loop.index, 'Puts this backup in place of your journal. Your journal as it is now is backed up first, so you can go back.') }}
                         </span>
                     </form>
+                    {% endif %}
                 </td>
             </tr>
             {% endfor %}
@@ -71,7 +79,9 @@
     <div class="settings__panels">
         <section class="settings__panel" id="brokers" aria-labelledby="brokers-title">
             <h2 class="settings__title" id="brokers-title">Brokers</h2>
-            {% if not brokers %}
+            {% if demo_mode %}
+            {{ demo_note() }}
+            {% elif not brokers %}
             <p class="muted">Development mode: broker logins come from the Tracker2 server, so there's nothing to connect here.</p>
             {% else %}
             <p class="muted small">Your broker logins are kept in this computer's keychain, never in the app's files or backups.</p>
@@ -120,10 +130,14 @@
                         <input id="setting-{{ s.key }}" type="{{ 'password' if s.secret else 'text' }}" autocomplete="off" name="{{ s.key }}" value="{{ values[s.key] }}"
                                {% if problems[s.key] %}aria-invalid="true" aria-describedby="problem-{{ s.key }}"{% endif %}>
                         {% if s.key == 'backup_folder' %}
+                        {% if demo_mode %}
+                        <span class="demo-off">Not in the demo</span>
+                        {% else %}
                         <span class="tip tip--end">
                             <button type="button" class="button button--quiet" id="browse-folder" aria-describedby="tip-browse">Browse…</button>
                             {{ tip_text('browse', "Opens this computer's folder picker. The folder you choose goes in the box; click Save to keep it.") }}
                         </span>
+                        {% endif %}
                         </div>
                         {% endif %}
                         {% endif %}
@@ -132,6 +146,9 @@
                 </div>
                 {% endfor %}
                 <div class="settings__actions">
+                    {% if section.key == 'notifications' and demo_mode %}
+                    <span class="demo-off">Not in the demo</span>
+                    {% else %}
                     {% if section.key == 'notifications' %}
                     <span class="tip tip--end">
                         <button class="button button--quiet" type="submit" formaction="{{ url_for('settings.test_notifications') }}" aria-describedby="tip-send-test">Send a test</button>
@@ -139,6 +156,7 @@
                     </span>
                     {% endif %}
                     <button class="button" type="submit">Save</button>
+                    {% endif %}
                 </div>
             </form>
             {% if section.key == 'backups' %}{{ backup_list() }}{% endif %}
@@ -180,9 +198,13 @@
                     </tbody>
                 </table></div>
                 <p class="small">Holidays: {% if calendar.calendar_years %}from NYSE's calendar for {{ calendar.calendar_years | join(', ') }}{% else %}the built-in table{% endif %}, through {{ calendar.calendar_through }}.</p>
+                {% if demo_mode %}
+                <span class="demo-off">Not in the demo</span>
+                {% else %}
                 <form method="post" action="{{ url_for('settings.calendar_refresh') }}">
                     <button class="button button--quiet" type="submit">Refresh now</button>
                 </form>
+                {% endif %}
                 {% endif %}
             </div>
             {% endif %}

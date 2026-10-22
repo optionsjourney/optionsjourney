@@ -5,7 +5,7 @@
 Each answer starts with the most common reason. Many come down to the app not running at the time: see [When the app or computer is off](behind-the-scenes.md#when-the-app-or-computer-is-off).
 
 ## The app won't open or isn't working
-- **There's no OJ icon** in the system tray (Windows) or the menu bar (Mac): the app isn't running. Open **OptionsJourney** from the Start menu (Windows), or from Spotlight (⌘ Space) or Launchpad (Mac).
+- **There's no green check-mark icon** in the system tray (Windows) or the menu bar (Mac): the app isn't running. Open **OptionsJourney** from the Start menu (Windows), or from Spotlight (⌘ Space) or Launchpad (Mac).
 - **The icon is there, but the page won't load:** choose **Restart OptionsJourney** in the OJ menu, wait a few seconds, then choose **Open OptionsJourney**.
 - **A page says "Something went wrong":** see [below](#a-page-says-something-went-wrong).
 - **Finding the logs:** choose **Open logs** in the OJ menu. If there's no menu, the `logs` folder is inside your data folder: `AppData\Local\OptionsJourney` on Windows, `Library/Application Support/OptionsJourney` on a Mac (see [Where things are](installing.md#where-things-are)).

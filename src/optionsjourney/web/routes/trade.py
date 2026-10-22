@@ -53,7 +53,23 @@ def _accounts() -> list[dict]:
 @bp.get("/trade")
 def trade_page():
     ticker = core_chain.clean_ticker(request.args.get("ticker")) or "SPX"
-    return render_template("trade_ticket.html", ticker=ticker, accounts=_accounts())
+    return render_template(
+        "trade_ticket.html", ticker=ticker, accounts=_accounts(), tour_tray=_tour_tray()
+    )
+
+
+def _tour_tray() -> dict | None:
+    """The tour's put spread, only in the demo and only while the tour is on its Trade step."""
+    demo = services().demo
+    if demo is None:
+        return None
+    with demo.tour_lock:
+        on_trade_step = demo.tour.current == 4
+    if not on_trade_step:
+        return None
+    from optionsjourney.demo.tour_trade import put_spread_tray  # noqa: PLC0415 -- demo only
+
+    return put_spread_tray(demo.market, demo.clock)
 
 
 def _account(source) -> tuple[str, str] | None:

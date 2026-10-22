@@ -31,7 +31,7 @@
         {% endif %}
         <div class="inline-form section-gap">
             <label class="small"><input type="checkbox" name="confirm" value="1" required> I understand the app stops for about a minute while v{{ version }} is installed.</label>
-            <button class="button" type="submit">Install now</button>
+            {% if demo_mode %}<span class="demo-off">Not in the demo</span>{% else %}<button class="button" type="submit">Install now</button>{% endif %}
             <a class="button button--quiet" href="/">Not now</a>
         </div>
     </form>

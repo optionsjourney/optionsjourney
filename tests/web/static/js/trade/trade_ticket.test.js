@@ -33,6 +33,15 @@ test('sendLabel', () => {
   assert.equal(K.sendLabel({ mode: 'dry_run' }), 'Send dry run');
 });
 
+test('the demo page never says real (demo final review I-1); elsewhere the words are as before', () => {
+  assert.equal(K.sendLabel({ mode: 'live' }, true), 'Send order (demo)');
+  assert.equal(K.sendLabel({ mode: 'dry_run' }, true), 'Send dry run');
+  assert.equal(K.sendWarning(true), "This sends an order to the demo's pretend broker. Nothing here is real money.");
+  assert.equal(K.acceptedWords(true), "The demo's pretend broker accepted it.");
+  assert.equal(K.sendWarning(), 'This sends a live order to your broker.');
+  assert.equal(K.acceptedWords(false), 'Your broker accepted it.');
+});
+
 test('resultView covers working, filled, dry run, refused and errors', () => {
   assert.deepEqual(K.resultView({ status: 'success', result: { status: 'working', run_id: 5, price: '1.45' } }),
     { tone: 'ok', text: 'Working at 1.45 — the strategy protects it when it fills', canCancel: true, runId: 5 });

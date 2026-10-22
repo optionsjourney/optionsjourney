@@ -13,8 +13,10 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tooltips.css') }}">
     <script type="module" src="{{ url_for('static', filename='js/tooltips.js') }}"></script>
     {% block extra_head %}{% endblock %}
+    {% if demo_mode %}<link rel="stylesheet" href="{{ url_for('static', filename='css/demo.css') }}">{% endif %}
 </head>
 <body class="chart-bare h-screen flex flex-col bg-[#07090d] text-gray-100">
+    {% include '_demo_banner.html' %}
     {% block content %}{% endblock %}
 </body>
 </html>

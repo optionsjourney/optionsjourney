@@ -2,9 +2,11 @@
 
 import logging
 import secrets
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from typing import Protocol
 
 from flask import Flask, jsonify, render_template, request, url_for
@@ -16,7 +18,7 @@ from optionsjourney.brokers import guard
 from optionsjourney.brokers.credentials import CredentialProvider, provider_for
 from optionsjourney.brokers.schwab import SchwabClient
 from optionsjourney.brokers.tastytrade import TastyTradeClient
-from optionsjourney.config import Settings, load_settings
+from optionsjourney.config import ConfigError, Settings, load_settings
 from optionsjourney.db import make_engine, make_session_factory, migrate, schema_state
 from optionsjourney.services import backups
 from optionsjourney.services import settings as settings_service
@@ -79,6 +81,8 @@ class Services:
     risk_quotes: object | None = None
     # Set by services.fill_sync.start (#172)
     fill_sync: object | None = None
+    # Demo mode only (create_app): the pretend market, brokers, clock, stream and engine
+    demo: SimpleNamespace | None = None
 
 
 class NewerDataError(Exception):
@@ -115,6 +119,44 @@ def _prepare_data(settings: Settings, engine, session_factory) -> None:
     settings_service.set_app_version(session_factory, __version__)
 
 
+def _refuse_demo_data(settings: Settings) -> None:
+    from optionsjourney.demo import marker  # noqa: PLC0415 -- small: no demo engine
+
+    problem = marker.refusal(settings.data_dir, demo=False)
+    if problem:
+        raise ConfigError(problem)
+
+
+def _demo_parts(settings: Settings) -> SimpleNamespace:
+    """Demo mode's pretend world: the guards, the starting account (built fresh in the
+    data folder, which must hold no database but the demo's own), the demo clock, one
+    made-up market and a pretend TastyTrade and Schwab trading against it."""
+    from optionsjourney.demo import offline, seed  # noqa: PLC0415
+    from optionsjourney.demo.broker import PretendSchwab, PretendTasty  # noqa: PLC0415
+    from optionsjourney.demo.clock import DEMO_DAY, DEMO_START, NY, DemoClock  # noqa: PLC0415
+    from optionsjourney.demo.feeds import DemoStream  # noqa: PLC0415
+    from optionsjourney.demo.market import PretendMarket  # noqa: PLC0415
+
+    offline.install()
+    guard.install()
+    books = seed.prepare(settings.data_dir)  # refuses a real database, leaving it alone
+    clock = DemoClock.start()
+    # The market the seed priced its trades on: the same seed and start
+    market = PretendMarket(
+        seed=seed.MARKET_SEED, start=datetime.combine(DEMO_DAY, DEMO_START, tzinfo=NY)
+    )
+    return SimpleNamespace(
+        credentials=provider_for(settings),
+        clock=clock,
+        market=market,
+        tasty=PretendTasty(market, books.tasty),
+        schwab=PretendSchwab(market, books.schwab),
+        stream=DemoStream(),
+        engine=None,
+        director=None,
+    )
+
+
 def create_app(
     settings: Settings | None = None,
     *,
@@ -124,9 +166,21 @@ def create_app(
 ) -> Flask:
     settings = settings or load_settings()
 
-    if settings.is_gateway:
-        # Before any broker client exists. Never removed for this process.
-        guard.install()
+    demo = None
+    if settings.is_demo:
+        # Before anything else: no network at all, and the trading guard as in gateway
+        # mode. Neither is ever removed for this process.
+        demo = _demo_parts(settings)
+        credentials = demo.credentials
+        broker_clients = lambda: [demo.tasty, demo.schwab]  # noqa: E731
+        quote_hub = QuoteHub([demo.stream])
+    else:
+        # Before anything is written: a demo's database (risk boxes ticked, a Live bot
+        # armed) never opens as a real app
+        _refuse_demo_data(settings)
+        if settings.is_gateway:
+            # Before any broker client exists. Never removed for this process.
+            guard.install()
 
     engine = make_engine(settings.database_path)
     session_factory = make_session_factory(engine)
@@ -154,13 +208,32 @@ def create_app(
         close_cache=CloseCache(),
         quote_hub=quote_hub or make_hub(broker_clients(), credentials, gateway=settings.is_gateway),
     )
+    if demo is not None:
+        from optionsjourney.demo.engine import DemoEngine  # noqa: PLC0415
+
+        services = app.extensions["optionsjourney"]
+        from optionsjourney.demo.director import Director  # noqa: PLC0415
+        from optionsjourney.demo.tour import Tour  # noqa: PLC0415
+        from optionsjourney.demo.tour_facts import Visited  # noqa: PLC0415
+
+        demo.engine = DemoEngine(services, demo.market, demo.tasty, demo.clock, demo.stream)
+        demo.director = Director(session_factory, demo.market, demo.clock, demo.clock.now())
+        demo.engine.director = demo.director
+        demo.tour = Tour()
+        demo.visited = Visited()
+        demo.tour_lock = threading.Lock()
+        services.demo = demo
 
     formatting.register(app)
     security.register(app)
 
     @app.context_processor
     def _inject_mode():
-        return {"gateway_mode": settings.is_gateway, "app_version": __version__}
+        return {
+            "gateway_mode": settings.is_gateway,
+            "demo_mode": settings.is_demo,
+            "app_version": __version__,
+        }
 
     @app.context_processor
     def _inject_alert_count():
@@ -200,8 +273,14 @@ def create_app(
     app.register_blueprint(health.bp)
     app.register_blueprint(update.bp)
     app.register_blueprint(help_pages.bp)
+    if settings.is_demo:
+        from optionsjourney.web.routes import demo as demo_routes  # noqa: PLC0415
+
+        app.register_blueprint(demo_routes.bp)
 
     sockets.register(app)
+    if settings.is_demo:
+        demo_routes.gate_sockets(app)
 
     @app.errorhandler(500)
     def unexpected_error(e):

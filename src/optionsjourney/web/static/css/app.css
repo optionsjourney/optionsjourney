@@ -131,6 +131,7 @@ h2 { font-size: 1.1rem; }
 .table td { padding: 0.6rem 0.75rem; border-bottom: 1px solid var(--border); }
 .table tbody tr:last-child td { border-bottom: none; }
 .num { text-align: right; font-variant-numeric: tabular-nums; }
+.table th.num { text-align: right; }
 
 /* Notices */
 .notice { margin: 0 0 1rem; padding: 0.75rem 1rem; border-radius: var(--radius); }

@@ -1,6 +1,6 @@
 # 0097. The website is static, built from the guide on main, and deployed by Railway on push
 
-- **Status:** Accepted
+- **Status:** Accepted, deployment replaced by 0101
 - **Date:** 2026-10-21
 
 ## Context

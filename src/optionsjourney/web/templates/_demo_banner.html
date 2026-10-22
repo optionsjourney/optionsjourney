@@ -1,0 +1,29 @@
+{# Demo mode's banner, on every page (base.html, tracker_base.html, chart_bare_base.html,
+   error.html): what the demo is, Skip ahead, and after the close Start a new day.
+   Routes: web/routes/demo.py. Styles: css/demo.css. #}
+{% if demo_mode %}
+<div class="demo-banner" role="status">
+    <span class="demo-banner__text"><strong>Demo · made-up prices · nothing here is real money</strong></span>
+    <a class="demo-banner__link" href="/help/disclaimer">Disclaimer</a>
+    {% if demo_over %}
+    <span class="demo-banner__over">The demo's trading day is over</span>
+    <form class="demo-banner__form" method="post" action="/demo/new-day">
+        <button class="demo-banner__button" type="submit">Start a new day</button>
+    </form>
+    {% else %}
+    {% if demo_time %}<span class="demo-banner__time">{{ demo_time }} New York</span>{% endif %}
+    <form class="demo-banner__form" method="post" action="/demo/skip">
+        <input type="hidden" name="minutes" value="15">
+        <button class="demo-banner__button" type="submit">Skip 15 min</button>
+    </form>
+    <form class="demo-banner__form" method="post" action="/demo/skip">
+        <input type="hidden" name="to" value="close">
+        <button class="demo-banner__button" type="submit">Skip to the close</button>
+    </form>
+    {% endif %}
+    <form class="demo-banner__form" method="post" action="/demo/tour/restart">
+        <button class="demo-banner__button" type="submit">Restart tour</button>
+    </form>
+</div>
+{% include '_demo_tour.html' %}
+{% endif %}

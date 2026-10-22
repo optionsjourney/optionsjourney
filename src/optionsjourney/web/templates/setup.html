@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_brokers.html" import tastytrade_card, schwab_card %}
+{% from "_brokers.html" import tastytrade_card, schwab_card, demo_note %}
 {% from "_tooltip.html" import info %}
 {% block title %}Set up · OptionsJourney{% endblock %}
 
@@ -39,6 +39,12 @@
             <p class="muted small">Neither? Leave both unticked: you'll add trades by hand.</p>
             <button class="button" type="submit">Next</button>
         </form>
+
+        {% elif step in ('tastytrade', 'schwab') and demo_mode %}
+        {{ demo_note() }}
+        <div class="setup__nav">
+            <a class="button" href="{{ next_url }}">Next</a>
+        </div>
 
         {% elif step == 'tastytrade' %}
         {{ tastytrade_card(brokers, next=url_for('setup.step', name='tastytrade'), ask_risk=ask_risk) }}

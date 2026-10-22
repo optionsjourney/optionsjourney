@@ -54,3 +54,8 @@ def test_listen_on_network_opens_all_interfaces():
 def test_listen_on_network_rejects_unclear_values():
     with pytest.raises(ConfigError, match="LISTEN_ON_NETWORK"):
         load_settings({"LISTEN_ON_NETWORK": "maybe"})
+
+
+def test_demo_mode_is_a_credential_mode():
+    s = load_settings({"BROKER_CREDENTIALS": "demo", "OPTIONSJOURNEY_DATA_DIR": "/tmp/oj"})
+    assert s.is_demo and not s.is_gateway

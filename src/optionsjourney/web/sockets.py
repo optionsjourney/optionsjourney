@@ -28,7 +28,12 @@ def register(app: Flask) -> SocketIO:
     def tastytrade():
         return next((c for c in services.broker_clients() if hasattr(c, "quote_token")), None)
 
-    services.chart_feed = chart_feed.ChartFeed(tastytrade, push)
+    if services.settings.is_demo:
+        from optionsjourney.demo import feeds  # noqa: PLC0415
+
+        services.chart_feed = feeds.make_chart_feed(push)  # the demo engine fills it
+    else:
+        services.chart_feed = chart_feed.ChartFeed(tastytrade, push)
     services.risk_quotes = RiskQuotes(services.quote_hub, push)
     services.watchlist_quotes = WatchlistQuotes(services.quote_hub, services.broker_clients, push)
     services.socketio = socketio

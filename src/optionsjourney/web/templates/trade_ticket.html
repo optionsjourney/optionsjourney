@@ -13,13 +13,13 @@
 <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
     <section id="trade-chain" class="lg:col-span-3 h-[70vh] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"></section>
     <div class="lg:col-span-2 flex flex-col gap-4">
-        <section id="trade-ticket" class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm"></section>
+        <section id="trade-ticket" {% if demo_mode %}data-demo="1" {% endif %}{% if tour_tray %}data-tour-tray='{{ tour_tray | tojson }}' {% endif %}class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm"></section>
         {# Its own container: ticket renders and quote pushes never touch it. #}
         <section id="trade-working" class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm"></section>
     </div>
 </div>
-{# The risk graph slides out as a drawer from the right, over the page. #}
-<section id="trade-graph" class="hidden fixed inset-y-0 right-0 z-40 w-full sm:w-[min(760px,90vw)] flex flex-col bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 shadow-2xl overflow-y-auto">
+{# The risk graph slides out as a drawer from the right, over the page and its banners (z 400, as .drawer). #}
+<section id="trade-graph" class="hidden fixed inset-y-0 right-0 z-[400] w-full sm:w-[min(760px,90vw)] flex flex-col bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-700 shadow-2xl overflow-y-auto">
     <div class="flex justify-end px-2 pt-2 flex-shrink-0">
         <button type="button" data-act="graph-close" aria-label="Close risk graph"
                 class="px-2 py-0.5 rounded text-sm text-gray-400 hover:text-gray-100 hover:bg-gray-700">Close &times;</button>

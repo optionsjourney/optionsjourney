@@ -96,7 +96,9 @@ def journal_page():
     if response:
         return response
 
-    filters = Filters.from_args(request.args, default_status=journal.TRADES_STATUS)
+    filters = Filters.from_args(
+        request.args, default_status=journal.trades_status(services().settings.is_demo)
+    )
     view = journal.load_journal(
         services().session_factory, filters, cache=services().positions_cache
     )

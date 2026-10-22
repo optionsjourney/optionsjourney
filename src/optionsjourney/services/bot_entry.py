@@ -123,6 +123,10 @@ class BotDeps:
     # The market filters' prices (services/bot_filters.Market); None: a filter that's
     # on can't be checked, so it fails closed.
     market: object | None = None
+    # Demo mode: every bot alert also shows in the app's alerts (there's no phone)
+    in_app_alerts: bool = False
+    # Demo mode: messages say the demo's pretend broker, never a real order
+    demo: bool = False
 
 
 _BOT_LINK = re.compile(r"^/automation/(\d+)(?:/|$)")
@@ -144,6 +148,13 @@ def alert(deps, title: str, detail: str, link: str, *, run_id: int | None = None
             from optionsjourney.services import notify
 
             notify.send_soon(deps.session_factory, event)
+        if deps.in_app_alerts:
+            from optionsjourney.services import app_alerts
+
+            app_alerts.add(
+                deps.session_factory, dedupe_key=f"bot:{run_id}:{title}", kind="bot",
+                title=title, detail=detail, link=link, now=deps.now(),
+            )  # fmt: skip
     except Exception:  # noqa: BLE001 -- an alert never stops a bot
         logger.exception("couldn't send a bot alert")
 
@@ -495,9 +506,12 @@ def trade_now(deps: BotDeps, bot_id: int, typed: str) -> tuple[int | None, str |
     if underlyings.futures(bot.underlying):
         return None, FUTURES_ONLY_FROM_TICKET
     if not bot.live:
+        if deps.demo:
+            return None, "Trade now sends an order, so it's for a live bot. Use Preview now."
         return None, "Trade now sends a real order, so it's for a live bot. Use Preview now."
     if typed != TRADE_WORD:
-        return None, f"Type {TRADE_WORD} to send a real order."
+        where = "an order to the demo's pretend broker" if deps.demo else "a real order"
+        return None, f"Type {TRADE_WORD} to send {where}."
     now = deps.now()
     hhmm = now.astimezone(MARKET_TZ).strftime("%H:%M")
     with _trade_lock:  # two presses, or two tabs: one Trade now at a time per bot

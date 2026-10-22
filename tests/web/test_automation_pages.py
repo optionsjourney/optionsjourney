@@ -129,6 +129,27 @@ def test_saving_a_bot_starts_it_live_and_disarmed(app):
     assert "SPX IC" in app.test_client().get("/automation").get_data(as_text=True)
 
 
+def test_outside_the_demo_live_words_say_real_orders(app):
+    """Demo final review I-1 changed these words for the demo only: outside it they stay."""
+    app.test_client().post("/automation/save", data=form(app), headers=ORIGIN)
+    with sf(app)() as session:
+        bot_id = session.scalar(select(Bot.id))
+    listing = app.test_client().get("/automation").get_data(as_text=True).replace("&#39;", "'")
+    assert "arm one and it sends real orders." in listing
+    assert "counts the armed bots that are Live: they send real orders." in listing
+    assert "asks you to tick a box: Live bots send real orders." in listing
+    assert "Arm them afterwards to send real orders." in listing
+    assert "pretend broker" not in listing
+    page = app.test_client().get(f"/automation/{bot_id}").get_data(as_text=True)
+    page = page.replace("&#39;", "'")
+    assert "Sends real orders." in page and 'aria-label="Type TRADE to send a real order"' in page
+    assert "confirm('Send a real order now? It counts" in page
+    assert "off its schedule, as a real order: type TRADE first." in page
+    assert "pretend broker" not in page
+    trade = app.test_client().get("/trade").get_data(as_text=True)
+    assert "data-demo" not in trade
+
+
 def test_unreadable_quantity_and_bound_are_shown_not_dropped(app):
     data = form(app, **{"time-0-qty": "two", "use_premium_bounds": "on", "premium_min": "x1"})
     response = app.test_client().post("/automation/save", data=data, headers=ORIGIN)
@@ -4242,3 +4263,15 @@ def test_the_footer_says_not_financial_advice(app):
     html = client.get("/automation").get_data(as_text=True)
     assert "Not financial advice" in html and 'href="/help/disclaimer"' in html
     assert "solely responsible" in client.get("/help/disclaimer").get_data(as_text=True)
+
+
+def test_outside_demo_the_arm_pages_keep_the_real_order_wording(app):
+    client, ids = _two_bots(app)
+    bot_id = ids[0]
+    client.post(f"/automation/{bot_id}/arm", data={"on": "1", "next": "list"}, headers=ORIGIN)
+    page = client.get(f"/automation/{bot_id}/live?arm=1").get_data(as_text=True)
+    assert "a Live bot sends real orders to your broker." in page
+    assert "pretend broker" not in page
+    many = client.post("/automation/arm-many", data={"bot_id": ids, "on": "1"}, headers=ORIGIN)
+    assert "Live bots send real orders to your broker" in many.get_data(as_text=True)
+    assert "pretend broker" not in many.get_data(as_text=True)

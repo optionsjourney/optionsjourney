@@ -20,7 +20,7 @@
         <label class="section-gap">Or choose the bot file <input type="file" name="file" accept=".json,application/json"></label>
         <p class="muted small">Or paste what's in it:</p>
         <textarea name="json" rows="8" aria-label="Bot file contents" placeholder='{"format": "optionsjourney.bot", ...}'></textarea>
-        <div class="inline-form section-gap"><button class="button" type="submit">Preview</button></div>
+        <div class="inline-form section-gap">{% if demo_mode %}<span class="demo-off">Not in the demo</span>{% else %}<button class="button" type="submit">Preview</button>{% endif %}</div>
     </form>
 </section>
 {% elif stage == 'manual' %}
@@ -43,7 +43,7 @@
         <label>Name <input type="text" name="name" value="{{ manual.name }}" maxlength="100"></label>
         {{ problem('name') }}
         <div class="inline-form section-gap">
-            <button class="button" type="submit">Import</button>
+            {% if demo_mode %}<span class="demo-off">Not in the demo</span>{% else %}<button class="button" type="submit">Import</button>{% endif %}
             <a class="button button--quiet" href="{{ url_for('automation.import_page') }}">Start again</a>
         </div>
     </form>
@@ -131,7 +131,7 @@
         {% endfor %}
         <p class="muted small">The file never holds an account or a size: those are yours. The bot starts switched off and Live, so it can't trade until you arm it, and sends real orders once armed unless you switch it to Paper first.</p>
         <div class="inline-form section-gap">
-            <button class="button" type="submit">Import</button>
+            {% if demo_mode %}<span class="demo-off">Not in the demo</span>{% else %}<button class="button" type="submit">Import</button>{% endif %}
             <a class="button button--quiet" href="{{ url_for('automation.import_page') }}">Start again</a>
         </div>
     </form>

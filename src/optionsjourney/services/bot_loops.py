@@ -70,6 +70,21 @@ def _check_calendar(deps, today) -> None:
     )
 
 
+def _is_demo(services) -> bool:
+    settings = getattr(services, "settings", None)  # tests' stand-ins may have none
+    return bool(getattr(settings, "is_demo", False))
+
+
+def _filter_feeds(services) -> list:
+    """The filters' prices: TastyTrade's stream, else Schwab's REST market data (#194).
+    In demo mode only the pretend Schwab's: TastyTrade's stream is a socket, and the
+    demo opens none."""
+    schwab = market_feed.SchwabFeed(services.broker_clients)
+    if _is_demo(services):
+        return [schwab]
+    return [market_feed.TastyFeed(services.broker_clients), schwab]
+
+
 def deps_for(services) -> bot_entry.BotDeps:
     return bot_entry.BotDeps(
         services.session_factory,
@@ -78,15 +93,9 @@ def deps_for(services) -> bot_entry.BotDeps:
         services.chain,
         # Every bot alert, the order path's included, is queued (bots slice 9)
         notify=notify.sender(services.session_factory),
-        # The filters' prices: TastyTrade's stream, else Schwab's REST market data (#194)
-        market=bot_filters.Market(
-            market_feed.FallbackFeed(
-                [
-                    market_feed.TastyFeed(services.broker_clients),
-                    market_feed.SchwabFeed(services.broker_clients),
-                ]
-            )
-        ),
+        market=bot_filters.Market(market_feed.FallbackFeed(_filter_feeds(services))),
+        in_app_alerts=_is_demo(services),
+        demo=_is_demo(services),
     )
 
 
@@ -557,9 +566,11 @@ def load_learned(deps) -> None:
 
 def start(services) -> None:
     """Load the stored market calendar and recover once, then start the clock,
-    watch, monitor and market calendar threads."""
+    watch, monitor and market calendar threads (no calendar or Schwab login threads
+    in demo mode)."""
     deps = deps_for(services)
-    economic_events.load_calendar(services.session_factory)
+    demo = _is_demo(services)
+    economic_events.load_calendar(services.session_factory, demo=demo)
     load_learned(deps)  # bots slice 16: stocks' increments; never stops the start
     recover(deps)
     _loop("bot-clock", 10, lambda: clock_pass(deps))
@@ -567,6 +578,8 @@ def start(services) -> None:
     _loop("bot-monitor", 30, lambda: _monitor(deps))
     # The schedule check: alerts once a day when one of the loops above has stopped.
     _loop("bot-audit", bot_audit.AUDIT_EVERY, lambda: bot_audit.audit_pass(deps))
+    if demo:
+        return  # offline: no calendars to fetch, and no Schwab login to remind about
     # Fetches the calendars when due (never on the clock's thread): ForexFactory each
     # new week, the Fed, FRED and NYSE weekly, a failing source again after an hour.
     _loop(

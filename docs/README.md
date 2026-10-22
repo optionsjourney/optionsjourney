@@ -19,6 +19,7 @@ Documentation is a first-class part of this project. A feature isn't done until 
   - [help-and-tooltips.md](developer/help-and-tooltips.md): the in-app Help pages, the ⓘ tips and the link tests
   - [releasing.md](developer/releasing.md): making a release and publishing it to the public repo
   - [site.md](developer/site.md): the website, optionsjourney.com: how it's built and deployed
+  - [demo.md](developer/demo.md): demo mode: the pretend broker and market, the fixed day, the guards, how to run it, and the public demo's seats, counts and hosting
 
 ## Decisions so far
 
@@ -120,9 +121,13 @@ Documentation is a first-class part of this project. A feature isn't done until 
 | [0094](decisions/0094-install-to-a-fixed-folder-with-logs.md) | The installer puts the app in a fixed folder; logs go to a file | Accepted |
 | [0095](decisions/0095-new-logo-vector-o-ring-check.md) | A new vector logo: an O-ring with a check-mark arrow | Accepted |
 | [0096](decisions/0096-menu-bar-icon-tight-tile.md) | The menu bar icon: the logo on a tile cut close around it | Accepted |
-| [0097](decisions/0097-the-site-is-static-and-deploys-from-main.md) | The website is static, built from the guide on main, and deployed by Railway on push | Accepted |
+| [0097](decisions/0097-the-site-is-static-and-deploys-from-main.md) | The website is static, built from the guide on main, and deployed by Railway on push | Accepted, deployment replaced by 0101 |
 | [0098](decisions/0098-checking-for-updates.md) | Checking for updates from the menu | Accepted |
 | [0099](decisions/0099-upgrade-backup-falls-back-to-the-default-folder.md) | A backup before an upgrade falls back to the default folder | Accepted |
+| [0100](decisions/0100-demo-mode-runs-the-real-app-on-a-pretend-broker.md) | Demo mode runs the real app on a pretend broker and a made-up market | Accepted |
+| [0101](decisions/0101-the-site-and-demo-run-on-the-prod-mac.md) | The site, and later the demo, run on the prod Mac behind its Cloudflare tunnel | Accepted |
+| [0102](decisions/0102-demo-seats-a-manager-and-cookie-routing.md) | Demo seats: a seat manager, Caddy routing by cookie, and updates only when seats are empty | Accepted, amended by 0103 |
+| [0103](decisions/0103-demo-user-firewall.md) | The demo user is fenced off from the Mac's other services, and `oj-demo` lives where only root can change it | Accepted |
 
 ## Writing a new decision
 

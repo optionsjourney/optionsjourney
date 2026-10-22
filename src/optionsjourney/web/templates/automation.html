@@ -33,7 +33,7 @@
         {% if leave.shown %}<a class="st-mon{% if leave.paused %} is-warn{% endif %}" href="#wings">{% if leave.paused %}Wings sold{% if leave.until %} until {{ leave.until }}{% endif %}{% else %}Wings left open{% endif %}</a>{% endif %}
     </div>
     <div class="st-stat">
-        <span class="k">Armed {{ info('automation-armed', "A bot only enters at its times while it is armed. A new bot starts switched off. The second number counts the armed bots that are Live: they send real orders. A Paper bot only pretends.", 'armed bots', more='/help/automation#arming') }}</span>
+        <span class="k">Armed {{ info('automation-armed', "A bot only enters at its times while it is armed. A new bot starts switched off. The second number counts the armed bots that are Live: " ~ ("they send orders to the demo's pretend broker." if demo_mode else "they send real orders.") ~ " A Paper bot only pretends.", 'armed bots', more='/help/automation#arming') }}</span>
         <span class="v st-num">{{ armed_count }} <small>of {{ total if not show_archived else '—' }} · {{ live_armed_count }} live</small></span>
     </div>
     <div class="st-stat">
@@ -55,7 +55,7 @@
         <a class="st-btn primary" href="{{ url_for('automation.new_page') }}">New bot</a>
     </div>
 </div>
-<p class="muted small st-intro">Bots trade through TastyTrade or Schwab. New bots start Live but switched off: arm one and it sends real orders. A Paper bot checks its orders with the broker and pretends the fills.</p>
+<p class="muted small st-intro">Bots trade through TastyTrade or Schwab. New bots start Live but switched off: arm one and it sends {{ "orders to the demo's pretend broker" if demo_mode else "real orders" }}. A Paper bot checks its orders with the broker and pretends the fills.</p>
 
 {% if audit.checked and not audit.ok %}
 <section class="notice notice--warning">
@@ -173,7 +173,7 @@
         <div class="st-group-body">
         {% for row in rows %}
         <div class="st-item{% if not row.armed %} is-off{% elif row.paper %} is-paper{% endif %}{% if row.archived %} is-archived{% endif %}"
-             data-row-key="{{ row.key }}" data-bot-ids="{{ row.members | map(attribute='bot.id') | join(',') }}"
+             data-bot-name="{{ row.name }}" data-row-key="{{ row.key }}" data-bot-ids="{{ row.members | map(attribute='bot.id') | join(',') }}"
              data-strategy="{{ row.strategy }}" data-armed="{{ '1' if row.armed else '0' }}"
              data-weekly="{{ '1' if row.weekly else '0' }}" data-days="{{ row.days | join(',') }}">
             <div class="st-row" tabindex="0" aria-expanded="false">
@@ -272,7 +272,7 @@
                             {# Arming a bot whose stops the app watches means ticking the box on its page #}
                             <a class="icon-button" data-act="arm" data-label="Arm (on its page)" href="{{ url_for('automation.bot_page', bot_id=bot.id) }}#arm" title="Off: arm on its page" aria-label="Off: arm on its page">{{ icon_power }}</a>
                             {% else %}
-                            {% set arm_tip = 'Armed: turn off' if bot.enabled else ('Off: arm it. Live: sends real orders' if bot.live else 'Off: arm it') %}
+                            {% set arm_tip = 'Armed: turn off' if bot.enabled else (('Off: arm it. Live: sends orders to the demo\'s pretend broker' if demo_mode else 'Off: arm it. Live: sends real orders') if bot.live else 'Off: arm it') %}
                             <form method="post" action="{{ url_for('automation.arm', bot_id=bot.id) }}">
                                 <input type="hidden" name="next" value="list">
                                 <input type="hidden" name="on" value="{{ '0' if bot.enabled else '1' }}">
@@ -316,10 +316,10 @@
     <form id="skip-form" method="post" action="{{ url_for('automation.skip_many') }}">
 <span class="tip"><button class="button button--quiet" type="submit" aria-describedby="tip-automation-bulk-skip">Skip day</button>{{ tip_text('automation-bulk-skip', "Skips the next day the market is open for the ticked bots that are armed: none of their entries open that day. Trades already open are still looked after. There is no bulk undo.", more='/help/automation#blackout-days-and-skip-a-day') }}</span>
         {# decision 0075: Arm and Live list the ticked bots on one page and ask for its box first #}
-<span class="tip"><button class="button button--quiet" type="submit" formaction="{{ url_for('automation.arm_many') }}" name="on" value="1" aria-describedby="tip-automation-bulk-arm">Arm</button>{{ tip_text('automation-bulk-arm', "Arms the ticked bots so they enter at their times. If any are Live, a page lists them first and asks you to tick a box: Live bots send real orders.", more='/help/automation#arming') }}</span>
+<span class="tip"><button class="button button--quiet" type="submit" formaction="{{ url_for('automation.arm_many') }}" name="on" value="1" aria-describedby="tip-automation-bulk-arm">Arm</button>{{ tip_text('automation-bulk-arm', "Arms the ticked bots so they enter at their times. If any are Live, a page lists them first and asks you to tick a box: " ~ ("Live bots send orders to the demo's pretend broker." if demo_mode else "Live bots send real orders."), more='/help/automation#arming') }}</span>
 <span class="tip"><button class="button button--quiet" type="submit" formaction="{{ url_for('automation.arm_many') }}" name="on" value="0" aria-describedby="tip-automation-bulk-off">Turn off</button>{{ tip_text('automation-bulk-off', "Turns the ticked bots off, at once. They won't enter at their times until you arm them again.") }}</span>
 <span class="tip"><button class="button button--quiet" type="submit" formaction="{{ url_for('automation.mode_many') }}" name="mode" value="paper" aria-describedby="tip-automation-bulk-paper">Paper</button>{{ tip_text('automation-bulk-paper', "Switches the ticked bots to Paper, at once: from their next entry they pretend instead of sending orders. A trade a bot already has open keeps its real stops and targets.", more='/help/automation#live-and-paper') }}</span>
-<span class="tip"><button class="button button--quiet" type="submit" formaction="{{ url_for('automation.mode_many') }}" name="mode" value="live" aria-describedby="tip-automation-bulk-live">Live</button>{{ tip_text('automation-bulk-live', "Switches the ticked bots to Live and leaves them off. A page lists them first. Any open paper trades are closed. Arm them afterwards to send real orders.", more='/help/automation#live-and-paper') }}</span>
+<span class="tip"><button class="button button--quiet" type="submit" formaction="{{ url_for('automation.mode_many') }}" name="mode" value="live" aria-describedby="tip-automation-bulk-live">Live</button>{{ tip_text('automation-bulk-live', "Switches the ticked bots to Live and leaves them off. A page lists them first. Any open paper trades are closed. " ~ ("Arm them afterwards to send orders to the demo's pretend broker." if demo_mode else "Arm them afterwards to send real orders."), more='/help/automation#live-and-paper') }}</span>
     </form>
     <form id="tag-form" class="inline-form" method="post" action="{{ url_for('automation.tag_many') }}">
         {# Ticks show the ticked bots' tags (a dash: only some have it). Tick to add, untick

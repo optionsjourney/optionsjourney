@@ -928,14 +928,14 @@
 </form>
 
 {% if stored %}
-<section class="card section-gap bot-section" id="this-bot">
+<section class="card section-gap bot-section" id="this-bot" data-bot-name="{{ stored.name }}">
     {{ section_head(*sections['this-bot']) }}
     <div class="bot-actions">
         <div class="bot-actions__row">
             <span class="bot-actions__label">Status</span>
             <div class="bot-actions__items">
                 {% if stored.live %}<span class="badge badge--live">Live</span>{% else %}<span class="badge badge--preview">Paper</span>{% endif %}
-                <span class="muted small">{{ 'Sends real orders.' if stored.live else "Checks orders but doesn't send them." }}</span>
+                <span class="muted small">{{ ("Sends orders to the demo's pretend broker." if demo_mode else 'Sends real orders.') if stored.live else "Checks orders but doesn't send them." }}</span>
                 {% if stored.live %}
                 <form method="post" action="{{ url_for('automation.set_live', bot_id=stored.id) }}"><input type="hidden" name="on" value="0"><button class="button button--quiet" type="submit">Switch to Paper</button></form>
                 {% else %}
@@ -956,7 +956,7 @@
                     {% if app_watched(stored) and not stored.enabled and not stored.live %}
                     <label class="small"><input type="checkbox" name="understood" value="1" required> {{ understood_words(stored) }}</label>
                     {% endif %}
-                    <button class="button button--quiet" type="submit">{{ 'Turn off' if stored.enabled else ('Arm it (sends real orders)' if stored.live else 'Arm it') }}</button>
+                    <button class="button button--quiet" type="submit">{{ 'Turn off' if stored.enabled else (("Arm it (sends orders to the demo's pretend broker)" if demo_mode else 'Arm it (sends real orders)') if stored.live else 'Arm it') }}</button>
                 </form>
                 {% else %}
                 <span class="muted small">Archived: unarchive it to arm it.</span>
@@ -987,8 +987,8 @@
                     {% if app_watched(stored) %}
                     <label class="small"><input type="checkbox" name="understood" value="1" required> {{ understood_words(stored, short=true) }}</label>
                     {% endif %}
-                    <label class="small">Type TRADE <input type="text" name="confirm" autocomplete="off" required pattern="TRADE" class="narrow" aria-label="Type TRADE to send a real order"></label>
-                    <button class="button button--danger" type="submit" onclick="return confirm('Send a real order now? It counts as one of today\'s entries{% if stored.sizing == 'dollars' %}, and is skipped if its size would pass Max contracts per day{% endif %}.')">Trade now</button>
+                    <label class="small">Type TRADE <input type="text" name="confirm" autocomplete="off" required pattern="TRADE" class="narrow" aria-label="{{ "Type TRADE to send an order to the demo's pretend broker" if demo_mode else 'Type TRADE to send a real order' }}"></label>
+                    <button class="button button--danger" type="submit" onclick="return confirm('{{ "Send an order to the demo\\'s pretend broker now?" if demo_mode else 'Send a real order now?' }} It counts as one of today\'s entries{% if stored.sizing == 'dollars' %}, and is skipped if its size would pass Max contracts per day{% endif %}.')">Trade now</button>
                 </form>
                 {% endif %}
             </div>
@@ -1016,7 +1016,7 @@
             </div>
         </div>
     </div>
-    {% if stored.live and not is_futures(stored.underlying) %}<p class="muted small"><strong>Trade now</strong> sends this bot's entry now, off its schedule, as a real order: type TRADE first. Pressing it is your choice to trade now, so arming, the schedule, blackout days, the market filters and the premium bounds don't apply; Freeze, No new trades, the market's hours and the contract and open-trade limits do. It counts as one of today's entries.</p>{% endif %}
+    {% if stored.live and not is_futures(stored.underlying) %}<p class="muted small"><strong>Trade now</strong> sends this bot's entry now, off its schedule, {{ "to the demo's pretend broker" if demo_mode else 'as a real order' }}: type TRADE first. Pressing it is your choice to trade now, so arming, the schedule, blackout days, the market filters and the premium bounds don't apply; Freeze, No new trades, the market's hours and the contract and open-trade limits do. It counts as one of today's entries.</p>{% endif %}
     <p class="muted small">Clone makes a copy that's off, in this bot's mode (Live or Paper). The bot file holds the bot's settings to share with a friend: never your account, sizes or tags. Archive puts away a bot you've finished with (only when nothing of it is open).</p>
 </section>
 {% endif %}

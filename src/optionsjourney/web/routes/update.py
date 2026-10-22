@@ -14,6 +14,7 @@ from optionsjourney import logs
 from optionsjourney.brokers.credentials.local import LocalProvider
 from optionsjourney.services import update_risks, updates
 from optionsjourney.web import services
+from optionsjourney.web.routes.demo import not_in_demo
 
 logger = logging.getLogger(__name__)
 bp = Blueprint("update", __name__)
@@ -54,6 +55,7 @@ def page():
 
 
 @bp.post("/update/install")
+@not_in_demo
 def install():
     release, source = _ready()
     s = services()

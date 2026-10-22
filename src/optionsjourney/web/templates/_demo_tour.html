@@ -1,0 +1,4 @@
+{# The demo's tour box, included by _demo_banner.html so it is on every demo page. It starts
+   empty and hidden; js/demo_tour.js fills it from GET /demo/tour. Styles: css/demo.css. #}
+<aside id="demo-tour" class="demo-tour" hidden data-tour-url="/demo/tour" aria-label="Demo tour"></aside>
+<script type="module" src="{{ url_for('static', filename='js/demo_tour.js') }}"></script>

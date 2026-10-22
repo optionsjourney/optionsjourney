@@ -4,6 +4,20 @@ Notable changes to OptionsJourney. The format follows [Keep a Changelog](https:/
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-22
+
+A demo mode you can try at demo.optionsjourney.com, and small fixes.
+
+### Added
+- Demo mode: the real app on a pretend broker and a made-up market, with a guided tour. Nothing in it is real money, and it never connects to a broker. It's what runs at demo.optionsjourney.com; the app you install works as before.
+- The guide has a page on getting your TastyTrade and Schwab API keys, step by step.
+- The install guide shows the menu bar and tray icon.
+
+### Fixed
+- An overnight check no longer says a closed calendar is still held when its near legs have expired.
+- On the Trade page, the risk graph's Close button is no longer hidden behind the page's banners.
+- Number columns' headings line up with their numbers.
+
 ## [0.2.2] - 2026-10-21
 
 ### Fixed

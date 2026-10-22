@@ -15,11 +15,20 @@ def main() -> None:
         settings = load_settings()
     except ConfigError as e:
         sys.exit(f"Settings problem: {e}")
+    from optionsjourney.demo import marker  # noqa: PLC0415
+
+    # A folder this mode refuses gets nothing written into it, not even the log file
+    problem = marker.refusal(settings.data_dir, settings.is_demo)
+    if problem:
+        sys.exit(f"Settings problem: {problem}")
     logs.start_file(settings.data_dir)
 
     from optionsjourney.app import create_app
 
-    app = create_app(settings)
+    try:
+        app = create_app(settings)
+    except ConfigError as e:  # demo mode refuses a data folder holding a real database
+        sys.exit(f"Settings problem: {e}")
 
     from optionsjourney.services import background
     from optionsjourney.web import services

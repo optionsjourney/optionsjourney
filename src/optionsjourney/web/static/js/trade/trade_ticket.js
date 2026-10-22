@@ -85,8 +85,19 @@ export function tradeRequest({ tray, accountId, ticker, botId, mode, price, effe
   return body;
 }
 
-export function sendLabel(bot) {
-  return bot && bot.mode === 'live' ? 'Send LIVE order' : 'Send dry run';
+// demo: the page is the demo's (data-demo on #trade-ticket): its words never say real.
+export function sendLabel(bot, demo = false) {
+  if (!(bot && bot.mode === 'live')) return 'Send dry run';
+  return demo ? 'Send order (demo)' : 'Send LIVE order';
+}
+
+export function sendWarning(demo = false) {
+  return demo ? "This sends an order to the demo's pretend broker. Nothing here is real money."
+    : 'This sends a live order to your broker.';
+}
+
+export function acceptedWords(demo = false) {
+  return demo ? "The demo's pretend broker accepted it." : 'Your broker accepted it.';
 }
 
 const UNKNOWN = 'Order state unknown — check the broker';

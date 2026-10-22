@@ -1,6 +1,6 @@
 [project]
 name = "optionsjourney"
-version = "0.2.2"
+version = "0.3.0"
 description = "A local-first options trading journal and automation app."
 readme = "README.md"
 license = "LicenseRef-PolyForm-Noncommercial-1.0.0"
@@ -20,6 +20,7 @@ dependencies = [
     "python-dotenv>=1.2.4",
     "simple-websocket>=1.1.0",
     "sqlalchemy>=2.1.4",
+    "time-machine>=2.16.0",
     "tzdata>=2026.5",
     "websockets>=17.2",
 ]

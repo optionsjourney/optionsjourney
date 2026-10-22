@@ -1,5 +1,6 @@
 """The Trade page (#90 slice 2): the chain, the ticket and Review order."""
 
+import re
 from datetime import UTC, datetime
 
 import pytest
@@ -283,3 +284,11 @@ def test_send_as_the_bots_entry_once(botting):
                and c[2]["legs"][0]["action"].endswith("Open")]  # fmt: skip
     assert len(opening) == 1
     assert "place" not in [c[0] for c in botting.broker.calls]  # the plain ticket's broker
+
+
+def test_risk_graph_drawer_sits_above_the_page_banners(app):
+    # Its Close button is at the top: the gateway and demo banners (z-index 100) covered it
+    # while the drawer was z-40. Same layer as the Journal's risk drawer (.drawer, 400).
+    html = app.test_client().get("/trade").get_data(as_text=True)
+    drawer = re.search(r'<section id="trade-graph" class="([^"]*)"', html)
+    assert drawer and "z-[400]" in drawer.group(1).split()

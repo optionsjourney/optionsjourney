@@ -1,0 +1,102 @@
+# The demo at demo.optionsjourney.com (decision 0102, developer/demo.md "Seats").
+# A request with an `oj_seat=<n>.<token>` cookie goes to seat n's own app on 510n; the
+# seat checks the token itself. Everything else goes to the seat manager. Run by
+# `oj-demo` on the prod Mac: PORT and MANAGER come from its LaunchDaemon.
+{
+	admin off
+}
+
+# Local only: visitors reach it through the Cloudflare tunnel, never the LAN.
+:{$PORT:8095} {
+	bind 127.0.0.1
+
+	# The manager's own pages and the visitor counts. Its health check is for this
+	# computer only (oj-demo, the menu bar): never answered from outside.
+	@manager path /_seat/* /stats
+	handle @manager {
+		respond /_seat/health 404
+		reverse_proxy {$MANAGER:127.0.0.1:8096} {
+			header_up X-Forwarded-Proto https
+		}
+	}
+
+	# One matcher per seat. "oj_seat=1." can't match seat 10's "oj_seat=10.".
+	@seat1 header_regexp Cookie (^|;\s*)oj_seat=1\.
+	handle @seat1 {
+		reverse_proxy 127.0.0.1:5101 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+	@seat2 header_regexp Cookie (^|;\s*)oj_seat=2\.
+	handle @seat2 {
+		reverse_proxy 127.0.0.1:5102 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+	@seat3 header_regexp Cookie (^|;\s*)oj_seat=3\.
+	handle @seat3 {
+		reverse_proxy 127.0.0.1:5103 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+	@seat4 header_regexp Cookie (^|;\s*)oj_seat=4\.
+	handle @seat4 {
+		reverse_proxy 127.0.0.1:5104 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+	@seat5 header_regexp Cookie (^|;\s*)oj_seat=5\.
+	handle @seat5 {
+		reverse_proxy 127.0.0.1:5105 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+	@seat6 header_regexp Cookie (^|;\s*)oj_seat=6\.
+	handle @seat6 {
+		reverse_proxy 127.0.0.1:5106 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+	@seat7 header_regexp Cookie (^|;\s*)oj_seat=7\.
+	handle @seat7 {
+		reverse_proxy 127.0.0.1:5107 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+	@seat8 header_regexp Cookie (^|;\s*)oj_seat=8\.
+	handle @seat8 {
+		reverse_proxy 127.0.0.1:5108 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+	@seat9 header_regexp Cookie (^|;\s*)oj_seat=9\.
+	handle @seat9 {
+		reverse_proxy 127.0.0.1:5109 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+	@seat10 header_regexp Cookie (^|;\s*)oj_seat=10\.
+	handle @seat10 {
+		reverse_proxy 127.0.0.1:5110 {
+			header_up X-Forwarded-Proto https
+		}
+	}
+
+	# No seat yet, or a cookie for no seat: the manager seats or queues the visitor.
+	handle {
+		reverse_proxy {$MANAGER:127.0.0.1:8096} {
+			header_up X-Forwarded-Proto https
+		}
+	}
+
+	# A seat that has stopped (reset, restarted, timed out) doesn't answer: its visitor
+	# is told the session ended. If the manager itself is down, say so plainly.
+	handle_errors 502 503 {
+		@seat {
+			header_regexp Cookie (^|;\s*)oj_seat=\d+\.
+			not path /_seat/* /stats
+		}
+		redir @seat /_seat/ended 302
+		respond "The demo is restarting. Please try again in a minute." 503
+	}
+}

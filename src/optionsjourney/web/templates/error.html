@@ -12,8 +12,10 @@
         a { color: #93c5fd; }
         code { background: #1f2937; padding: 0.1rem 0.3rem; border-radius: 4px; word-break: break-all; }
     </style>
+    {% if demo_mode %}<link rel="stylesheet" href="{{ url_for('static', filename='css/demo.css') }}">{% endif %}
 </head>
 <body>
+    {% include '_demo_banner.html' %}
 <main>
     <h1>Something went wrong</h1>
     <p>This page hit an error. Your data is safe: nothing was sent to your broker because of it.</p>

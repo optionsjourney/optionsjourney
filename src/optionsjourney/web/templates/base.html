@@ -8,8 +8,11 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/nav.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/tooltips.css') }}">
+    {% if demo_mode %}<link rel="stylesheet" href="{{ url_for('static', filename='css/demo.css') }}">{% endif %}
+    {% block head_extra %}{% endblock %}
 </head>
 <body>
+    {% include '_demo_banner.html' %}
     {% if gateway_mode %}
     <div class="dev-banner" role="status">DEVELOPMENT · no trading · broker data borrowed from the Tracker2 server</div>
     {% endif %}

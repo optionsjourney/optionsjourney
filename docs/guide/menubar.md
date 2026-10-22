@@ -1,6 +1,6 @@
 # The menu bar icon
 
-OptionsJourney can run in the background with a small **OJ** icon in the menu bar (Mac) or system tray (Windows), so there's no window to keep open.
+OptionsJourney can run in the background with a small green check-mark icon in the menu bar (Mac) or system tray (Windows), so there's no window to keep open.
 
 Click the icon to see:
 

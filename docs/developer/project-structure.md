@@ -50,20 +50,24 @@ optionsjourney/
 │   │       ├── js/chart_grid/, js/charts/, css/chart_grid.css
 │   │       │                 Tracker2's chart grid, copied as it is (developer/charts.md)
 │   │       ├── js/modeler/   The risk graph's pricing and chart drawing, copied from Tracker2
-│   │       ├── js/trade/     The Trade page: Tracker2's chain helpers and ticket logic (copied), the inline chain panel, and the page's own code
+│   │       ├── js/trade/     The Trade page: Tracker2's chain helpers and ticket logic (copied), the inline chain panel, and the page's own code (tour_tray.js: the demo tour's pre-filled put spread)
+│   │       ├── js/demo_tour.js  The demo's tour box (polls /demo/tour)
 │   │       └── vendor/       Their libraries: Lightweight Charts, Socket.IO client, Tailwind;
 │   │                         vendor/fonts/ holds the charts' IBM Plex fonts
+│   ├── demo/                 Demo mode (BROKER_CREDENTIALS=demo): offline.py (blocks all network access), credentials.py (pretend tokens), clock.py (the demo clock), levels.py and market.py (the pretend market), broker.py (the pretend TastyTrade and Schwab: order matching, and the close's expiries and settlements), book.py (the pretend accounts and what a fill or settlement does to them), feeds.py (quotes and candles into the app's own quote hub and chart feed), news.py (made-up headlines), engine.py (the heartbeat that moves the market, fills, syncs and pushes prices; create_app builds it in demo mode), director.py (steers SPX so the tour's 0DTE stop and calendar target happen on cue), tour.py (the guided tour's steps and what completes each), tour_facts.py (works out what the visitor has done), tour_trade.py (the put spread the tour's Trade step opens with), history.py (about thirteen weeks of made-up trades, as each broker's own raw records in the pretend accounts) seed.py (the starting account: builds a fresh demo database through the app's own services and sync, and refuses a data folder holding a real database), marker.py (the demo database's mark and which folders each mode refuses, read at every start without loading the demo), seats.py (the public demo's seat pool and queue: pure decisions), seat_process.py (starting, checking and stopping one app process per seat), manager.py (the seat manager: `python -m optionsjourney.demo.manager`, seats and queues visitors, /stats), counts.py (private daily visitor counts) and __main__.py (the runner: `python -m optionsjourney.demo`, Start a new day; see developer/demo.md)
 │   └── launcher/             Menu bar / tray app: runs the web app in the background, status icon, start at login, keep awake, show app folder, open logs, restart, the update item, and startup_problem.py (the page shown, with restore, when the app can't start)
 │
 ├── tests/                    Mirrors src/optionsjourney/ (tests/core/, tests/brokers/, …)
+│   ├── demo/                 Tests for demo mode
 │   ├── scripts/              Tests for scripts/ (the site build)
 │   ├── web/routes/           Page tests by area (manual bots: test_automation_manual.py)
 │   └── web/static/js/        Browser-module tests: node --experimental-default-type=module --test tests/web/static/js/ (Node 20+, no npm)
 ├── bot-library/              Shared bot files (*.json) that users can download
 ├── scripts/                  Install scripts (install-mac.sh + Install OptionsJourney for Mac.command to double-click; install-windows.ps1 + Install OptionsJourney for Windows.bat) and developer tools (publish_public.py: a release to the public repo; build_site.py: builds the website; both stay private)
-├── packaging/                Building the Mac .app and Windows .exe; app icons
-├── site/                     The website (optionsjourney.com): templates/, static/ (CSS), Dockerfile, Caddyfile and
-│                             railway.toml for the Railway service. Private: not in the public copy (developer/site.md)
+├── packaging/                demo/: hosting the public demo on the prod Mac (Caddyfile, the `oj-demo` command, the menu bar item;
+│                             developer/demo.md). Later also building the Mac .app and Windows .exe, and app icons
+├── site/                     The website (optionsjourney.com): templates/, static/ (CSS), Caddyfile, and deploy/ (the `site`
+│                             command and menu bar item that serve it from the prod Mac). Private: not in the public copy (developer/site.md)
 │
 └── docs/
     ├── README.md             Index of all documentation
@@ -75,7 +79,7 @@ optionsjourney/
     └── developer/            For developers: how the code works (this file)
 ```
 
-Folders are created when their first file is written, not before. `bot-library/` and `packaging/` don't exist yet.
+Folders are created when their first file is written, not before. `bot-library/` doesn't exist yet.
 
 The database itself is **not** in the repo. It lives in the user's data folder (on Mac, `~/Library/Application Support/OptionsJourney/`); see [getting-started.md](getting-started.md).
 

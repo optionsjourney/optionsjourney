@@ -2,6 +2,8 @@
 and the API its pages call (layouts, tabs, drawings, watchlist, price
 history). Live candles and quotes go over Socket.IO (web/sockets.py)."""
 
+from datetime import UTC, datetime
+
 from flask import Blueprint, jsonify, render_template, request
 
 from optionsjourney.core.positions import Status
@@ -55,6 +57,11 @@ def popout():
 @bp.get("/api/news/<path:symbol>")
 def symbol_news(symbol):
     """The News panel's headlines (Tracker2's /api/news/<symbol>)."""
+    if services().settings.is_demo:
+        from optionsjourney.demo import news as demo_news  # noqa: PLC0415
+
+        # the process clock is the demo clock in demo mode
+        return jsonify(demo_news.headlines(symbol, datetime.now(UTC)))
     try:
         return jsonify(news.company_news(services().session_factory, symbol))
     except news.NewsError as e:

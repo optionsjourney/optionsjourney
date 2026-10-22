@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OptionsJourney demo</title>
+<link rel="icon" href="/static/images/favicon.ico">
+<link rel="stylesheet" href="/static/css/demo.css">
+</head>
+<body class="seat-page">
+<main class="seat-card">
+    <img class="seat-logo" src="/static/images/logo-mark.svg" alt="OptionsJourney">
+    <h1 id="ready"{% if not starting %} hidden{% endif %}>Getting your demo ready…</h1>
+    <h1 id="busy"{% if starting %} hidden{% endif %}>The demo's busy right now. You're next in line</h1>
+    <p id="line"{% if starting %} hidden{% endif %}>Your place in line: <strong id="place">{{ place }}</strong></p>
+    <p>This page takes you into the demo by itself. Keep it open.</p>
+</main>
+<script>
+setInterval(async () => {
+    const r = await (await fetch("/_seat/wait", {cache: "no-store"})).json();
+    if (r.ready || r.gone) return location.assign("/");
+    document.getElementById("place").textContent = r.place;
+    document.getElementById("ready").hidden = !r.starting;
+    document.getElementById("busy").hidden = document.getElementById("line").hidden = r.starting;
+}, 2000);
+</script>
+</body>
+</html>

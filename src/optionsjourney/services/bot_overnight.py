@@ -186,13 +186,15 @@ def _check_account(deps, account: _Account, watched: list) -> list[str]:
     owners: dict[str, list[_Group]] = {}
     for group in account.groups:
         label = f"{group.bot_name} {group.name}"
+        if group.closed:  # #266: first, so a calendar its exit closed is never held
+            continue
         if group.split:  # a timed close should have closed it before its near legs expired
             problems.append(
                 f"{label}: its near legs expired and its far legs are still held, with no stop "
                 "or target: yours to sell or keep"
             )
             continue
-        if group.closed or group.off:
+        if group.off:
             continue
         for symbol, signed in group.legs:
             expected[plain(symbol)] = expected.get(plain(symbol), 0) + signed

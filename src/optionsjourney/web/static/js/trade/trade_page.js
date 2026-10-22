@@ -5,11 +5,12 @@
 // Bots slice 15: beside Send, Manage with a bot sends the reviewed ticket as a live bot's entry
 // instead (POST /api/trade/bot-entry), claimed on a one-time token so a second press sends nothing.
 import { installChainPanel } from './chain_panel.js';
+import { tourTray, tourTrayFor } from './tour_tray.js';
 import * as T from './chain_tray.js';
 import { trayStats, stripItems } from './chain_stats.js';
 import { tipHtml, tipEngaged } from '../tip.js';
 import { TRADE_TIPS, TRADE_MORE } from './trade_tips.js';
-import { overnightOffered } from './trade_ticket.js';
+import { overnightOffered, sendWarning, acceptedWords } from './trade_ticket.js';
 import { defaultTicket, reviewRequest, reviewBp, graphLegs, alertContracts, confirmLabel, confirmParts, costRows, workingRows, replacePrice,
   newToken, botRequest, pickerRequest, botLists, botSendLabel, futuresBotNote, manageOptions, confirmRequest } from './ticket_core.js';
 
@@ -26,6 +27,7 @@ const fmtK = k => (Math.round(k * 1000) / 1000).toString();
 
 const doc = document;
 const ticketEl = document.getElementById('trade-ticket');
+const DEMO = ticketEl?.dataset.demo === '1';   // the demo's Trade page: its words never say real
 const graphEl = document.getElementById('trade-graph');
 const workingEl = document.getElementById('trade-working');
 let accounts = [];
@@ -239,7 +241,7 @@ function render() {
     ${canConfirm() ? `<div class="mt-2">
       <div class="p-2 rounded border border-amber-500/60 bg-amber-500/10 text-gray-100">${sendSummary(reviewed.summary)}</div>
       <button type="button" data-act="confirm" class="mt-2 px-5 py-2 rounded-md bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-gray-900 font-semibold shadow-md cursor-pointer disabled:opacity-40" ${sending ? 'disabled' : ''} aria-label="${esc(confirmLabel(reviewed.summary))}">Send order</button>
-      <p class="mt-1 text-[11px] text-amber-400">This sends a live order to your broker.</p>
+      <p class="mt-1 text-[11px] text-amber-400">${esc(sendWarning(DEMO))}</p>
       <label class="flex flex-col text-xs text-gray-500 mt-2">Manage with
         <select data-act="manage-with" class="mt-0.5 px-1 py-1 rounded border border-gray-600 bg-transparent text-gray-100">${manageOptions(manualBots).map(o => `<option value="${esc(o.value)}" ${o.value === manageWith ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select></label>
       ${manageWith ? '<p class="mt-1 text-[11px] text-gray-400">Once the order fills, this manual bot\'s rules (as they are now) are attached to the trade. A partial fill gets them too, and they grow as the rest fills.</p>' : ''}</div>` : ''}
@@ -360,7 +362,7 @@ async function review(btn) {
     const accepted = d.ok && d.action === 'preview';
     // The costs table says the buying power change, so the message doesn't repeat it.
     const said = d.costs ? d.message.replace(/\s*Buying power change: \$[-\d,.]*\d\.?/, '') : d.message;
-    result = { tone: accepted ? 'ok' : 'error', text: accepted ? `Your broker accepted it. ${said}` : said, costs: d.costs };
+    result = { tone: accepted ? 'ok' : 'error', text: accepted ? `${acceptedWords(DEMO)} ${said}` : said, costs: d.costs };
     reviewCosts = d.costs ? { sig, costs: d.costs } : null;   // the strip's BP Eff., BP After and Fees
     if (accepted && d.code) { reviewed = { code: d.code, summary: d.summary, sig, futures: !!d.futures }; openBotBox(sig); }
   } catch (err) {
@@ -600,4 +602,10 @@ render();
 renderWorking();
 loadWorking();
 setInterval(() => { if (!doc.hidden) loadWorking(); }, 30000);
-panel.setTicker(document.querySelector('#trade-symbol [name=ticker]').value.trim().toUpperCase());
+{
+  const first = document.querySelector('#trade-symbol [name=ticker]').value.trim().toUpperCase();
+  const tour = tourTray(document.getElementById('trade-ticket'));   // demo tour, step 4 only
+  const opened = panel.setTicker(first);
+  // setTicker clears the tray and resolves once the expirations are in, so the spread goes in after.
+  if (tour && first === tour.ticker) opened.then(() => panel.setTray(tourTrayFor(tour)));
+}

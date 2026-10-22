@@ -386,6 +386,23 @@ def test_preopen_check_reports_far_legs_left_after_the_expiry(deps, factory):
     assert "near legs expired and its far legs are still held" in problem
 
 
+def test_a_closed_calendar_whose_near_legs_expired_is_not_held(deps, factory):
+    """#266: a calendar its exit closed before the near expiry holds nothing after it,
+    even though its far legs' date is still ahead."""
+    from optionsjourney.services import bot_overnight
+
+    calendar(deps, factory)
+    (stop,) = exits(factory, "stop")
+    with factory() as session:
+        session.get(BotExit, stop.id).state = "filled"  # closed on Tuesday
+        session.commit()
+    deps.tasty.held.clear()  # nothing left at the broker
+    at(deps, ny(2026, 10, 21, 9, 20))  # the near leg expired yesterday; the far one hasn't
+    deps.seen.clear()
+    assert bot_overnight.check(deps) == []
+    assert not [e for e in deps.seen if e.title.startswith("Held trades:")]
+
+
 def test_startup_says_a_held_calendar_went_a_whole_session_unwatched(deps, factory):
     """Review 8: the app was off all of Wednesday."""
     calendar(deps, factory)

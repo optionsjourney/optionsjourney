@@ -11,6 +11,11 @@ __all__ = ["AccessToken", "CredentialProvider", "CredentialsUnavailable", "provi
 
 
 def provider_for(settings: Settings) -> CredentialProvider:
+    if settings.is_demo:
+        # The demo's pretend tokens: demo mode never reaches the keychain or the gateway
+        from optionsjourney.demo.credentials import DemoCredentials
+
+        return DemoCredentials()
     if settings.is_gateway:
         from optionsjourney.brokers.credentials.gateway import GatewayProvider
 

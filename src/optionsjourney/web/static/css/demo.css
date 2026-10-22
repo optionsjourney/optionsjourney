@@ -1,0 +1,218 @@
+/* Demo mode's banner (_demo_banner.html) and the "Not in the demo" notes. Plain CSS:
+   it also shows on the Tailwind pages (tracker_base.html) and the error page. */
+.demo-banner {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem 0.9rem;
+    padding: 0.3rem 1rem;
+    background: #7c3aed;
+    color: #fff;
+    font-family: system-ui, sans-serif;
+    font-size: 0.8rem;
+    line-height: 1.3;
+}
+.demo-banner__link {
+    color: #fff;
+    text-decoration: underline;
+}
+.demo-banner__time {
+    opacity: 0.85;
+    font-variant-numeric: tabular-nums;
+}
+.demo-banner__over {
+    font-weight: 600;
+}
+.demo-banner__form {
+    display: inline;
+    margin: 0;
+}
+.demo-banner__button {
+    padding: 0.15rem 0.6rem;
+    border: 1px solid rgb(255 255 255 / 0.7);
+    border-radius: 999px;
+    background: rgb(255 255 255 / 0.12);
+    color: #fff;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+.demo-banner__button:hover,
+.demo-banner__button:focus-visible {
+    background: rgb(255 255 255 / 0.28);
+}
+.demo-off {
+    display: inline-block;
+    padding: 0.2rem 0.6rem;
+    border: 1px dashed currentColor;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    opacity: 0.75;
+}
+
+/* The tour box (_demo_tour.html, js/demo_tour.js): a card at the bottom right, above the
+   page and below the banner (z-index 100). */
+.demo-tour {
+    position: fixed;
+    right: 16px;
+    bottom: 16px;
+    z-index: 90;
+    box-sizing: border-box;
+    width: 320px;
+    max-width: calc(100vw - 32px);
+    padding: 0.8rem 1rem;
+    background: #fff;
+    color: #1f2937;
+    border: 2px solid #7c3aed;
+    border-radius: 10px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.25);
+    font-family: system-ui, sans-serif;
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+.demo-tour[hidden] {
+    display: none;
+}
+@media (max-width: 479px) {
+    .demo-tour {
+        left: 16px;
+        width: auto;
+        max-width: none;
+    }
+}
+.demo-tour__step {
+    margin: 0 0 0.2rem;
+    color: #7c3aed;
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+.demo-tour__title {
+    margin: 0 0 0.3rem;
+    font-size: 1rem;
+    font-weight: 700;
+}
+.demo-tour__text {
+    margin: 0 0 0.5rem;
+}
+.demo-tour__link {
+    margin: 0 0 0.6rem;
+}
+.demo-tour__link a {
+    color: #6d28d9;
+    font-weight: 600;
+    text-decoration: underline;
+}
+.demo-tour__buttons {
+    display: flex;
+    gap: 0.5rem;
+}
+.demo-tour__button {
+    padding: 0.3rem 0.8rem;
+    background: #7c3aed;
+    color: #fff;
+    border: 1px solid #7c3aed;
+    border-radius: 6px;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+.demo-tour__button--quiet {
+    background: transparent;
+    color: #6d28d9;
+}
+.demo-tour-highlight {
+    outline: 3px solid #7c3aed !important;
+    outline-offset: 2px;
+    border-radius: 4px;
+    animation: demo-tour-pulse 1.6s ease-in-out infinite;
+}
+@keyframes demo-tour-pulse {
+    50% {
+        outline-color: #c4b5fd;
+    }
+}
+@media (prefers-reduced-motion: reduce) {
+    .demo-tour-highlight {
+        animation: none;
+    }
+}
+
+/* The seat manager's own pages (demo_seat_*.html): shown before a visitor has a seat,
+   so they stand alone. Dark like the website. */
+.seat-page {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #07070c;
+    color: #e7e7f0;
+    font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Arial, sans-serif;
+}
+.seat-card {
+    box-sizing: border-box;
+    width: min(440px, calc(100vw - 32px));
+    padding: 2rem 1.5rem;
+    background: #11111a;
+    border: 1px solid #2c2c3a;
+    border-radius: 12px;
+    text-align: center;
+}
+.seat-card--wide {
+    width: min(1000px, calc(100vw - 32px));
+    text-align: left;
+}
+.seat-logo {
+    width: 56px;
+    height: 56px;
+}
+.seat-card h1 {
+    margin: 0.8rem 0 0.4rem;
+    font-size: 1.3rem;
+    line-height: 1.35;
+}
+.seat-card p {
+    margin: 0.4rem 0;
+    color: #8b8ba3;
+}
+.seat-button {
+    margin-top: 1rem;
+    padding: 0.6rem 1.4rem;
+    border: 0;
+    border-radius: 999px;
+    background: #59b82c;
+    color: #07070c;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+}
+.seat-button:hover,
+.seat-button:focus-visible {
+    background: #6fd23f;
+}
+.seat-table-wrap {
+    overflow-x: auto;
+}
+.seat-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+.seat-table th,
+.seat-table td {
+    padding: 0.35rem 0.6rem;
+    border-bottom: 1px solid #1d1d28;
+    text-align: right;
+}
+.seat-table th:first-child,
+.seat-table td:first-child {
+    text-align: left;
+}

@@ -432,8 +432,9 @@ def refresh_if_due(session_factory, now, fetchers=None, notify=None) -> None:
         FIRST_CHECK_DONE.set()
 
 
-def load_calendar(session_factory) -> None:
-    """Hand the stored NYSE days to core/sessions. Unreadable: the table stays."""
+def load_calendar(session_factory, *, demo: bool = False) -> None:
+    """Hand the stored NYSE days to core/sessions. Unreadable: the table stays.
+    In demo mode nothing is ever fetched, so this load counts as the first check."""
     try:
         with session_factory() as session:
             rows = list(session.scalars(select(MarketCalendarDay)))
@@ -446,6 +447,8 @@ def load_calendar(session_factory) -> None:
         sessions.use_fetched_calendar(closed, early)
     except Exception:  # noqa: BLE001 -- fall back to the hard-coded table
         logger.exception("couldn't load the stored market calendar; using the built-in table")
+    if demo:
+        FIRST_CHECK_DONE.set()
 
 
 def day_notes(session_factory, day: date) -> dict:

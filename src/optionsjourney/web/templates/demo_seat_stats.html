@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Demo visits</title>
+<link rel="stylesheet" href="/static/css/demo.css">
+</head>
+<body class="seat-page">
+<main class="seat-card seat-card--wide">
+    <h1>Demo visits, last {{ days|length }} days</h1>
+    <p>Time spent and tour steps count visits that have ended. Steps: share of those visits that got at least that far.</p>
+    <div class="seat-table-wrap"><table class="seat-table">
+        <tr><th>Day</th><th>Visits</th><th>Waited</th><th>Average wait</th><th>Average time</th>
+            {% for s in steps %}<th>Step {{ s }}</th>{% endfor %}<th>Finished</th></tr>
+        {% for d in days %}
+        <tr><td>{{ d.day.isoformat() }}</td><td>{{ d.visits }}</td><td>{{ d.waited }}</td>
+            <td>{{ duration(d.average_wait) }}</td><td>{{ duration(d.average_visit) }}</td>
+            {% for s in steps %}<td>{{ (d.reached(s) * 100)|round|int }}%</td>{% endfor %}
+            <td>{{ (d.reached(finished) * 100)|round|int }}%</td></tr>
+        {% else %}<tr><td colspan="{{ steps|length + 6 }}">No visits yet.</td></tr>{% endfor %}
+    </table></div>
+</main>
+</body>
+</html>

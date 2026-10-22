@@ -12,6 +12,7 @@ from optionsjourney.core.settings import SECTIONS, SettingError
 from optionsjourney.db import migrate
 from optionsjourney.services import backups, economic_events, notify, settings, setup
 from optionsjourney.web import services
+from optionsjourney.web.routes.demo import not_in_demo
 
 bp = Blueprint("settings", __name__)
 logger = logging.getLogger(__name__)
@@ -20,6 +21,14 @@ logger = logging.getLogger(__name__)
 @bp.get("/settings")
 def settings_page():
     return _render(settings.get_all(services().session_factory))
+
+
+@bp.post("/settings/notifications")
+@not_in_demo
+def save_notifications():
+    """Notifications reach Discord and Telegram, so they have their own route, which
+    demo mode switches off. The same save as every other section."""
+    return save("notifications")
 
 
 @bp.post("/settings/<section_key>")
@@ -36,6 +45,7 @@ def save(section_key):
 
 
 @bp.post("/settings/notifications/test")
+@not_in_demo
 def test_notifications():
     results = notify.send(services().session_factory, notify.TEST)
     if not results:
@@ -49,6 +59,7 @@ def test_notifications():
 
 
 @bp.post("/settings/backups/browse")
+@not_in_demo
 def browse_backup_folder():
     """Open this computer's folder picker; the page puts the answer in the
     folder field."""
@@ -56,6 +67,7 @@ def browse_backup_folder():
 
 
 @bp.post("/settings/backups/now")
+@not_in_demo
 def backup_now():
     s = services()
     try:
@@ -67,6 +79,7 @@ def backup_now():
 
 
 @bp.post("/settings/backups/restore")
+@not_in_demo
 def restore():
     s = services()
     try:
@@ -108,6 +121,7 @@ def _start_refresh(session_factory, now) -> None:
 
 
 @bp.post("/settings/market_calendar/refresh")
+@not_in_demo
 def calendar_refresh():
     """Refresh now: fetch ForexFactory, the Fed, FRED (with a key) and NYSE."""
     back = redirect(url_for("settings.settings_page", _anchor="market_calendar"))
@@ -151,6 +165,7 @@ def _risk_ticked(provider: LocalProvider, broker: str) -> bool:
 
 
 @bp.post("/settings/brokers/tastytrade")
+@not_in_demo
 def connect_tastytrade():
     provider = _local_provider()
     if provider is None:
@@ -175,6 +190,7 @@ def connect_tastytrade():
 
 
 @bp.post("/settings/brokers/schwab/start")
+@not_in_demo
 def start_schwab():
     """Keep the Schwab app's details and send the browser to Schwab's login.
     Blank fields reuse the kept ones, so Reconnect needs no typing."""
@@ -197,6 +213,7 @@ def start_schwab():
 
 
 @bp.post("/settings/brokers/schwab/finish")
+@not_in_demo
 def finish_schwab():
     provider = _local_provider()
     if provider is None:
@@ -213,6 +230,7 @@ def finish_schwab():
 
 
 @bp.post("/settings/brokers/<broker>/disconnect")
+@not_in_demo
 def disconnect(broker):
     provider = _local_provider()
     if provider is None or broker not in BROKER_NAMES:

@@ -14,11 +14,17 @@ from optionsjourney.services.user_alerts import start_alert_checker
 
 
 def start_all(database_path, services) -> None:
-    backups.start_scheduler(database_path, services.session_factory)
+    demo = services.settings.is_demo
+    if not demo:  # the demo's data is made up: nothing worth backing up
+        backups.start_scheduler(database_path, services.session_factory)
     start_alert_checker(services)
     pl_day.start(services)
     stock_history.start(services)
     expiry_settle.start(services)
     bot_loops.start(services)
     auto_sync.start(services)
-    fill_sync.start(services)
+    if demo:
+        # No account stream to listen on: the engine syncs whenever something fills
+        services.demo.engine.start()
+    else:
+        fill_sync.start(services)

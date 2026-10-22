@@ -85,6 +85,7 @@ from optionsjourney.services import (
 )  # fmt: skip
 from optionsjourney.web import services
 from optionsjourney.web.pagination import paginate
+from optionsjourney.web.routes.demo import not_in_demo
 from optionsjourney.web.security import local_path
 
 bp = Blueprint("automation", __name__)
@@ -682,7 +683,8 @@ def arm(bot_id):
         # caps, where stops are held) and its box come first (decision 0061). The box is
         # checked here too, not only in the browser (final review I2).
         if request.form.get("confirmed") == "1":
-            flash("Tick the box to show you understand this bot sends real orders.", "warning")
+            flash(f"Tick the box to show you understand this bot sends {_real_orders()}.",
+                  "warning")  # fmt: skip
         return redirect(url_for("automation.live_page", bot_id=bot_id, arm=1,
                                 next=request.form.get("next", "")))  # fmt: skip
     if on and _needs_understood(bot_id):
@@ -947,9 +949,14 @@ def set_live(bot_id):
         setup.accept_live_risk(services().session_factory)
     if on and before is not None and before.enabled:
         # Final review I1: going Live disarms; arming again shows the go-live summary
-        flash("It's Live and switched off: arm it when you're ready to send real orders.",
+        flash(f"It's Live and switched off: arm it when you're ready to send {_real_orders()}.",
               "warning")  # fmt: skip
     return redirect(url_for("automation.bot_page", bot_id=bot_id))
+
+
+def _real_orders() -> str:
+    """What a Live bot sends: real orders, or in demo mode the pretend broker's."""
+    return "orders to the demo's pretend broker" if services().settings.is_demo else "real orders"
 
 
 def _risk_needed() -> bool:
@@ -1834,6 +1841,7 @@ def _manual_import(stage, data, text, name=None, source_url=None):
 
 
 @bp.post("/automation/import/preview")
+@not_in_demo
 def import_preview():
     """Read the link, file or pasted text and show what it holds; saves nothing
     (api_import_bot_preview). A link is fetched here only: the preview carries
@@ -1877,6 +1885,7 @@ _CHOICES = ("name", "tag_id", "account", "contracts", "max_per_trade", "max_per_
 
 
 @bp.post("/automation/import/save")
+@not_in_demo
 def import_save():
     """Create the bot from the same JSON, with the importer's choices: always off
     and Live, validated like any save (api_import_bot)."""

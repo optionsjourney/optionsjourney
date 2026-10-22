@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ page.title if page else 'Search' }} · Help · OptionsJourney{% endblock %}
 {% block content %}
+{% if demo_mode %}<p class="demo-off">You're in the demo. These pages describe the real app: in the demo, orders go to a pretend broker.</p>{% endif %}
 <div class="help">
     <nav class="help__side" aria-label="Help pages">
         <form class="help__search" action="{{ url_for('help.help_search') }}" method="get" role="search">

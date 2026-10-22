@@ -13,7 +13,8 @@ from platformdirs import user_data_dir
 
 LOCAL = "local"
 GATEWAY = "gateway"
-CREDENTIAL_MODES = (LOCAL, GATEWAY)
+DEMO = "demo"  # a pretend broker and market, no network (demo mode)
+CREDENTIAL_MODES = (LOCAL, GATEWAY, DEMO)
 
 DEFAULT_PORT = 2026  # the year the project started
 # The address this computer's own browser uses. By default the app listens
@@ -43,6 +44,10 @@ class Settings:
     @property
     def is_gateway(self) -> bool:
         return self.broker_credentials == GATEWAY
+
+    @property
+    def is_demo(self) -> bool:
+        return self.broker_credentials == DEMO
 
     @property
     def database_path(self) -> Path:

@@ -1,0 +1,537 @@
+#!/bin/bash
+# The demo at demo.optionsjourney.com on the prod Mac (docs/developer/demo.md, "Hosting").
+#
+#   sudo <your clone>/packaging/demo/oj-demo install   one time, and after this file changes
+#   oj-demo start      run the demo (also undoes a stop)
+#   oj-demo stop       stop it; stays stopped through a reboot until `oj-demo start`
+#   oj-demo restart    restart the seat manager (every seat with it) and Caddy
+#   oj-demo status     what's running, seats in use, the live commit
+#   oj-demo update     update to the public repo's main when no one is seated (every 5 min)
+#   oj-demo logs       the last lines of the three logs
+#   oj-demo firewall-check [port ...]   whether ojdemo is kept off this computer's other
+#                      services (give your trading app's port; decision 0103)
+#
+# The demo runs as the user `ojdemo` from its own checkout (~ojdemo/optionsjourney), as
+# LaunchDaemons, so it starts at boot without a login. The rule for this file: nothing
+# that runs as root executes, sources or reads anything the demo user can write (its
+# home, checkout, venv, state or logs); such lookups run as ojdemo and are treated as
+# data. `install` is run from the admin's own clone, never from ojdemo's.
+# OJ_DEMO_DRY_RUN=1 prints what `install` would write and run, and changes nothing.
+set -euo pipefail
+
+if [ "$(id -u)" -eq 0 ]; then
+    export PATH="/usr/bin:/bin:/usr/sbin:/sbin"   # root: system folders only
+else
+    export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+fi
+DEMO_USER=ojdemo
+MANAGER=com.optionsjourney.demo
+PROXY=com.optionsjourney.demo-proxy
+UPDATER=com.optionsjourney.demo-update
+PORT=8095            # Caddy; the tunnel sends demo.optionsjourney.com here
+MANAGER_PORT=8096
+SEAT_PORTS=5101:5110
+DAEMONS=/Library/LaunchDaemons
+LOGS=/Library/Logs/optionsjourney-demo   # root's folder; the log files themselves are ojdemo's
+SUDOERS=/etc/sudoers.d/optionsjourney-demo
+PF_NAME=optionsjourney-demo
+PF_ANCHOR=/etc/pf.anchors/$PF_NAME   # ojdemo's firewall rules (decision 0103)
+PROBE_PORT=2026      # firewall-check's default: the app's own default port
+MENU_ITEM=optionsjourney-demo.1m.sh
+WAIT_LIMIT=1800      # seconds an update may wait for empty seats
+DRY=${OJ_DEMO_DRY_RUN:-}
+SOURCE="$(/usr/bin/readlink -f "${BASH_SOURCE[0]}")"
+# The root-owned copy the sudoers rule names, in a folder only root can change (not
+# /usr/local/bin, which an admin account, or Homebrew, may be able to write).
+LIBEXEC=/usr/local/libexec/optionsjourney-demo
+if [ -n "$DRY" ]; then LIBEXEC=${OJ_DEMO_LIBEXEC:-$LIBEXEC}; fi
+BIN=$LIBEXEC/oj-demo
+
+DEMO_HOME=$(/usr/bin/dscacheutil -q user -a name "$DEMO_USER" | /usr/bin/awk '/^dir:/ {print $2}')
+if [ -n "$DRY" ]; then
+    DEMO_HOME=${OJ_DEMO_HOME:-${DEMO_HOME:-$(dirname "$HOME")/$DEMO_USER}}
+fi
+REPO="$DEMO_HOME/optionsjourney"
+STATE="$DEMO_HOME/.optionsjourney-demo"   # seats/, counts.json and the update's notes
+CLONE_HINT="update your own clone of the public repo, then run  sudo <your clone>/packaging/demo/oj-demo install"
+
+say() { echo "$(date '+%F %T') $*"; }
+
+as_root() {  # re-run this command with sudo (the sudoers file allows start/stop/restart/status)
+    if [ -n "$DRY" ] || [ "$(id -u)" -eq 0 ]; then return 0; fi
+    exec /usr/bin/sudo "$0" "$@"
+}
+
+as_demo() {  # run a command as the demo user: what it reads or prints is only data
+    /usr/bin/sudo -u "$DEMO_USER" -H "$@" </dev/null
+}
+
+clean() { LC_ALL=C /usr/bin/tr -cd '[:print:]' | /usr/bin/head -c "${1:-200}"; }
+clean_lines() { LC_ALL=C /usr/bin/tr -cd '[:print:]\n' | /usr/bin/cut -c "1-${1:-300}"; }
+
+need_user() {
+    if [ -n "$DEMO_HOME" ]; then return 0; fi
+    echo "The demo user $DEMO_USER doesn't exist yet. Make it (a standard user, no admin):"
+    echo "  sudo sysadminctl -addUser $DEMO_USER -fullName \"OptionsJourney demo\" -shell /usr/bin/false -password -"
+    exit 1
+}
+
+# ----- writing files (or, in a dry run, printing them) -----
+
+put() {  # path, mode, owner:group; the contents on stdin
+    if [ -n "$DRY" ]; then
+        echo "--- would write $1 ($2, $3)"
+        cat
+        return 0
+    fi
+    local tmp
+    tmp=$(/usr/bin/mktemp)
+    cat >"$tmp"
+    /usr/bin/install -m "$2" -o "${3%:*}" -g "${3#*:}" "$tmp" "$1"
+    /bin/rm -f "$tmp"
+}
+
+run() {
+    if [ -n "$DRY" ]; then echo "--- would run: $*"; else "$@"; fi
+}
+
+xml() { local s=${1//&/&amp;}; s=${s//</&lt;}; echo "${s//>/&gt;}"; }
+
+plist() {  # label, extra keys (XML), then the program and its arguments
+    local label=$1 extra=$2; shift 2
+    local args=""
+    for a in "$@"; do args+="<string>$(xml "$a")</string>"; done
+    cat <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Written by \`oj-demo install\` (optionsjourney repo, packaging/demo/oj-demo). -->
+<plist version="1.0">
+<dict>
+    <key>Label</key><string>$label</string>
+    <key>ProgramArguments</key><array>$args</array>
+    <key>UserName</key><string>$DEMO_USER</string>
+    <key>WorkingDirectory</key><string>$(xml "$STATE")</string>
+    <key>RunAtLoad</key><true/>
+    $extra
+    <key>StandardOutPath</key><string>$LOGS/$label.log</string>
+    <key>StandardErrorPath</key><string>$LOGS/$label.log</string>
+</dict>
+</plist>
+EOF
+}
+
+env_xml() {  # NAME=value ... as an EnvironmentVariables dict
+    local out="<key>EnvironmentVariables</key><dict>"
+    for pair in "$@"; do out+="<key>${pair%%=*}</key><string>$(xml "${pair#*=}")</string>"; done
+    echo "$out</dict>"
+}
+
+# ----- launchd, system domain -----
+
+loaded() { /bin/launchctl print "system/$1" >/dev/null 2>&1; }
+
+up() {
+    /bin/launchctl enable "system/$1"
+    loaded "$1" || /bin/launchctl bootstrap system "$DAEMONS/$1.plist"
+}
+
+down() {  # disabled survives a reboot; bootout stops it now
+    /bin/launchctl disable "system/$1"
+    if loaded "$1"; then /bin/launchctl bootout "system/$1"; fi
+}
+
+# ----- the commands -----
+
+status() {
+    for label in $MANAGER $PROXY $UPDATER; do
+        local state="stopped"
+        if /bin/launchctl print-disabled system | /usr/bin/grep -Eq "\"$label\" => (disabled|true)"; then
+            state="stopped (stays stopped after a reboot)"
+        elif loaded "$label"; then
+            state="on"
+        fi
+        printf '%-34s %s\n' "$label" "$state"
+    done
+    local health live pending
+    health=$(/usr/bin/curl -s --max-time 3 "http://127.0.0.1:$MANAGER_PORT/_seat/health" | clean 100 || true)
+    echo "seats: ${health:-manager not answering}"
+    echo "proxy: http://127.0.0.1:$PORT/_seat/ended answers $(/usr/bin/curl -s -o /dev/null -w '%{http_code}' --max-time 3 -H 'Host: demo.optionsjourney.com' "http://127.0.0.1:$PORT/_seat/ended" || true)"
+    live=$(as_demo /usr/bin/git -C "$REPO" log -1 --format='%h, %cr: %s' 2>/dev/null | clean 120 || true)
+    echo "live commit: ${live:-no checkout}"
+    pending=$(as_demo /bin/cat "$STATE/update-pending" 2>/dev/null | /usr/bin/grep -Eo '^[0-9a-f]{8}' || true)
+    if [ -n "$pending" ]; then echo "update waiting for empty seats: $pending"; fi
+    if pf_on; then echo "firewall: on"; else echo "firewall: OFF (see: sudo oj-demo firewall-check)"; fi
+}
+
+# ----- the demo user's firewall (decision 0103) -----
+
+# Private and link-local ranges (the home network, Tailscale's 100.64/10) and this
+# computer's own addresses (pf's `self`, read when the rules load): ojdemo reaches none.
+PRIVATE="{ self, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16, 100.64.0.0/10, fc00::/7, fe80::/10 }"
+
+resolvers() {  # this computer's DNS servers, from the system's own settings (root-owned)
+    if [ -n "$DRY" ] && [ -n "${OJ_DEMO_RESOLVERS+set}" ]; then
+        printf '%s\n' "$OJ_DEMO_RESOLVERS" | /usr/bin/tr ' ' '\n'
+    else
+        /usr/sbin/scutil --dns 2>/dev/null | /usr/bin/awk '/nameserver\[[0-9]+\]/ {print $3}'
+    fi | { /usr/bin/grep -E '^([0-9]{1,3}\.){3}[0-9]{1,3}$|^[0-9a-fA-F:]+$' || true; } |
+        /usr/bin/sort -u | /usr/bin/paste -sd ',' - | /usr/bin/sed 's/,/, /g'
+}
+
+pf_rules() {  # the anchor file: what ojdemo may connect to
+    local dns
+    dns=$(resolvers)
+    cat <<EOF
+# Written by \`oj-demo install\` (optionsjourney repo, packaging/demo/oj-demo; decision 0103).
+# What the demo user may connect to. It faces the internet, so on this computer it
+# reaches only the demo's own ports (Caddy, the seat manager, the seats). On the home
+# network and at this computer's other addresses, nothing but DNS at the resolvers this
+# computer had at install. Elsewhere only DNS, ssh and https (the update job's git fetch
+# and uv). Replies to connections made to it (the tunnel to Caddy) are not new
+# connections, so they pass.
+pass out quick proto tcp from any to { 127.0.0.1, ::1 } port { $PORT, $MANAGER_PORT, $SEAT_PORTS } user $DEMO_USER
+block return out quick proto tcp from any to { 127.0.0.0/8, ::1 } flags S/SA user $DEMO_USER
+block return out quick proto udp from any to { 127.0.0.0/8, ::1 } user $DEMO_USER
+EOF
+    if [ -n "$dns" ]; then
+        echo "pass out quick proto { tcp, udp } from any to { $dns } port 53 user $DEMO_USER"
+    fi
+    cat <<EOF
+block return out quick proto tcp from any to $PRIVATE flags S/SA user $DEMO_USER
+block return out quick proto udp from any to $PRIVATE user $DEMO_USER
+pass out quick proto { tcp, udp } from any to any port 53 user $DEMO_USER
+pass out quick proto tcp from any to any port { 22, 443 } user $DEMO_USER
+block return out quick proto tcp from any to any flags S/SA user $DEMO_USER
+block return out quick proto udp from any to any user $DEMO_USER
+EOF
+}
+
+pf_steps() {  # install never turns pf on or edits /etc/pf.conf: the admin does, once
+    cat <<EOF
+
+The demo user's firewall rules are in $PF_ANCHOR. To turn them on (once):
+  1. Add these two lines to the end of /etc/pf.conf:
+       anchor "$PF_NAME"
+       load anchor "$PF_NAME" from "$PF_ANCHOR"
+  2. Check, load and turn on pf:
+       sudo pfctl -nf /etc/pf.conf && sudo pfctl -f /etc/pf.conf && sudo pfctl -E
+  3. Check it does its job, with your trading app's port:
+       sudo $BIN firewall-check <port>
+macOS loads /etc/pf.conf at boot but leaves pf off until something turns it on: after a
+restart, run  sudo pfctl -E  and the check again. \`oj-demo status\` shows whether it's on.
+EOF
+}
+
+pf_on() {  # pf is on and the demo's rules are loaded
+    /sbin/pfctl -s info 2>/dev/null | /usr/bin/grep -q '^Status: Enabled' &&
+        [ -n "$(/sbin/pfctl -a "$PF_NAME" -s rules 2>/dev/null)" ]
+}
+
+probe_verdict() {  # where, curl's exit code: only 7 (couldn't connect: pf's refusal) is blocked
+    case $2 in
+        7) echo "$DEMO_USER to $1: blocked, as it should be" ;;
+        0) echo "$DEMO_USER to $1: REACHED. The firewall isn't keeping it out."; return 1 ;;
+        *) echo "$DEMO_USER to $1: NOT blocked, or unclear (curl exit $2: it may have connected)"; return 1 ;;
+    esac
+}
+
+firewall_check() {  # ports to probe; ojdemo must reach the manager and none of them
+    local failed=0 code port
+    if pf_on; then echo "pf: on, with the demo's rules"; else echo "pf: OFF or without the demo's rules"; failed=1; fi
+    # -q first: ojdemo's own ~/.curlrc is not read; no proxy either way.
+    code=$(as_demo /usr/bin/curl -q -s -o /dev/null -w '%{http_code}' --noproxy '*' -m 3 \
+        "http://127.0.0.1:$MANAGER_PORT/_seat/health" 2>/dev/null | clean 3 || true)
+    if [ "$code" = 200 ]; then
+        echo "$DEMO_USER to the seat manager (127.0.0.1:$MANAGER_PORT): allowed, as it should be"
+    else
+        echo "$DEMO_USER to the seat manager (127.0.0.1:$MANAGER_PORT): got ${code:-nothing}, not 200"; failed=1
+    fi
+    for port in "${@:-$PROBE_PORT}"; do
+        if ! [[ $port =~ ^[0-9]+$ ]]; then echo "Not a port: $(printf %s "$port" | clean 20)"; failed=1; continue; fi
+        # Root only asks the system whether something listens; it never connects itself.
+        if [ -z "$(/usr/sbin/lsof -nP -t -iTCP:"$port" -sTCP:LISTEN 2>/dev/null)" ]; then
+            echo "127.0.0.1:$port: nothing listens there, so this proves nothing. Give your trading app's port."
+            failed=1; continue
+        fi
+        code=0
+        as_demo /usr/bin/curl -q -s -o /dev/null --noproxy '*' -m 3 "http://127.0.0.1:$port/" 2>/dev/null || code=$?
+        probe_verdict "127.0.0.1:$port" "$code" || failed=1
+    done
+    return $failed
+}
+
+deploy_ok() {  # whether an update may go ahead now: no one seated, or it waited long enough
+    local seen_at=$1 now health code=0
+    now=$(date +%s)
+    health=$(curl -s --max-time 5 "http://127.0.0.1:$MANAGER_PORT/_seat/health") || code=$?
+    if [ "$code" -eq 7 ]; then return 0; fi   # the manager isn't running: no one to disturb
+    if [ "$code" -eq 0 ] && echo "$health" | grep -Eq '"assigned": *0 *[,}]'; then return 0; fi
+    if [ $((now - seen_at)) -ge $WAIT_LIMIT ]; then
+        say "waited $((WAIT_LIMIT / 60)) minutes for empty seats; updating anyway"
+        return 0
+    fi
+    return 1
+}
+
+update() {  # runs as the demo user, on its own checkout
+    if [ "$(id -u)" -eq 0 ]; then exec /usr/bin/sudo -u "$DEMO_USER" -H "$BIN" update; fi
+    mkdir -p "$STATE"
+    if ! mkdir "$STATE/update.lock" 2>/dev/null; then
+        # A lock older than 30 minutes is left over from a crash.
+        if [ -n "$(find "$STATE/update.lock" -maxdepth 0 -mmin +30)" ]; then rmdir "$STATE/update.lock"; fi
+        echo "An update is already running."; return 0
+    fi
+    trap 'rmdir "$STATE/update.lock"' EXIT
+
+    git -C "$REPO" fetch -q origin main
+    local sha live pending="$STATE/update-pending" failed="$STATE/update-failed"
+    sha=$(git -C "$REPO" rev-parse origin/main)
+    live=$(git -C "$REPO" rev-parse HEAD)
+    if [ "$sha" = "$live" ]; then rm -f "$pending"; return 0; fi
+    if [ "$(cat "$failed" 2>/dev/null)" = "$sha" ]; then return 0; fi   # said so once already
+
+    local seen_sha="" seen_at=""
+    if [ -f "$pending" ]; then read -r seen_sha seen_at <"$pending" || true; fi
+    if [ "$seen_sha" != "$sha" ] || ! [[ $seen_at =~ ^[0-9]+$ ]]; then
+        seen_at=$(date +%s)
+        echo "$sha $seen_at" >"$pending"
+        say "${sha:0:8} is on main (live: ${live:0:8}); updating when no one is seated"
+    fi
+    deploy_ok "$seen_at" || return 0
+
+    say "updating to ${sha:0:8}"
+    if [ -n "$(git -C "$REPO" status --porcelain --untracked-files=no)" ]; then
+        say "the checkout had local changes; they are discarded (this checkout is managed by oj-demo)"
+    fi
+    git -C "$REPO" checkout -q -f --detach "$sha"
+    if ! (cd "$REPO" && uv sync -q --frozen --no-dev); then
+        say "uv sync failed for ${sha:0:8}; back to ${live:0:8}"
+        echo "$sha" >"$failed"
+        git -C "$REPO" checkout -q -f --detach "$live"
+        (cd "$REPO" && uv sync -q --frozen --no-dev) || true
+        rm -f "$pending"
+        return 1
+    fi
+    rm -f "$pending" "$failed"
+    # The daemons run as this user, so a TERM is allowed; launchd starts them again.
+    pkill -TERM -u "$(id -u)" -f 'optionsjourney\.demo\.manager' || true
+    if ! git -C "$REPO" diff --quiet "$live" "$sha" -- packaging/demo/Caddyfile; then
+        pkill -TERM -u "$(id -u)" -x caddy || true
+    fi
+    if ! git -C "$REPO" diff --quiet "$live" "$sha" -- packaging/demo/oj-demo packaging/demo/$MENU_ITEM; then
+        say "oj-demo changed on main: to use it, $CLONE_HINT"
+    fi
+    say "live: ${sha:0:8}"
+}
+
+stats_password() {  # asked at install: Enter keeps the current one, "none" turns /stats off
+    if [ -n "$DRY" ]; then echo "(asked at install)"; return 0; fi
+    local current="" given
+    if [ -f "$DAEMONS/$MANAGER.plist" ]; then
+        current=$(/usr/libexec/PlistBuddy -c 'Print :EnvironmentVariables:DEMO_STATS_PASSWORD' \
+            "$DAEMONS/$MANAGER.plist" 2>/dev/null || true)
+    fi
+    read -rsp "Password for the /stats page (Enter keeps the current one; \"none\" turns /stats off): " given </dev/tty
+    echo >&2
+    if [ "$given" = none ]; then echo ""; else echo "${given:-$current}"; fi
+}
+
+opens_up() {  # whether a file or folder has an access list (ACL) entry that allows anything
+    /bin/ls -lde "$1" 2>/dev/null | /usr/bin/sed 1d | /usr/bin/grep -q ' allow '
+}
+
+only_theirs() {  # path, then its allowed owners: it and every folder above it belong to
+    # one of them, and no one else can write them (no group or other write, no allowing ACL)
+    local path=$1 owner mode who ok; shift
+    while :; do
+        if [ -e "$path" ]; then
+            owner=$(/usr/bin/stat -f %Su "$path")
+            mode=$(/usr/bin/stat -f %Lp "$path")
+            ok=""
+            for who in "$@"; do [ "$owner" = "$who" ] && ok=1; done
+            if [ -z "$ok" ]; then
+                echo "Refusing to install: $path belongs to $owner, not ${*// / or }."
+                return 1
+            fi
+            if [ $((8#$mode & 8#022)) -ne 0 ]; then
+                echo "Refusing to install: others can write $path."
+                return 1
+            fi
+            if opens_up "$path"; then
+                echo "Refusing to install: $path has an access list (ACL) that lets others change it."
+                return 1
+            fi
+        fi
+        [ "$path" = / ] && break
+        path=$(/usr/bin/dirname "$path")
+    done
+}
+
+trusted_source() {  # the files install copies, and every folder above them: root's or the admin's
+    local admin=$1 path home
+    home=$( (cd -P "$DEMO_HOME" 2>/dev/null && pwd -P) || echo "$DEMO_HOME")
+    if [ "$SOURCE" = "$BIN" ]; then
+        echo "Run install from your own clone of the public repo, not from $BIN:"
+        echo "  sudo <your clone>/packaging/demo/oj-demo install"
+        return 1
+    fi
+    MENU_SOURCE=$(/usr/bin/readlink -f "$(/usr/bin/dirname "$SOURCE")/$MENU_ITEM" || true)
+    if [ ! -f "$MENU_SOURCE" ]; then
+        echo "Refusing to install: no $MENU_ITEM next to $SOURCE."
+        return 1
+    fi
+    for path in "$SOURCE" "$MENU_SOURCE"; do
+        case "$path" in
+            "$home"/* | "$DEMO_HOME"/*)
+                echo "Refusing to install from $DEMO_USER's files ($path): $DEMO_USER can change them."
+                echo "Instead, $CLONE_HINT"
+                return 1 ;;
+        esac
+        only_theirs "$path" root "$admin" || return 1
+    done
+}
+
+install_demo() {
+    as_root install
+    need_user
+    local admin=${SUDO_USER:-}
+    if [ -n "$DRY" ]; then admin=${admin:-$(id -un)}; fi
+    if [ -z "$admin" ] || [ "$admin" = root ]; then
+        echo "Run install with sudo from your admin account."; exit 1
+    fi
+    trusted_source "$admin" || exit 1
+    only_theirs "$LIBEXEC" root || exit 1   # the folders that exist so far
+
+    # Homebrew's tools, as paths written into daemons that run as ojdemo. Root never runs them.
+    local caddy="" uv=""
+    for dir in /opt/homebrew/bin /usr/local/bin; do
+        [ -n "$caddy" ] || { [ -x "$dir/caddy" ] && caddy="$dir/caddy"; }
+        [ -n "$uv" ] || { [ -x "$dir/uv" ] && uv="$dir/uv"; }
+    done
+    if [ -z "$caddy" ] || [ -z "$uv" ]; then
+        echo "Install first: brew install caddy uv"
+        [ -n "$DRY" ] || exit 1
+        caddy=${caddy:-/opt/homebrew/bin/caddy}; uv=${uv:-/opt/homebrew/bin/uv}
+    fi
+    if [ -z "$DRY" ] && ! as_demo /bin/test -w "$REPO/.git"; then
+        echo "$DEMO_USER's checkout is missing. Make it with:"
+        echo "  sudo -u $DEMO_USER -H git clone https://github.com/optionsjourney/optionsjourney.git $REPO"
+        exit 1
+    fi
+
+    # As ojdemo: its state folder, and the app's packages.
+    run as_demo /bin/mkdir -p "$STATE"
+    run as_demo /bin/chmod 700 "$STATE"
+    sync_app "$uv"
+
+    # Logs: root's folder, so ojdemo can write its log files but not swap them for links.
+    local group
+    group=$(/usr/bin/id -g "$DEMO_USER" 2>/dev/null || echo 20)
+    run /usr/bin/install -d -m 755 -o root -g wheel "$LOGS"
+    for label in $MANAGER $PROXY $UPDATER; do
+        if [ -n "$DRY" ] || [ -L "$LOGS/$label.log" ] || [ ! -f "$LOGS/$label.log" ]; then
+            run /bin/rm -f "$LOGS/$label.log"
+            run /usr/bin/install -m 644 -o "$DEMO_USER" -g "$group" /dev/null "$LOGS/$label.log"
+        fi
+    done
+
+    # The commands sudo runs: a root-owned copy of this (trusted) file, in a folder only
+    # root can change. Missing folders are made root's; existing ones aren't changed.
+    local dir
+    for dir in "$(/usr/bin/dirname "$LIBEXEC")" "$LIBEXEC"; do
+        if [ ! -d "$dir" ]; then run /usr/bin/install -d -m 755 -o root -g wheel "$dir"; fi
+    done
+    if [ -z "$DRY" ]; then only_theirs "$LIBEXEC" root || exit 1; fi
+    run /usr/bin/install -m 755 -o root -g wheel "$SOURCE" "$BIN"
+
+    # The demo user's firewall rules; pf itself is left to the admin (pf_steps).
+    pf_rules | put "$PF_ANCHOR" 644 root:wheel
+
+    local base_env=("HOME=$DEMO_HOME" "PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" "LANG=en_US.UTF-8")
+    local password manager_env
+    password=$(stats_password)
+    manager_env=("${base_env[@]}")
+    if [ -n "$password" ]; then manager_env+=("DEMO_STATS_PASSWORD=$password"); fi
+    # The manager's plist holds the stats password, so only root may read it (decision 0102).
+    plist $MANAGER "<key>KeepAlive</key><true/>
+    <key>Nice</key><integer>10</integer>
+    <key>ExitTimeOut</key><integer>30</integer>
+    $(env_xml "${manager_env[@]}")" \
+        "$REPO/.venv/bin/python" -m optionsjourney.demo.manager --port $MANAGER_PORT --root "$STATE" |
+        put "$DAEMONS/$MANAGER.plist" 600 root:wheel
+    plist $PROXY "<key>KeepAlive</key><true/>
+    $(env_xml "${base_env[@]}" "PORT=$PORT" "MANAGER=127.0.0.1:$MANAGER_PORT")" \
+        "$caddy" run --adapter caddyfile --config "$REPO/packaging/demo/Caddyfile" |
+        put "$DAEMONS/$PROXY.plist" 644 root:wheel
+    plist $UPDATER "<key>StartInterval</key><integer>300</integer>
+    <key>Nice</key><integer>10</integer>
+    <key>LowPriorityIO</key><true/>
+    $(env_xml "${base_env[@]}")" \
+        "$BIN" update |
+        put "$DAEMONS/$UPDATER.plist" 644 root:wheel
+
+    # Start, stop, restart and status from the menu bar without a password.
+    local rules="" tmp
+    for cmd in start stop restart status; do rules+="${rules:+, }$BIN $cmd"; done
+    if [ -n "$DRY" ]; then
+        echo "--- would check with visudo -c -f, then write $SUDOERS (440, root:wheel)"
+        echo "$admin ALL=(root) NOPASSWD: $rules"
+        echo "--- would look up SwiftBar's plugin folder for $admin and copy $MENU_SOURCE there (755, root:wheel)"
+        echo "--- would (re)load $MANAGER $PROXY $UPDATER in the system domain"
+        pf_steps
+        return 0
+    fi
+    tmp=$(/usr/bin/mktemp)
+    echo "$admin ALL=(root) NOPASSWD: $rules" >"$tmp"
+    /bin/chmod 440 "$tmp"
+    if /usr/sbin/visudo -c -q -f "$tmp"; then
+        /usr/bin/install -m 440 -o root -g wheel "$tmp" "$SUDOERS"
+    else
+        echo "visudo refused the sudoers rule; left out (the menu bar will ask for a password)."
+    fi
+    /bin/rm -f "$tmp"
+
+    local swiftbar
+    swiftbar=$(/usr/bin/sudo -u "$admin" /usr/bin/defaults read com.ameba.SwiftBar PluginDirectory 2>/dev/null || true)
+    if [ -n "$swiftbar" ] && [ -d "$swiftbar" ]; then
+        /usr/bin/install -m 755 -o root -g wheel "$MENU_SOURCE" "$swiftbar/$MENU_ITEM"
+    fi
+
+    for label in $MANAGER $PROXY $UPDATER; do
+        /usr/bin/plutil -lint -s "$DAEMONS/$label.plist"
+        if loaded "$label"; then /bin/launchctl bootout "system/$label"; sleep 1; fi
+        up "$label"
+    done
+    sleep 3
+    status
+    pf_steps
+}
+
+sync_app() {  # the app's packages, as ojdemo; what uv prints is shown only as clean text
+    local uv=$1 out code=0
+    if [ -n "$DRY" ]; then
+        echo "--- would run as $DEMO_USER, in its checkout: $uv sync -q --frozen --no-dev"
+        return 0
+    fi
+    # shellcheck disable=SC2016  # expanded by the inner shell, as ojdemo
+    out=$(as_demo /bin/sh -c 'cd "$1" && exec "$2" sync -q --frozen --no-dev 2>&1' sh "$REPO" "$uv") || code=$?
+    if [ "$code" -ne 0 ]; then
+        echo "uv sync failed as $DEMO_USER (exit $code): $(printf %s "$out" | clean 600)"
+        exit 1
+    fi
+}
+
+case "${1:-status}" in
+    install) install_demo ;;
+    start) as_root start; need_user; up $MANAGER; up $PROXY; up $UPDATER; sleep 3; status ;;
+    stop) as_root stop; need_user; down $UPDATER; down $PROXY; down $MANAGER; status ;;
+    restart) as_root restart; need_user
+        /bin/launchctl kickstart -k "system/$MANAGER"; /bin/launchctl kickstart -k "system/$PROXY"; sleep 3; status ;;
+    status) as_root status; need_user; status ;;
+    update) need_user; update ;;
+    logs) as_root logs; need_user
+        as_demo /usr/bin/tail -n 30 "$LOGS/$MANAGER.log" "$LOGS/$PROXY.log" "$LOGS/$UPDATER.log" |
+            clean_lines 300 ;;
+    firewall-check) as_root firewall-check "${@:2}"; need_user; firewall_check "${@:2}" ;;
+    *) sed -n '3,12p' "$SOURCE" | sed 's/^# \{0,1\}//'; exit 1 ;;
+esac

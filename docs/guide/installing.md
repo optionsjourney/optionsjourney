@@ -16,9 +16,13 @@ Download the latest version from the [Releases page](https://github.com/optionsj
 3. A black window shows the progress. The first install downloads Python and takes a minute or two.
 
    ![The installer at work](images/win-installing.jpg)
-4. When it says **Done**, press any key to close the window. An **OJ** icon appears in the system tray (click **^** at the bottom right if you don't see it), and the app opens in your browser. The [setup guide](setup.md) takes it from there.
+4. When it says **Done**, press any key to close the window. A green check-mark icon appears in the system tray at the bottom right (click **^** if you don't see it), and the app opens in your browser. The [setup guide](setup.md) takes it from there.
 
    ![The installer, finished](images/win-install-done.jpg)
+
+   Click the icon any time for the OJ menu:
+
+   ![The green check-mark icon in the Windows system tray, with its menu open](images/win-tray-icon.png)
 
 The app is installed in your user folder (`AppData\Local\Programs\OptionsJourney`), so you can delete the zip and the extracted folder afterwards. To start it again later, choose **OptionsJourney** in the **Start menu**.
 
@@ -30,9 +34,13 @@ The app is installed in your user folder (`AppData\Local\Programs\OptionsJourney
    - Usually it just runs. If macOS says it "could not verify" the file or that it's from an unidentified developer, click **Done**, open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to *Install OptionsJourney for Mac.command*, then confirm with your password. (On macOS 14 or older: right-click the file, choose **Open**, then **Open** again.)
    - If a box asks to install "command line developer tools", click **Cancel**: the app doesn't need them.
 3. A Terminal window shows the progress. The first install downloads Python and takes a minute or two.
-4. When it says **Done**, press Return to close the window. An **OJ** icon appears in the menu bar and the app opens in your browser. The [setup guide](setup.md) takes it from there.
+4. When it says **Done**, press Return to close the window. A green check-mark icon appears in the menu bar at the top right of the screen, and the app opens in your browser. The [setup guide](setup.md) takes it from there.
 
    ![The installer, finished](images/mac-install-done.jpg)
+
+   Click the icon any time for the OJ menu:
+
+   ![The green check-mark icon in the Mac menu bar, with its menu open](images/mac-menubar-icon.png)
 
 The app is installed in `Applications/OptionsJourney` inside your home folder, so you can delete the zip and the unzipped folder afterwards. To start it again later, open **OptionsJourney** from Spotlight (⌘ Space) or Launchpad.
 

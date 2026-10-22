@@ -86,6 +86,14 @@ PERIODS = {0: "All time", 7: "7 days", 30: "30 days", 90: "90 days", 365: "1 yea
 STATUSES = {"today": "Open + closed today", "all": "Open and closed", "open": "Open", "closed": "Closed"}
 # The trade list opens on open trades plus the ones closed today; P/L and metrics on all (#68)
 TRADES_STATUS = "today"
+DEMO_TRADES_STATUS = "all"  # the demo opens on its whole made-up history
+
+
+def trades_status(demo: bool) -> str:
+    """The status the trade list opens on."""
+    return DEMO_TRADES_STATUS if demo else TRADES_STATUS
+
+
 UNCATEGORIZED = "none"  # the tag filter's "No tags"
 
 

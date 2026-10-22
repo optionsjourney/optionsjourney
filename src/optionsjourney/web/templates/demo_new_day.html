@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Starting a new day · OptionsJourney{% endblock %}
+{# The demo restarts on a fresh copy of its made-up account (demo/__main__.py); the page
+   reloads the journal once the new day has had time to start. #}
+{% block head_extra %}<meta http-equiv="refresh" content="8;url=/">{% endblock %}
+{% block content %}
+<div class="page-header"><h1>Starting a new day…</h1></div>
+<section class="card">
+    <p>The demo is starting again on a fresh made-up account, back at the morning of the demo day.</p>
+    <p class="muted">This page opens the journal by itself in a few seconds. If it doesn't, <a class="link" href="/">open the journal</a>.</p>
+</section>
+{% endblock %}

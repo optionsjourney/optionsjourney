@@ -10,7 +10,7 @@
 </div>
 <section id="preview-order" class="mb-4 p-4 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm">
     <p class="mb-2">
-        {% if result.ok %}<strong class="text-green-600 dark:text-green-400">Your broker accepted it.</strong>
+        {% if result.ok %}<strong class="text-green-600 dark:text-green-400">{{ "The demo's pretend broker accepted it." if demo_mode else 'Your broker accepted it.' }}</strong>
         {% else %}<strong class="text-red-500 dark:text-red-400">Not accepted.</strong>{% endif %}
         {{ result.reason }}
     </p>

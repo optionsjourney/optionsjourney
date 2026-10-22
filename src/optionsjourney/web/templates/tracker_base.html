@@ -14,8 +14,10 @@
     <script>tailwind.config = { darkMode: 'class' }</script>
     <script src="{{ url_for('static', filename='vendor/socket.io-4.7.4.min.js') }}"></script>
     {% block extra_head %}{% endblock %}
+    {% if demo_mode %}<link rel="stylesheet" href="{{ url_for('static', filename='css/demo.css') }}">{% endif %}
 </head>
 <body class="bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+    {% include '_demo_banner.html' %}
     {% if gateway_mode %}
     <div class="bg-amber-500 text-black text-center text-xs font-semibold py-1" role="status">DEVELOPMENT · no trading · broker data borrowed from the Tracker2 server</div>
     {% endif %}

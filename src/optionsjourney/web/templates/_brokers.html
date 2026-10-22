@@ -6,6 +6,12 @@
    (decision 0093). #}
 {% from "_tooltip.html" import tip_text %}
 
+{# Demo mode: the pretend brokers are connected, so there's nothing to connect. #}
+{% macro demo_note() %}
+    <p class="muted">The demo trades with a pretend TastyTrade and a pretend Schwab, already connected. Connecting your own brokers is for the real app.</p>
+    <span class="demo-off">Not in the demo</span>
+{% endmacro %}
+
 {% macro risk_box(ask_risk) %}
     {% if ask_risk %}
     <label class="check"><input type="checkbox" name="risk" value="1" required> I understand OptionsJourney can place real orders in my broker accounts, and that I am responsible for every one, including orders sent by bots. <a class="link" href="/help/disclaimer" target="_blank" rel="noopener">Disclaimer</a></label>
