@@ -1,15 +1,15 @@
 # The website (optionsjourney.com)
 
-A static site: the Home page and three guide pages (Install, Troubleshooting, Disclaimer). It lives in the working repo only; the public copy doesn't include it (decision 0097).
+A static site: the Home page and four guide pages (Install, Broker setup, Troubleshooting, Disclaimer). It lives in the working repo only; the public copy doesn't include it (decision 0097).
 
 ## How it's built
 - `scripts/build_site.py` writes plain files to `build/site/`:
   - `index.html` from `site/templates/home.html`;
-  - `install.html`, `troubleshooting.html` and `disclaimer.html` from `docs/guide/installing.md`, `troubleshooting.md` and `disclaimer.md`, rendered by the same code as the app's Help pages (`web/guide.py`);
+  - `install.html`, `brokers.html`, `troubleshooting.html` and `disclaimer.html` from `docs/guide/installing.md`, `broker-api-keys.md`, `troubleshooting.md` and `disclaimer.md`, rendered by the same code as the app's Help pages (`web/guide.py`);
   - `404.html`, the CSS from `site/static/`, the guide's screenshots (under `guide/images/`) and the logo and favicon from `src/optionsjourney/web/static/images/`.
-- Links between the three guide pages stay on the site (`installing.md` becomes `/install`). Links to any other guide page go to that page on GitHub, at `main`.
-- The text on those three pages is the guide's own, so it's written once. The only site-only text is the short disclaimer in the footer and at the top of Install.
-- The build stops if one of the three guide pages is missing, so Railway keeps the last good version.
+- Links between the four guide pages stay on the site (`installing.md` becomes `/install`). Links to any other guide page go to that page on GitHub, at `main`.
+- The text on those four pages is the guide's own, so it's written once. The only site-only text is the short disclaimer in the footer and at the top of Install.
+- The build stops if one of the four guide pages is missing, so Railway keeps the last good version.
 - The build never runs git, because Railway's build has no `.git` folder.
 
 ## Trying it locally

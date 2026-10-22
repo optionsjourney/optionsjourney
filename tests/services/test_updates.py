@@ -417,7 +417,8 @@ def test_installer_command_on_windows_keeps_paths_with_spaces_whole():
     assert command[4:8] == ["powershell", "-ExecutionPolicy", "Bypass", "-Command"]
     assert command[8] == (
         "Start-Transcript -Append 'C:\\Users\\Jo Smith\\OJ data\\logs\\update.log'; "
-        "& 'C:\\Users\\Jo Smith\\OJ data\\updates\\v1.2.3\\src\\scripts\\install-windows.ps1'; "
+        "try { & 'C:\\Users\\Jo Smith\\OJ data\\updates\\v1.2.3\\src\\scripts\\install-windows.ps1' } "
+        "catch { Write-Host $_ -ForegroundColor Red }; "
         "Stop-Transcript; "
         "Read-Host 'Press Enter to close this window'"
     )

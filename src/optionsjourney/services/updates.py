@@ -297,8 +297,11 @@ def installer_command(source: Path, log_path: Path, platform: str) -> list[str]:
         script = source / "scripts" / "install-windows.ps1"
         run = (
             f"Start-Transcript -Append {_ps_quote(log_path)}; "
-            f"& {_ps_quote(script)}; Stop-Transcript; "
-            "Read-Host 'Press Enter to close this window'"  # errors stay on screen
+            # An error the script doesn't catch would end -Command and close the window:
+            # catch it here, so it stays on screen with the Read-Host
+            f"try {{ & {_ps_quote(script)} }} catch {{ Write-Host $_ -ForegroundColor Red }}; "
+            "Stop-Transcript; "
+            "Read-Host 'Press Enter to close this window'"
         )
         return [
             "cmd", "/c", "start", "OptionsJourney update",

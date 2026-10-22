@@ -1,5 +1,7 @@
 # Installing OptionsJourney
 
+**Using Schwab?** Request your Schwab API app first: Schwab takes a few business days to approve it. See [Getting your broker API keys](broker-api-keys.md).
+
 Download the latest version from the [Releases page](https://github.com/optionsjourney/optionsjourney/releases/latest): under **Assets**, click **Source code (zip)**.
 
 ## Windows

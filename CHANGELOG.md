@@ -4,6 +4,16 @@ Notable changes to OptionsJourney. The format follows [Keep a Changelog](https:/
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-21
+
+The first update you can install from the OJ menu.
+
+### Fixed
+- On Windows, the installer window opened from the OJ menu stays open on any error, so you can read it.
+
+### Changed
+- A small change to how your data is stored, which changes nothing you'll see. Because of it, the app backs up your data before upgrading it, as it will for every update that changes the data.
+
 ## [0.2.0] - 2026-10-21
 
 Updates from the OJ menu, and fixes from testing on fresh Macs and Windows PCs.

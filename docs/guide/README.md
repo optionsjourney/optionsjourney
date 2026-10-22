@@ -20,6 +20,7 @@ How to…
 
 Ready:
 - [Installing OptionsJourney](installing.md)
+- [Getting your broker API keys](broker-api-keys.md): TastyTrade and Schwab, step by step
 - [Setting up](setup.md), including what's different between TastyTrade and Schwab
 - [Your trade journal](journal.md), including the Paper trades view
 - [Tags](tags.md): grouping your trades

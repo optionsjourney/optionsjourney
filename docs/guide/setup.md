@@ -8,10 +8,10 @@ The first time you open OptionsJourney, a short setup guide walks you through ge
 2. **Your brokers:** tick TastyTrade, Schwab, or neither (then you'll add trades by hand).
 
    ![Your brokers](images/setup-brokers.png)
-3. **Connect TastyTrade:** create an API application on tastytrade.com and paste its client secret and refresh token. They're checked with TastyTrade before they're kept, in your computer's own password store. The first time you connect a broker, tick the box to say you understand the app can place real orders in your accounts and that you're responsible for every one.
+3. **Connect TastyTrade:** create an API application on tastytrade.com and paste its client secret and refresh token (step by step: [Getting your broker API keys](broker-api-keys.md#tastytrade)). They're checked with TastyTrade before they're kept, in your computer's own password store. The first time you connect a broker, tick the box to say you understand the app can place real orders in your accounts and that you're responsible for every one.
 
    ![Connect TastyTrade](images/setup-connect-tastytrade.jpg)
-4. **Connect Schwab:** register an app on developer.schwab.com (Schwab takes a few days to approve it), then log in. If your app isn't approved yet, click **Finish later**.
+4. **Connect Schwab:** register an app on developer.schwab.com (Schwab takes a few days to approve it), then log in (step by step: [Getting your broker API keys](broker-api-keys.md#schwab)). If your app isn't approved yet, click **Finish later**.
 5. **How you trade:** tick what you trade. Each one becomes a tag you can put on your trades, to filter and compare them. Starter tags you untick are removed if no trade has them.
 
    ![How you trade](images/setup-how-you-trade.jpg)
