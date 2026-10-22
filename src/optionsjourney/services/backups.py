@@ -22,7 +22,17 @@ from pathlib import Path
 
 from sqlalchemy.orm import sessionmaker
 
-from optionsjourney.core.backups import KEEP, backup_name, backup_time, is_due, to_delete
+from optionsjourney.core import settings as setting_specs
+from optionsjourney.core.backups import (
+    KEEP,
+    backup_name,
+    backup_time,
+    is_due,
+    to_delete,
+    upgrade_backup_name,
+    upgrade_versions,
+    upgrades_to_delete,
+)
 from optionsjourney.services import settings
 
 logger = logging.getLogger(__name__)
@@ -43,10 +53,16 @@ def folder(session_factory: sessionmaker) -> Path:
     return Path(settings.get(session_factory, "backup_folder"))
 
 
-def list_backups(session_factory: sessionmaker) -> list[Backup]:
+def default_folder() -> Path:
+    """Documents/OptionsJourney Backups: where a backup before an upgrade goes when the
+    chosen folder can't be used (a drive that's gone)."""
+    return Path(setting_specs.spec("backup_folder").default)
+
+
+def list_backups(session_factory: sessionmaker, in_folder: Path | None = None) -> list[Backup]:
     """The backups in the folder, newest first. None if it can't be read."""
     try:
-        entries = list(folder(session_factory).iterdir())
+        entries = list((in_folder or folder(session_factory)).iterdir())
     except OSError:
         return []
     found = [
@@ -60,8 +76,51 @@ def list_backups(session_factory: sessionmaker) -> list[Backup]:
 def backup_now(db_path: Path, session_factory: sessionmaker, now: datetime) -> Path:
     """Copy the database into the backup folder, compressed; returns the new
     file."""
-    target_folder = folder(session_factory)
-    target = target_folder / backup_name(now)
+    target = _write_backup(db_path, session_factory, backup_name(now))
+    keep = int(settings.get(session_factory, "backup_keep") or KEEP)
+    _delete(target.parent, to_delete(os.listdir(target.parent), keep=keep))
+    return target
+
+
+def backup_before_upgrade(
+    db_path: Path,
+    session_factory: sessionmaker,
+    from_version: str,
+    to_version: str,
+    now: datetime,
+) -> Path:
+    """The same copy, named for the upgrade about to happen. The newest few of
+    these are kept apart from the usual clean-up. If the chosen folder can't be used
+    (a drive that's gone), the copy goes to the default folder instead: the app must
+    still start. Raises BackupError if neither can be used."""
+    name = upgrade_backup_name(now, from_version, to_version)
+    chosen, default = folder(session_factory), default_folder()
+    try:
+        target = _write_backup(db_path, session_factory, name)
+    except BackupError as first:
+        if chosen == default:
+            raise
+        try:
+            target = _write_backup(db_path, session_factory, name, default)
+        except BackupError as second:
+            raise BackupError(
+                f"{chosen}: {first.__cause__ or first}; {default}: {second.__cause__ or second}"
+            ) from second
+        logger.warning(
+            "The backup folder %s can't be used (%s): the backup before the upgrade is in %s",
+            chosen,
+            first.__cause__ or first,
+            default,
+        )
+    _delete(target.parent, upgrades_to_delete(os.listdir(target.parent)))
+    return target
+
+
+def _write_backup(
+    db_path: Path, session_factory: sessionmaker, name: str, target_folder: Path | None = None
+) -> Path:
+    target_folder = target_folder or folder(session_factory)
+    target = target_folder / name
     plain = target.with_name(target.name + ".copy")
     partial = target.with_name(target.name + ".partial")
     try:
@@ -76,11 +135,13 @@ def backup_now(db_path: Path, session_factory: sessionmaker, now: datetime) -> P
         for leftover in (plain, partial):
             with contextlib.suppress(OSError):
                 leftover.unlink(missing_ok=True)
-    keep = int(settings.get(session_factory, "backup_keep") or KEEP)
-    for name in to_delete(os.listdir(target_folder), keep=keep):
-        (target_folder / name).unlink(missing_ok=True)
     logger.info("backed up to %s", target)
     return target
+
+
+def _delete(target_folder: Path, names: list[str]) -> None:
+    for name in names:
+        (target_folder / name).unlink(missing_ok=True)
 
 
 def run_if_due(db_path: Path, session_factory: sessionmaker, now: datetime) -> Path | None:
@@ -93,10 +154,17 @@ def run_if_due(db_path: Path, session_factory: sessionmaker, now: datetime) -> P
     return backup_now(db_path, session_factory, now)
 
 
-def restore(db_path: Path, session_factory: sessionmaker, name: str, now: datetime) -> Path:
+def restore(
+    db_path: Path,
+    session_factory: sessionmaker,
+    name: str,
+    now: datetime,
+    from_folder: Path | None = None,
+) -> Path:
     """Replace the database with the backup called `name` from the backup
-    folder, after backing up the database as it is now. Returns that copy."""
-    source = folder(session_factory) / name
+    folder (or `from_folder`), after backing up the database as it is now. Returns
+    that copy."""
+    source = (from_folder or folder(session_factory)) / name
     if Path(name).name != name or backup_time(name) is None or not source.is_file():
         raise BackupError("That backup isn't in the backup folder.")
     safety_copy = backup_now(db_path, session_factory, now)
@@ -115,6 +183,39 @@ def restore(db_path: Path, session_factory: sessionmaker, name: str, now: dateti
         raise BackupError(f"The backup couldn't be restored: {e}") from e
     logger.info("restored %s (the database before it is in %s)", source, safety_copy)
     return safety_copy
+
+
+def restore_point(session_factory: sessionmaker, running: str) -> Backup | None:
+    """The newest backup made just before this version's data was upgraded by a
+    newer one: the way back for the version `running`. None if there isn't one."""
+    found = _restore_point(session_factory, running)
+    return found[0] if found else None
+
+
+def _restore_point(session_factory: sessionmaker, running: str) -> tuple[Backup, Path] | None:
+    """The restore point and its folder: the chosen one, or the default folder the
+    backup went to when the chosen one couldn't be used."""
+    best = None
+    for place in dict.fromkeys((folder(session_factory), default_folder())):
+        for backup in list_backups(session_factory, place):  # newest first
+            versions = upgrade_versions(backup.name)
+            if versions is not None and versions[0] == running:
+                if best is None or backup.made_at > best[0].made_at:
+                    best = (backup, place)
+                break
+    return best
+
+
+def restore_before_upgrade(
+    db_path: Path, session_factory: sessionmaker, running: str, now: datetime
+) -> Path:
+    """Restore restore_point(running), keeping a copy of the data as it is now.
+    Raises BackupError."""
+    found = _restore_point(session_factory, running)
+    if found is None:
+        raise BackupError("No backup from before the upgrade was found.")
+    point, place = found
+    return restore(db_path, session_factory, point.name, now, from_folder=place)
 
 
 # --- In the background, while the app runs ----------------------------------------

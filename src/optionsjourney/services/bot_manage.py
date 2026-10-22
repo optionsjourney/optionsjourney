@@ -678,7 +678,7 @@ def revert_profit_actions(deps, run_id: int, position: int) -> Outcome:
 STOP_FILLED = "The stop filled first"
 NOT_PROTECTED = (
     "It has no stop and no target now: it is not protected from a loss. Its timed close "
-    "and watch rules still close it, as in Tracker2. Turn them back on from the run page."
+    "and watch rules still close it. Turn them back on from the run page."
 )
 
 
@@ -1183,7 +1183,7 @@ def _held_units(positions: dict[str, int], legs) -> int:
 
 ORDER_TYPES = ("limit", "market")  # manual_close.ORDER_TYPES
 MARKET_0DTE = (
-    "Market is for 0DTE trades only (every leg expiring today), as in Tracker2. Use Limit: "
+    "Market is for 0DTE trades only (every leg expiring today). Use Limit: "
     "it starts from the mid and chases."
 )
 

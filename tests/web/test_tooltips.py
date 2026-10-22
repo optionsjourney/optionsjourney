@@ -67,3 +67,11 @@ def test_tooltips_js_is_a_module_on_every_layout():
 
 def test_app_css_has_no_tip_rules():
     assert ".tip__text" not in (STATIC / "css/app.css").read_text()
+
+
+def test_clicking_a_tips_text_doesnt_tick_its_checkbox():
+    # A tip inside a checkbox's <label>: a click on its text is ignored, except on Learn more
+    # (#233; checked in a browser when fixed)
+    js = (STATIC / "js/tooltips.js").read_text(encoding="utf-8")
+    assert "closest('.tip__text') && !target.closest('a')" in js
+    assert "event.preventDefault()" in js

@@ -1,10 +1,18 @@
 {# The TastyTrade and Schwab connect cards, shared by Settings -> Brokers and
    the setup wizard. `next` is where to come back to after each step
    (a path in this app), or none for Settings. Each broker is a row: its
-   name and a status pill, and its buttons on the right (#73). #}
+   name and a status pill, and its buttons on the right (#73). `ask_risk`
+   adds the risk box to the connect forms until it's been ticked once
+   (decision 0093). #}
 {% from "_tooltip.html" import tip_text %}
 
-{% macro tastytrade_card(brokers, next=none) %}
+{% macro risk_box(ask_risk) %}
+    {% if ask_risk %}
+    <label class="check"><input type="checkbox" name="risk" value="1" required> I understand OptionsJourney can place real orders in my broker accounts, and that I am responsible for every one, including orders sent by bots. <a class="link" href="/help/disclaimer" target="_blank" rel="noopener">Disclaimer</a></label>
+    {% endif %}
+{% endmacro %}
+
+{% macro tastytrade_card(brokers, next=none, ask_risk=false) %}
     {% set connected = brokers.connected('tastytrade') %}
     <div class="broker">
         <div class="broker__head">
@@ -34,6 +42,7 @@
             <label>Client secret <input type="password" name="client_secret" required></label>
             <label>Refresh token <input type="password" name="refresh_token" required></label>
             <label class="check"><input type="checkbox" name="sandbox"> This is a sandbox (test) account</label>
+            {{ risk_box(ask_risk) }}
             <button class="button" type="submit">Connect TastyTrade</button>
         </form>
         {% endif %}
@@ -41,7 +50,7 @@
 
 {% endmacro %}
 
-{% macro schwab_card(brokers, next=none) %}
+{% macro schwab_card(brokers, next=none, ask_risk=false) %}
     {% set schwab = brokers.store.get('schwab') or {} %}
     {% set connected = brokers.connected('schwab') %}
     {% set schwab_expires = brokers.schwab_login_expires_at() %}
@@ -110,6 +119,7 @@
                     <label>App key <input type="text" name="app_key" value="{{ schwab.app_key }}" required></label>
                     <label>Secret <input type="password" name="app_secret" placeholder="(unchanged)"></label>
                     <label>Callback URL <input type="text" name="callback_url" value="{{ schwab.callback_url }}" required></label>
+                    {{ risk_box(ask_risk) }}
                     <button class="button" type="submit">Save and log in to Schwab</button>
                 </form>
             </details>
@@ -134,6 +144,7 @@
             <label>App key <input type="text" name="app_key" required></label>
             <label>Secret <input type="password" name="app_secret" required></label>
             <label>Callback URL <span class="muted small">(exactly as on Schwab's site, including any port)</span> <input type="text" name="callback_url" value="https://127.0.0.1" required></label>
+            {{ risk_box(ask_risk) }}
             <button class="button" type="submit">Log in to Schwab</button>
         </form>
         {% endif %}

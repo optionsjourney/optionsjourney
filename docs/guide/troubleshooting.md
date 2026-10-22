@@ -4,6 +4,14 @@
 
 Each answer starts with the most common reason. Many come down to the app not running at the time: see [When the app or computer is off](behind-the-scenes.md#when-the-app-or-computer-is-off).
 
+## The app won't open or isn't working
+- **There's no OJ icon** in the system tray (Windows) or the menu bar (Mac): the app isn't running. Open **OptionsJourney** from the Start menu (Windows), or from Spotlight (⌘ Space) or Launchpad (Mac).
+- **The icon is there, but the page won't load:** choose **Restart OptionsJourney** in the OJ menu, wait a few seconds, then choose **Open OptionsJourney**.
+- **A page says "Something went wrong":** see [below](#a-page-says-something-went-wrong).
+- **Finding the logs:** choose **Open logs** in the OJ menu. If there's no menu, the `logs` folder is inside your data folder: `AppData\Local\OptionsJourney` on Windows, `Library/Application Support/OptionsJourney` on a Mac (see [Where things are](installing.md#where-things-are)).
+- **Reinstalling:** run the installer again, as in [Installing](installing.md). Your trades, bots and settings are kept, because they're stored separately from the app.
+- **Still stuck?** Send `optionsjourney.log` from the logs folder to [hello@optionsjourney.com](mailto:hello@optionsjourney.com), with a line on what happened.
+
 ## Why is a trade missing from the Journal?
 **The likely reasons:**
 - **It hasn't been read yet.** The sync after a fill takes a few seconds, and if your broker's fill notice doesn't arrive, the trade waits for the next timed sync: every minute in market hours by default, every hour at other times (see [How trades get into the Journal](behind-the-scenes.md#how-trades-get-into-the-journal)).
@@ -81,7 +89,6 @@ Logging in to Schwab from this app on another computer, or from another program 
 - **The app isn't running,** or the computer is asleep. Nothing syncs then; trades filled meanwhile are read at the first sync after it starts.
 - **A broker can't be read:** Schwab's login has run out, or the broker didn't answer.
 - **The timed sync is off** in **Settings → Syncing your trades** (see [Settings](settings.md#syncing-your-trades)).
-- **If you started the app from the menu bar icon, press Sync now.** For now, the menu bar copy doesn't run the timed sync or the sync after a fill.
 
 **What to check:** press **Sync now** in the Journal: the line it shows says how each broker did. **Transactions → Last sync** shows each account's last good sync and the problem that stopped the last one.
 

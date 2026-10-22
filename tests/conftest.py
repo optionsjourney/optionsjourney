@@ -116,3 +116,40 @@ def _forget_pl_day_closes():
     pl_day.forget_closes()
     yield
     pl_day.forget_closes()
+
+
+@pytest.fixture
+def migrate_to_before_head():
+    """Migrate a database only to the revision before the newest, so it is
+    'older' data an upgrade has something to do to."""
+
+    def _migrate(engine):
+        from alembic import command
+        from alembic.script import ScriptDirectory
+
+        from optionsjourney.db import alembic_config
+
+        config = alembic_config()
+        head = ScriptDirectory.from_config(config).get_current_head()
+        previous = ScriptDirectory.from_config(config).get_revision(head).down_revision
+        with engine.begin() as connection:
+            config.attributes["connection"] = connection
+            command.upgrade(config, previous)
+
+    return _migrate
+
+
+@pytest.fixture(autouse=True)
+def _backup_folder_in_tmp(tmp_path_factory, monkeypatch):
+    """The backup folder's default is in the user's real Documents; no test may
+    write a backup there (create_app backs up before an upgrade)."""
+    from dataclasses import replace
+
+    from optionsjourney.core import settings as core_settings
+
+    folder = tmp_path_factory.mktemp("default-backups") / "OptionsJourney Backups"
+    monkeypatch.setitem(
+        core_settings._BY_KEY,
+        "backup_folder",
+        replace(core_settings.spec("backup_folder"), default=str(folder)),
+    )

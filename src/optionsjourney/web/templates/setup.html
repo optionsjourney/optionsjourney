@@ -19,7 +19,7 @@
 
         {% if step == 'welcome' %}
         <p>OptionsJourney keeps a journal of your options trades: every trade from your broker, its P/L, and how each kind of trade is doing.</p>
-        <p>It runs only on this computer. Your trades and your broker logins stay here; nothing is sent anywhere except to your broker.</p>
+        <p>It runs only on this computer. Your trades and your broker logins stay here, and go only to your broker (and to Discord or Telegram, if you turn on phone alerts). Once a day it also checks GitHub for a new version of OptionsJourney, sending nothing about you; you can turn that off in Settings → This computer.</p>
         <p>Setup takes a few minutes: tell it which brokers you use, connect them, and answer a question about how you trade. You can change everything later in Settings.</p>
         <p><strong>Before you start:</strong> trading options carries real risk, and bots can behave in ways you don't expect: bugs, bad data, broker outages and fast markets. Start with paper trading. Read the <a class="link" href="/help/disclaimer">disclaimer</a>.</p>
         {% if risk_accepted %}
@@ -41,14 +41,14 @@
         </form>
 
         {% elif step == 'tastytrade' %}
-        {{ tastytrade_card(brokers, next=url_for('setup.step', name='tastytrade')) }}
+        {{ tastytrade_card(brokers, next=url_for('setup.step', name='tastytrade'), ask_risk=ask_risk) }}
         <div class="setup__nav">
             <a class="button" href="{{ next_url }}">{{ 'Next' if brokers.connected('tastytrade') else 'Skip for now' }}</a>
         </div>
 
         {% elif step == 'schwab' %}
         <p class="muted">Schwab takes a few days to approve a new developer app. If yours isn't approved yet, click <strong>Finish later</strong> and come back to this step from Settings when it is.</p>
-        {{ schwab_card(brokers, next=url_for('setup.step', name='schwab')) }}
+        {{ schwab_card(brokers, next=url_for('setup.step', name='schwab'), ask_risk=ask_risk) }}
         <div class="setup__nav">
             <a class="button" href="{{ next_url }}">{{ 'Next' if brokers.connected('schwab') else 'Finish later' }}</a>
         </div>

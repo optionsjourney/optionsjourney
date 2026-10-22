@@ -1392,7 +1392,7 @@ def test_a_bot_imports_from_a_link_and_its_page_shows_the_link(app, monkeypatch)
 
 
 def test_a_tracker2_bot_file_imports_with_what_changed_on_the_way(app):
-    """#138: a Tracker2 bot file previews with a Coming from Tracker2 note, then saves."""
+    """#138: a Tracker2 bot file previews with a From another app note, then saves."""
     from tests.bots.test_tracker2_file import six_entry_ic
 
     data = six_entry_ic()
@@ -1405,7 +1405,8 @@ def test_a_tracker2_bot_file_imports_with_what_changed_on_the_way(app):
         headers=ORIGIN,
         content_type="multipart/form-data",
     ).get_data(as_text=True)
-    assert "Coming from Tracker2" in html and "Leave working" in html
+    assert "From another app" in html and "Leave working" in html
+    assert "Tracker2" not in html  # its name stays off the screen
     assert "when its stop fills, Long Puts closes too" in html
     assert "Your choices" in html and "Six-entry IC" in html
     assert "can't be imported as it is" not in html

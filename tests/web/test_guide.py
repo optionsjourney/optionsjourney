@@ -162,3 +162,16 @@ def test_search_ranks_the_phrase_higher(tmp_path):
         "## Exits\n\nThe stop loss closes it. Each stop loss rests.\n"
     )
     assert [h.anchor for h in search(tmp_path, "stop loss")] == ["exits", "stop-styles"]
+
+
+def test_render_with_custom_link_targets(tmp_path):
+    root = _root(
+        tmp_path, "# A\n[b](b.md#x) [i](README.md) [w](https://e.com) ![p](images/p.png)\n"
+    )
+    page = render_page(
+        root, "a", page_url=lambda stem: f"https://gh/{stem}.md", image_prefix="/img/"
+    )
+    assert 'href="https://gh/b.md#x"' in page.html
+    assert 'href="https://gh/README.md"' in page.html
+    assert 'href="https://e.com"' in page.html
+    assert 'src="/img/images/p.png"' in page.html

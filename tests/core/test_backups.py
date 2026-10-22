@@ -1,6 +1,15 @@
 from datetime import UTC, datetime, timedelta
 
-from optionsjourney.core.backups import backup_name, backup_time, is_due, to_delete
+from optionsjourney.core.backups import (
+    backup_name,
+    backup_time,
+    is_due,
+    to_delete,
+    upgrade_backup_name,
+    upgrade_versions,
+    upgrades_to_delete,
+)
+from optionsjourney.core.market import MARKET_TZ
 
 NOW = datetime(2026, 10, 10, 19, 30, tzinfo=UTC)  # 15:30 New York
 
@@ -39,3 +48,27 @@ def test_only_the_newest_30_are_kept_and_other_files_are_left_alone():
 
 def test_older_uncompressed_backups_still_count():
     assert backup_time("optionsjourney-2026-10-09-1530.db") is not None
+
+
+def test_upgrade_backup_names_round_trip():
+    now = datetime(2026, 10, 21, 15, 30, tzinfo=MARKET_TZ)
+    name = upgrade_backup_name(now, "0.2.0", "0.2.1")
+    assert name == "optionsjourney-2026-10-21-1530-before-0.2.1-from-0.2.0.db.gz"
+    assert upgrade_versions(name) == ("0.2.0", "0.2.1")
+    assert backup_time(name) == now
+    assert upgrade_versions("optionsjourney-2026-10-21-1530.db.gz") is None
+
+
+def test_upgrade_backup_names_accept_unknown_versions():
+    name = upgrade_backup_name(NOW, "unknown", "0+unknown")
+    assert upgrade_versions(name) == ("unknown", "0+unknown")
+
+
+def test_the_usual_cleanup_keeps_pre_upgrade_backups_and_they_keep_3():
+    plain = [f"optionsjourney-2026-10-{d:02d}-1530.db.gz" for d in range(1, 6)]
+    upgrades = [
+        f"optionsjourney-2026-10-{d:02d}-1600-before-0.2.{d}-from-0.2.{d - 1}.db.gz"
+        for d in range(1, 6)
+    ]
+    assert to_delete(plain + upgrades, keep=2) == plain[:3]
+    assert upgrades_to_delete(plain + upgrades) == upgrades[:2]

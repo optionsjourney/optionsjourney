@@ -14,8 +14,10 @@ from optionsjourney.services import journal
 # Internal keys in the settings table; not shown on the Settings page.
 _COMPLETED = "_setup_completed"
 _BROKERS = "_setup_brokers"
-# The risk acknowledgments (decision 0093): at first run, and the first time a bot goes Live.
+# The risk acknowledgments (decision 0093): at first run, the first time a broker is
+# connected, and the first time a bot goes Live.
 _RISK = "_risk_accepted"
+_BROKER_RISK = "_broker_risk_accepted"
 _LIVE_RISK = "_live_risk_accepted"
 
 # The trading-style question: each answer is the tag it creates.
@@ -61,6 +63,14 @@ def risk_accepted(session_factory: sessionmaker) -> bool:
 
 def accept_risk(session_factory: sessionmaker) -> None:
     _set(session_factory, _RISK, datetime.now(UTC).isoformat())
+
+
+def broker_risk_accepted(session_factory: sessionmaker) -> bool:
+    return _get(session_factory, _BROKER_RISK) is not None
+
+
+def accept_broker_risk(session_factory: sessionmaker) -> None:
+    _set(session_factory, _BROKER_RISK, datetime.now(UTC).isoformat())
 
 
 def live_risk_accepted(session_factory: sessionmaker) -> bool:

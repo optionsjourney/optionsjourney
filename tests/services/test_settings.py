@@ -1,6 +1,6 @@
 import pytest
 
-from optionsjourney.core.settings import DEFAULT_BACKUP_FOLDER, SettingError
+from optionsjourney.core.settings import SettingError, spec
 from optionsjourney.db import make_engine, make_session_factory, migrate
 from optionsjourney.services import settings
 
@@ -14,7 +14,7 @@ def session_factory(tmp_path):
 
 def test_defaults_until_saved(session_factory):
     assert settings.get(session_factory, "backup_frequency") == "daily"
-    assert settings.get(session_factory, "backup_folder") == DEFAULT_BACKUP_FOLDER
+    assert settings.get(session_factory, "backup_folder") == spec("backup_folder").default
 
 
 def test_saving_a_section(session_factory):
@@ -30,4 +30,4 @@ def test_a_refused_section_saves_nothing(session_factory):
         settings.save_section(
             session_factory, "backups", {"backup_folder": "/tmp/oj", "backup_frequency": "hourly"}
         )
-    assert settings.get(session_factory, "backup_folder") == DEFAULT_BACKUP_FOLDER
+    assert settings.get(session_factory, "backup_folder") == spec("backup_folder").default

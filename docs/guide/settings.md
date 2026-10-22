@@ -23,6 +23,10 @@ Each broker shows whether it's **Connected**. For Schwab, the pill turns amber (
 - **Restore** puts a backup back in place of your journal. Your journal as it is just before is backed up first, so if you change your mind, restore that one.
 - If a backup fails (for example, a USB drive that isn't plugged in), the Backups section says so.
 
+## This computer
+- **Keep awake during market hours:** stops the computer going to sleep on weekdays from 9:15 to 4:15 New York time. It works with the [menu bar icon](menubar.md).
+- **Check for new versions:** on (the default) or off. Once a day the app asks GitHub if a newer version is out. Nothing about you is sent. If there is one, the OJ menu offers it. See [Updating the app](updating.md).
+
 ## Syncing your trades
 The app reads new trades from your brokers on its own, so they show in your journal without you doing anything. To read them straight away, press **Sync now**: it's here, at the top of the Journal, and on the Transactions page.
 - **During market hours** (9:30 to 4:00 New York time on trading days): every minute (the default), every 2, 3, 4, 5 or 15 minutes, or off. Every minute means a new trade shows within about a minute.

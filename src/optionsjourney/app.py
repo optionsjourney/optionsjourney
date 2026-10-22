@@ -4,19 +4,22 @@ import logging
 import secrets
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from typing import Protocol
 
 from flask import Flask, jsonify, render_template, request, url_for
 from sqlalchemy import Engine
 from sqlalchemy.orm import sessionmaker
 
-from optionsjourney import logs
+from optionsjourney import __version__, logs
 from optionsjourney.brokers import guard
 from optionsjourney.brokers.credentials import CredentialProvider, provider_for
 from optionsjourney.brokers.schwab import SchwabClient
 from optionsjourney.brokers.tastytrade import TastyTradeClient
 from optionsjourney.config import Settings, load_settings
-from optionsjourney.db import make_engine, make_session_factory, migrate
+from optionsjourney.db import make_engine, make_session_factory, migrate, schema_state
+from optionsjourney.services import backups
+from optionsjourney.services import settings as settings_service
 from optionsjourney.services.accounts import AccountsClient
 from optionsjourney.services.chain import ChainData
 from optionsjourney.services.chart_market import FuturesContracts
@@ -40,6 +43,7 @@ from optionsjourney.web.routes import (
     setup,
     trade,
     transactions,
+    update,
 )
 from optionsjourney.web.routes import (
     orders as orders_routes,
@@ -77,6 +81,40 @@ class Services:
     fill_sync: object | None = None
 
 
+class NewerDataError(Exception):
+    """The data was upgraded by a newer version of the app. Nothing was changed."""
+
+
+class UpgradeBackupError(Exception):
+    """The backup before an upgrade couldn't be made, so the data wasn't
+    upgraded. The message is for the user."""
+
+
+def _prepare_data(settings: Settings, engine, session_factory) -> None:
+    """Back up and upgrade the data, or refuse it if a newer version made it,
+    then record which version ran."""
+    state = schema_state(engine)
+    if state == "newer":
+        raise NewerDataError(
+            f"This data was upgraded by a newer version than {__version__}. "
+            "It has not been changed."
+        )
+    if state == "older":
+        from_version = settings_service.get_app_version(session_factory) or "unknown"
+        try:
+            backups.backup_before_upgrade(
+                settings.database_path,
+                session_factory,
+                from_version,
+                __version__,
+                datetime.now(UTC),
+            )
+        except backups.BackupError as e:
+            raise UpgradeBackupError(str(e)) from e
+    migrate(engine)
+    settings_service.set_app_version(session_factory, __version__)
+
+
 def create_app(
     settings: Settings | None = None,
     *,
@@ -91,7 +129,12 @@ def create_app(
         guard.install()
 
     engine = make_engine(settings.database_path)
-    migrate(engine)
+    session_factory = make_session_factory(engine)
+    try:
+        _prepare_data(settings, engine, session_factory)
+    except NewerDataError, UpgradeBackupError:
+        engine.dispose()  # no open handle on the file, so it can be restored
+        raise
 
     credentials = credentials or provider_for(settings)
     if broker_clients is None:
@@ -104,7 +147,7 @@ def create_app(
     app.extensions["optionsjourney"] = Services(
         settings=settings,
         engine=engine,
-        session_factory=make_session_factory(engine),
+        session_factory=session_factory,
         credentials=credentials,
         broker_clients=broker_clients,
         positions_cache=PositionsCache(),
@@ -117,7 +160,7 @@ def create_app(
 
     @app.context_processor
     def _inject_mode():
-        return {"gateway_mode": settings.is_gateway}
+        return {"gateway_mode": settings.is_gateway, "app_version": __version__}
 
     @app.context_processor
     def _inject_alert_count():
@@ -155,6 +198,7 @@ def create_app(
     app.register_blueprint(settings_routes.bp)
     app.register_blueprint(transactions.bp)
     app.register_blueprint(health.bp)
+    app.register_blueprint(update.bp)
     app.register_blueprint(help_pages.bp)
 
     sockets.register(app)

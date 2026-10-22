@@ -1117,8 +1117,8 @@ def test_journal_page_has_tips(client):
     _has_tips(html, "journal-open-pl", "journal-pl-day", "journal-pl-day-col", "journal-legs",
               "journal-sync-now", "journal-graph-together")  # fmt: skip
     assert 'title="Read new trades from your brokers now' not in html
-    # the menu bar launcher doesn't sync on its own yet (#225): the tip says so
-    assert "Not yet when you started the app from the menu bar icon" in html
+    # the menu bar app syncs on its own too (#225): no "press Sync now" workaround
+    assert "menu bar icon" not in html
 
 
 def test_journal_summary_boxes_have_tips(client):

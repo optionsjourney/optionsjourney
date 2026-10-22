@@ -4,6 +4,27 @@ Notable changes to OptionsJourney. The format follows [Keep a Changelog](https:/
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-21
+
+Updates from the OJ menu, and fixes from testing on fresh Macs and Windows PCs.
+
+### Added
+- The version you have shows in the OJ menu (● Running · v0.2.0) and at the bottom of every page.
+- Checking for and installing updates from the OJ menu: once a day the app checks GitHub for a newer version, and the menu offers **Download** and then **Install**. Turn the check off in Settings → This computer.
+- A backup before every data upgrade, kept in the backup folder (or in Documents/OptionsJourney Backups if that folder can't be reached); the newest 3 are kept.
+- A page that says what to do when the app can't start, including a button to restore the backup from before an upgrade.
+
+### Changed
+- A new logo, and a menu bar / tray icon you can read.
+- The installer puts the old version back if an update fails.
+- The installers are named for the computer they're for: **Install OptionsJourney for Mac.command** and **Install OptionsJourney for Windows.bat**.
+- Connecting a broker for the first time asks you to tick that you're responsible for every order placed in your accounts.
+
+### Fixed
+- Clicking the text of a tip next to a tick box no longer ticks the box.
+- The app reported its version as 0.1.0 whatever version was installed.
+- On a fresh Mac, the installer no longer pops up "install the command line developer tools".
+
 ## [0.1.1] - 2026-10-21
 
 Fixes from testing on a fresh Windows PC.

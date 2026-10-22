@@ -7,9 +7,12 @@ migrations (db/migrations), applied at startup."""
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
+from typing import Literal
 
 from alembic import command
 from alembic.config import Config
+from alembic.runtime.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from sqlalchemy import DateTime, Engine, String, create_engine, event, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy.types import TypeDecorator
@@ -81,6 +84,24 @@ def migrate(engine: Engine) -> None:
     with engine.begin() as connection:
         config.attributes["connection"] = connection
         command.upgrade(config, "head")
+
+
+def schema_state(engine: Engine) -> Literal["empty", "current", "older", "newer"]:
+    """Where the data stands against this version's migrations: "empty" (a new
+    file), "current", "older" (needs upgrading) or "newer" (a newer version of
+    the app upgraded it, so this one can't read it safely)."""
+    scripts = ScriptDirectory.from_config(alembic_config())
+    with engine.connect() as connection:
+        revision = MigrationContext.configure(connection).get_current_revision()
+    if revision is None:
+        return "empty"
+    if revision == scripts.get_current_head():
+        return "current"
+    try:
+        scripts.get_revision(revision)
+    except Exception:  # noqa: BLE001 -- Alembic raises its own error for an unknown revision
+        return "newer"
+    return "older"
 
 
 def is_healthy(engine: Engine) -> bool:

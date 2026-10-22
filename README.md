@@ -26,7 +26,7 @@ OptionsJourney connects to your **TastyTrade** and/or **Schwab** account, keeps 
 ## Install
 
 1. Download the latest version from [Releases](https://github.com/optionsjourney/optionsjourney/releases/latest) and **unzip it** (on Windows: right-click → Extract All).
-2. Open the **scripts** folder and double-click **Install OptionsJourney.command** (Mac) or **Install OptionsJourney.bat** (Windows).
+2. Open the **scripts** folder and double-click **Install OptionsJourney for Mac.command** or **Install OptionsJourney for Windows.bat**.
 3. The app installs into your user folder, opens in your browser, and a setup guide walks you through connecting your broker. Afterwards, start it from the Start menu (Windows) or Spotlight (Mac).
 
 Step-by-step instructions, with what to do if your computer warns you: [Installing OptionsJourney](docs/guide/installing.md).

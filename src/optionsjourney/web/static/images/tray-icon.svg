@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="72 70 372 372">
+  <title>OptionsJourney</title>
+  <!-- The menu bar / tray icon: icon.svg's mark on a dark tile cut close around it, so the mark fills the icon (decision 0096) -->
+  <rect x="72" y="70" width="372" height="372" rx="70" fill="#111827"/>
+  <path d="M403.7 230 A150 150 0 1 1 307.3 115" fill="none" stroke="#59b82c" stroke-width="40" stroke-linecap="round"/>
+  <path d="M172 262 L230 320 L380 170" fill="none" stroke="#ffffff" stroke-width="42" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M432 118 L410 200 L350 140 Z" fill="#ffffff" stroke="#ffffff" stroke-width="12" stroke-linejoin="round"/>
+</svg>

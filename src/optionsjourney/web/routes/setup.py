@@ -66,6 +66,7 @@ def step(name):
         chosen=setup.chosen_brokers(s.session_factory),
         styles=setup.STYLES,
         risk_accepted=setup.risk_accepted(s.session_factory),
+        ask_risk=not setup.broker_risk_accepted(s.session_factory),
         current_styles={t.name for t in _tags()},
         backup_section=section("backups"),
         values=settings.get_all(s.session_factory),

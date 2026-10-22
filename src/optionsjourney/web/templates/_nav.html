@@ -1,7 +1,7 @@
 {# The top bar, shared by base.html and tracker_base.html. Styles: css/nav.css. #}
 <nav class="nav">
     <div class="nav__inner">
-        <a class="nav__brand" href="{{ url_for('journal.journal_page') }}"><img class="nav__logo" src="{{ url_for('static', filename='images/logo.png') }}" alt="OptionsJourney"></a>
+        <a class="nav__brand" href="{{ url_for('journal.journal_page') }}"><img class="nav__logo" src="{{ url_for('static', filename='images/logo-mark.svg') }}" alt=""><span class="nav__wordmark">Options<b>Journey</b></span></a>
         <div class="nav__links">
             {% for endpoint, label in [('journal.journal_page', 'Journal'), ('charts.charts_page', 'Charts'), ('trade.trade_page', 'Trade'), ('automation.automation_page', 'Automation'), ('transactions.transactions_page', 'Transactions'), ('accounts.accounts_page', 'Accounts'), ('help.help_page', 'Help')] %}
             <a class="nav__link {{ 'nav__link--active' if request.endpoint and (request.endpoint == endpoint or request.endpoint.startswith(endpoint.split('.')[0] ~ '.')) }}"

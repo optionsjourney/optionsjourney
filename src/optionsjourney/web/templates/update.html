@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Install v{{ version }} · OptionsJourney{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>Install v{{ version }}</h1>
+</div>
+{% if started %}
+<section class="card">
+    <p><strong>OptionsJourney will stop and come back by itself in about a minute.</strong> Leave the installer window open until it says it is done.</p>
+    <p class="small">If it doesn't come back, the installer's notes are in <code>{{ log_path }}</code> (update.log).</p>
+</section>
+{% else %}
+<section class="card">
+    <p><strong>Installing stops OptionsJourney for about a minute.</strong> While it is stopped, nothing watches your bots, your stops or your orders.</p>
+    <p class="small"><a class="link" href="{{ release.page_url }}" target="_blank" rel="noopener">What's new in v{{ version }}</a> · <a class="link" href="/help/updating#going-back" target="_blank" rel="noopener">Going back to the version you had</a></p>
+    {% if error %}<p class="error" role="alert"><strong>{{ error }}</strong></p>{% endif %}
+    <form method="post" action="{{ url_for('update.install') }}" onsubmit="var b=this.querySelector('button[type=submit]'); setTimeout(function(){b.disabled=true},0)">
+        {% if risks %}
+        <p>Here is what is live right now. Tick each to say you know.</p>
+        <ul class="plain">
+            {% for risk in risks %}
+            <li>
+                <label class="small"><input type="checkbox" name="risk_{{ risk.key }}" value="{{ risk.count }}" {{ 'checked' if risk.key in ticked }} required>
+                    <strong style="color: var(--red, #c0392b)">{{ risk.title }}</strong>{% if risk.meaning %}: {{ risk.meaning }}{% endif %}</label>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p>Nothing is running that the restart would interrupt.</p>
+        {% endif %}
+        <div class="inline-form section-gap">
+            <label class="small"><input type="checkbox" name="confirm" value="1" required> I understand the app stops for about a minute while v{{ version }} is installed.</label>
+            <button class="button" type="submit">Install now</button>
+            <a class="button button--quiet" href="/">Not now</a>
+        </div>
+    </form>
+</section>
+{% endif %}
+{% endblock %}

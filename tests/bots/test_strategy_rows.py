@@ -24,7 +24,8 @@ def test_a_suffix_naming_the_bots_own_account_is_dropped():
 
 def test_a_suffix_naming_something_else_stays():
     assert base_name("Butterfly - XSP", "Beta ••0001") == "Butterfly - XSP"
-    assert base_name("Iron Condor - IRA", "Joint ••0003") == "Iron Condor - IRA"  # not this bot's account
+    # not this bot's account
+    assert base_name("Iron Condor - IRA", "Joint ••0003") == "Iron Condor - IRA"
     assert base_name("Iron Condor - Beta", None) == "Iron Condor - Beta"
     assert base_name(" - Beta", "Beta") == "- Beta"
 
@@ -41,7 +42,9 @@ def test_account_variants_of_one_strategy_are_one_row():
 
 
 def test_bots_under_different_strategies_never_merge():
-    got = build([bot(1, "Iron Condor - Beta", "A1", tag_id=1), bot(2, "Iron Condor - IRA", "A2", tag_id=2)])
+    got = build(
+        [bot(1, "Iron Condor - Beta", "A1", tag_id=1), bot(2, "Iron Condor - IRA", "A2", tag_id=2)]
+    )
     assert [(r.strategy, r.key) for r in got] == [("0DTE", "1"), ("Calendars", "2")]
 
 

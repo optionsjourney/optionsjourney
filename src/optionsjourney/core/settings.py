@@ -219,6 +219,17 @@ SECTIONS = SECTIONS + (
                 default="on",
                 choices=(("on", "On"), ("off", "Off")),
             ),
+            Setting(
+                key="check_updates",
+                label="Check for new versions",
+                help="Once a day, asks GitHub if a newer version is out.",
+                tip=(
+                    "Once a day, asks GitHub whether a newer OptionsJourney is out. "
+                    "Nothing about you is sent. If one is, the menu bar offers it."
+                ),
+                default="on",
+                choices=(("on", "On"), ("off", "Off")),
+            ),
         ),
     ),
 )

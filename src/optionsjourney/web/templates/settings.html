@@ -92,8 +92,8 @@
             {% for category, message in get_flashed_messages(with_categories=true) if category.startswith('broker-') %}
             <p class="notice notice--{{ category[7:] }}" role="status">{{ message }}</p>
             {% endfor %}
-            {{ tastytrade_card(brokers) }}
-            {{ schwab_card(brokers) }}
+            {{ tastytrade_card(brokers, ask_risk=ask_risk) }}
+            {{ schwab_card(brokers, ask_risk=ask_risk) }}
             {% endif %}
         </section>
 

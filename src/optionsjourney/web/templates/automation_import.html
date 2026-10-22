@@ -24,9 +24,9 @@
     </form>
 </section>
 {% elif stage == 'manual' %}
-<p class="muted">This Tracker2 bot enters from the Analyzer, so it comes over as a <strong>manual bot</strong>: a named set of exit rules you attach to a trade you already have{% if source_url %}, from <a href="{{ source_url }}" target="_blank" rel="noopener noreferrer">{{ source_url }}</a>{% endif %}. Nothing is saved until you press Import.</p>
+<p class="muted">This bot is entered by hand in the app it came from, so it comes over as a <strong>manual bot</strong>: a named set of exit rules you attach to a trade you already have{% if source_url %}, from <a href="{{ source_url }}" target="_blank" rel="noopener noreferrer">{{ source_url }}</a>{% endif %}. Nothing is saved until you press Import.</p>
 <section class="notice">
-    <p><strong>Coming from Tracker2.</strong> What's different here:</p>
+    <p><strong>From another app.</strong> What's different here:</p>
     <ul>{% for note in notes %}<li>{{ note }}</li>{% endfor %}</ul>
 </section>
 <section class="card">
@@ -53,7 +53,7 @@
 <p class="muted">Here's what this bot does{% if exported_at %} (its file was saved {{ exported_at | market_time }}){% endif %}{% if source_url %}, from <a href="{{ source_url }}" target="_blank" rel="noopener noreferrer">{{ source_url }}</a>{% endif %}. Nothing is saved until you press Import.</p>
 {% if from_tracker2 %}
 <section class="notice">
-    <p><strong>Coming from Tracker2.</strong> {% if notes %}Everything else carries over as it was. What's different here:{% else %}Every setting carries over as it was.{% endif %}</p>
+    <p><strong>From another app.</strong> {% if notes %}Everything else carries over as it was. What's different here:{% else %}Every setting carries over as it was.{% endif %}</p>
     {% if notes %}<ul>{% for note in notes %}<li>{{ note }}</li>{% endfor %}</ul>{% endif %}
 </section>
 {% endif %}

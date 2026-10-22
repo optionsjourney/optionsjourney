@@ -42,3 +42,6 @@ Thumbs.db
 # Made by the install scripts
 /OptionsJourney.command
 /OptionsJourney.bat
+
+# Brainstorming mockups
+.superpowers/

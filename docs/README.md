@@ -18,6 +18,7 @@ Documentation is a first-class part of this project. A feature isn't done until 
   - [orders.md](developer/orders.md): the one path every order takes to a broker, the check, and unclear outcomes
   - [help-and-tooltips.md](developer/help-and-tooltips.md): the in-app Help pages, the ⓘ tips and the link tests
   - [releasing.md](developer/releasing.md): making a release and publishing it to the public repo
+  - [site.md](developer/site.md): the website, optionsjourney.com: how it's built and deployed
 
 ## Decisions so far
 
@@ -117,6 +118,11 @@ Documentation is a first-class part of this project. A feature isn't done until 
 | [0092](decisions/0092-stocks-performance-from-daily-saves.md) | Stocks performance comes from daily saves of holdings and closes, after each close | Accepted |
 | [0093](decisions/0093-public-release-license-and-disclaimer.md) | Public releases: PolyForm Noncommercial, a trading disclaimer, and a separate public repo | Accepted |
 | [0094](decisions/0094-install-to-a-fixed-folder-with-logs.md) | The installer puts the app in a fixed folder; logs go to a file | Accepted |
+| [0095](decisions/0095-new-logo-vector-o-ring-check.md) | A new vector logo: an O-ring with a check-mark arrow | Accepted |
+| [0096](decisions/0096-menu-bar-icon-tight-tile.md) | The menu bar icon: the logo on a tile cut close around it | Accepted |
+| [0097](decisions/0097-the-site-is-static-and-deploys-from-main.md) | The website is static, built from the guide on main, and deployed by Railway on push | Accepted |
+| [0098](decisions/0098-checking-for-updates.md) | Checking for updates from the menu | Accepted |
+| [0099](decisions/0099-upgrade-backup-falls-back-to-the-default-folder.md) | A backup before an upgrade falls back to the default folder | Accepted |
 
 ## Writing a new decision
 

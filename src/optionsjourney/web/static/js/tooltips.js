@@ -94,10 +94,17 @@ document.addEventListener('focusin', (event) => {
 });
 
 // Tap or click on an ⓘ opens or closes its tip; a click anywhere else closes open ones.
+// A tip inside a checkbox's <label> would tick the box when its text is clicked (#233):
+// a click on the text, other than on its Learn more, does nothing.
 document.addEventListener('click', (event) => {
-    const icon = event.target.closest ? event.target.closest('.tip__icon') : null;
+    const target = event.target.closest ? event.target : event.target.parentElement;
+    if (target && target.closest('.tip__text') && !target.closest('a')) {
+        event.preventDefault();
+        return;
+    }
+    const icon = target ? target.closest('.tip__icon') : null;
     const tip = icon ? icon.closest('.tip') : null;
-    closeAll(tipAt(event.target));
+    closeAll(tipAt(target));
     if (!tip) return;
     if (tip.classList.toggle('tip--open')) place(tip);
     else unhover(tip);

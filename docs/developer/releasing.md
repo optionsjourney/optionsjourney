@@ -3,14 +3,24 @@
 Work happens in a private repository. Each release copies a clean snapshot to the public repository, [optionsjourney/optionsjourney](https://github.com/optionsjourney/optionsjourney) (decision 0093).
 
 ## Steps
-1. Move the `[Unreleased]` notes in `CHANGELOG.md` under a new version heading, and set `version` in `pyproject.toml` to match.
+1. Move the `[Unreleased]` notes in `CHANGELOG.md` under a new version heading, and set `version` in `pyproject.toml` to match (the only place it is set: the app reads it from there).
 2. Commit, then tag: `git tag v0.2.0`.
 3. Build and test the public copy: `uv run python scripts/publish_public.py v0.2.0`. It prints where the copy is, so you can look through it.
 4. Publish: `uv run python scripts/publish_public.py v0.2.0 --push`. This commits `Release v0.2.0` to the public repo, tags it and pushes.
 5. On GitHub, create the Release from the tag (`gh release create v0.2.0 -R optionsjourney/optionsjourney --notes-file <notes>`), using the changelog section as the notes. The Release's zip is what the README tells people to download.
 
+## Updates
+A published GitHub Release is what the app's daily update check offers (it reads the latest release and ignores drafts and pre-releases). Publishing the Release is what makes people see "Download vX" in their OJ menu.
+
+To test an update before the repo is public, set `OJ_UPDATE_URL` to a base URL you serve yourself. The app then reads `<base>/latest.json` instead of GitHub, and downloads only from that same host:
+1. Make a folder holding `latest.json` with `tag_name` (for example `v9.9.9`), `html_url` and `zipball_url`, plus the release zip that `zipball_url` points to.
+2. Serve it: `python -m http.server 8765` in that folder.
+3. Start the app with `OJ_UPDATE_URL=http://127.0.0.1:8765`. The OJ menu offers the update. The installer's notes go to `logs/update.log`.
+
+This switch is for developers only and stays out of the guide.
+
 ## What goes public
-`scripts/publish_public.py` keeps an allowlist: the standard root files (not `CLAUDE.md`), `src/`, `tests/`, `scripts/`, `docs/guide/`, `docs/developer/`, `docs/decisions/` and `docs/README.md`. The roadmap, the working journal and `docs/superpowers/` stay private. Anything new is private until it's added to the allowlist.
+`scripts/publish_public.py` keeps an allowlist: the standard root files (not `CLAUDE.md`), `src/`, `tests/`, `scripts/`, `docs/guide/`, `docs/developer/`, `docs/decisions/` and `docs/README.md`. This script itself stays private: users don't need it. The roadmap, the working journal and `docs/superpowers/` stay private. Anything new is private until it's added to the allowlist.
 
 In the Markdown it copies, a link to a file that stays private, or to the private repo's issues and project, becomes plain text. A list item that starts with such a link is dropped. The test suite runs inside the copy, and nothing is pushed if it fails.
 

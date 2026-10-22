@@ -10,8 +10,10 @@
 
 .nav { background: var(--nav); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35); }
 .nav__inner { max-width: 1200px; margin: 0 auto; padding-left: 1rem; padding-right: 1rem; display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1.5rem; padding-top: 0.75rem; padding-bottom: 0.75rem; }
-.nav__brand { display: flex; }
-.nav__logo { height: 2rem; width: auto; max-width: 100%; }
+.nav__brand { display: flex; align-items: center; gap: 0.5rem; text-decoration: none; }
+.nav__logo { height: 2rem; width: 2rem; }
+.nav__wordmark { color: #fff; font-size: 1.5rem; font-weight: 400; letter-spacing: -0.01em; white-space: nowrap; }
+.nav__wordmark b { color: #59b82c; font-weight: 700; }
 .nav__links { display: flex; gap: 0.25rem; max-width: 100%; overflow-x: auto; }
 .nav__link {
     color: #fff;
@@ -46,6 +48,7 @@
 .footer__risk { margin: 0 0 0.5rem; }
 .footer__link { color: #93c5fd; /* blue-300 */ text-decoration: none; }
 .footer__link:hover { text-decoration: underline; }
+.footer__version { display: block; margin-top: 0.4rem; color: #6b7280; /* gray-500: quieter than the rest */ }
 /* The trading switches menu and banners (order path). In this file so the
    ported pages, which don't load app.css, get them too. */
 .nav__menu { position: relative; }

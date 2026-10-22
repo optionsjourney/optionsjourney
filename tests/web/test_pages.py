@@ -2,6 +2,7 @@ from decimal import Decimal
 
 import pytest
 
+import optionsjourney
 from optionsjourney.app import create_app
 from optionsjourney.brokers import guard
 from optionsjourney.brokers.http import BrokerError
@@ -106,7 +107,7 @@ def test_health(gateway_settings, fake_credentials):
     assert response.status_code == 200
     assert response.json == {
         "status": "ok",
-        "version": "0.1.0",
+        "version": optionsjourney.__version__,
         "broker_credentials": "gateway",
         "trading_guard": True,
         "database": True,
@@ -122,9 +123,9 @@ def test_money(value, text):
 
 
 def test_nav_has_the_logo_and_icons(settings, fake_credentials):
-    """The logo and app icons (#70); Alerts and Settings as icons (#66)."""
+    """The logo and app icons (#70, #259); Alerts and Settings as icons (#66)."""
     html = _app(settings, fake_credentials).test_client().get("/journal").get_data(as_text=True)
-    assert 'src="/static/images/logo.png" alt="OptionsJourney"' in html
+    assert 'src="/static/images/logo-mark.svg"' in html and "Options<b>Journey</b>" in html
     assert 'href="/static/images/favicon.ico"' in html
     assert 'href="/static/images/apple-touch-icon.png"' in html
     assert 'class="nav__icon" href="/alerts" title="Alerts" aria-label="Alerts"' in html
@@ -151,3 +152,11 @@ def test_buy_me_a_coffee_on_every_page(settings, fake_credentials):
     for page in ("/journal", "/settings", "/alerts", "/charts", "/trade"):
         assert client.get(page).get_data(as_text=True).count(link) == 1, page
     assert link not in client.get("/chart/grid?bare=1").get_data(as_text=True)
+
+
+def test_the_version_is_in_the_footer(settings, fake_credentials):
+    """So "which version do you have?" has an answer on every page."""
+    client = _app(settings, fake_credentials).test_client()
+    line = f'<span class="footer__version">OptionsJourney v{optionsjourney.__version__}</span>'
+    for page in ("/journal", "/settings"):
+        assert line in client.get(page).get_data(as_text=True), page

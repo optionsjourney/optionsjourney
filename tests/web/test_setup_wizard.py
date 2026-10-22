@@ -49,6 +49,7 @@ def test_gateway_mode_never_opens_the_wizard(gateway_settings, fake_credentials)
 def test_welcome(app):
     html = app.test_client().get("/setup").get_data(as_text=True)
     assert "Welcome" in html and "only on this computer" in html
+    assert "checks GitHub for a new version" in html and "Settings → This computer" in html
 
 
 def test_choosing_brokers_decides_the_next_steps(app):

@@ -1,0 +1,55 @@
+{# The page shown when the app couldn't start (launcher/startup_problem.py). Standalone, not
+   base.html, and rendered without Flask: the app itself never started. #}
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    {% if restoring %}<meta http-equiv="refresh" content="8; url=/">{% endif %}
+    <title>{% if restoring %}Restoring…{% else %}OptionsJourney couldn't start{% endif %} · OptionsJourney</title>
+    <style>
+        body { font-family: system-ui, sans-serif; background: #111827; color: #e5e7eb; margin: 0; padding: 3rem 1rem; }
+        main { max-width: 40rem; margin: 0 auto; line-height: 1.5; }
+        a { color: #93c5fd; }
+        code { background: #1f2937; padding: 0.1rem 0.3rem; border-radius: 4px; word-break: break-all; }
+        .warning { border-left: 3px solid #f59e0b; padding-left: 0.75rem; }
+        button { font: inherit; background: #2563eb; color: #fff; border: 0; border-radius: 6px; padding: 0.5rem 1rem; cursor: pointer; }
+    </style>
+</head>
+<body>
+<main>
+{% if restoring %}
+    <h1>Restoring…</h1>
+    <p>OptionsJourney is putting back the backup from {{ restore_time }} and starting again. This page opens the journal when it's ready.</p>
+{% elif restore_error %}
+    <h1>The backup couldn't be restored</h1>
+    <p><code>{{ restore_error }}</code></p>
+    <p>Choose <strong>Open logs</strong> in the OJ menu (menu bar on a Mac, the tray on Windows) and send the file <code>{{ log_name }}</code> to <a href="mailto:hello@optionsjourney.com">hello@optionsjourney.com</a>.</p>
+{% elif kind == "newer" %}
+    <h1>This data is from a newer version of OptionsJourney</h1>
+    <p>A newer version of OptionsJourney upgraded your data, so this version can't open it. Either reinstall the newer version, or restore the backup made just before that upgrade.</p>
+    {% if restore %}
+    <p>The backup from before the upgrade was made on {{ restore_time }}.</p>
+    <p class="warning">Changes made after the upgrade (tags, notes, bot edits) are lost. Trades come back with the next sync from your broker.</p>
+    <form method="post" action="/restore">
+        <button type="submit">Restore the backup from before the upgrade</button>
+    </form>
+    {% else %}
+    <p>No backup from before the upgrade was found, so the only way back is to reinstall the newer version.</p>
+    {% endif %}
+    <p>Find the newer version on the <a href="https://github.com/optionsjourney/optionsjourney/releases">Releases page</a>, and more about this in <a href="https://github.com/optionsjourney/optionsjourney/blob/main/docs/guide/updating.md#going-back">the guide to going back</a>.</p>
+{% elif kind == "backup" %}
+    <h1>OptionsJourney didn't upgrade your data</h1>
+    <p>Before upgrading your data to this version, the app makes a backup, and that backup couldn't be made in your backup folder or in Documents/OptionsJourney Backups: {{ detail }}. Your data hasn't been changed. Make sure there's free space on this computer, then use <strong>Restart OptionsJourney</strong> in the OJ menu.</p>
+    <p>Still stuck? Choose <strong>Open logs</strong> in the same menu and send the file <code>{{ log_name }}</code> to <a href="mailto:hello@optionsjourney.com">hello@optionsjourney.com</a>.</p>
+{% else %}
+    <h1>OptionsJourney couldn't start</h1>
+    <p>Something went wrong while OptionsJourney was starting, so it couldn't open your journal.</p>
+    <ol>
+        <li>Use <strong>Restart OptionsJourney</strong> in the OJ menu (menu bar on a Mac, the tray on Windows).</li>
+        <li>If it keeps happening, choose <strong>Open logs</strong> in the same menu and send the file <code>{{ log_name }}</code> to <a href="mailto:hello@optionsjourney.com">hello@optionsjourney.com</a>{% if detail %}, with this: <code>{{ detail }}</code>{% endif %}.</li>
+    </ol>
+{% endif %}
+</main>
+</body>
+</html>

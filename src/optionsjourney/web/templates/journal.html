@@ -11,7 +11,7 @@
     <div class="inline-form">
         <form method="post" action="{{ url_for('transactions.sync_now') }}" class="inline-form">
             <input type="hidden" name="back" value="{{ request.full_path }}">
-            <span class="tip"><button class="button button--small" type="submit" aria-describedby="tip-journal-sync-now">Sync now</button>{{ tip_text('journal-sync-now', "Reads your new trades from your brokers right now, and refreshes your account values. The app already does this on its own: every minute during market hours by default. Not yet when you started the app from the menu bar icon: press Sync now.", more='/help/behind-the-scenes#how-trades-get-into-the-journal') }}</span>
+            <span class="tip"><button class="button button--small" type="submit" aria-describedby="tip-journal-sync-now">Sync now</button>{{ tip_text('journal-sync-now', "Reads your new trades from your brokers right now, and refreshes your account values. The app already does this on its own: every minute during market hours by default.", more='/help/behind-the-scenes#how-trades-get-into-the-journal') }}</span>
         </form>
         <a class="link" href="{{ url_for('manual.new_entry') }}">＋ Add a trade</a>
         <a class="link" href="{{ url_for('journal.tags_page') }}">Tags</a>

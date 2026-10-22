@@ -41,8 +41,6 @@ Trades come in from your brokers in two ways.
 
 **Why a trade can be missing for a moment:** the sync after a fill takes a few seconds, and if your broker's fill notice doesn't arrive, the trade waits for the next timed sync. Press **Sync now** in the Journal to read them straight away.
 
-*For now, if you started the app from the menu bar icon, press **Sync now** yourself.* The menu bar copy doesn't yet start the timed sync or the sync after a fill. This is a known problem and will be fixed.
-
 ## The economic and market calendar
 Bots use these dates for their blackout days and filters: economic events, FOMC days, CPI days and market holidays. The app reads them from four places:
 

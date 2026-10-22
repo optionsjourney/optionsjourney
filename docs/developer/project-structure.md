@@ -23,7 +23,8 @@ optionsjourney/
 │   ├── core/                 Trading logic. Pure Python: no Flask, no database sessions, no broker calls.
 │   │                         transactions (fills), orders (grouping), structures (names),
 │   │                         positions (matching, rolls, P/L), stats, symbols, market (New York time),
-│   │                         sessions (the holiday calendar), economic_calendar (reading public calendars)
+│   │                         sessions (the holiday calendar), economic_calendar (reading public calendars),
+│   │                         versions (comparing version numbers, market open)
 │   ├── brokers/              TastyTrade and Schwab clients (tastytrade.py, schwab.py)
 │   │   ├── credentials/      Where tokens come from: local logins or the dev gateway
 │   │   ├── http.py           The one place broker requests are made and errors translated
@@ -34,31 +35,35 @@ optionsjourney/
 │   │                         stops the app watches, which exit rests at the broker, matching a trade you opened to a bot, resolving each leg's
 │   │                         expiration, a futures option's series, a manual bot's exit rules (pure)
 │   ├── db/                   Database (plain SQLAlchemy): engine, models.py, migrations/ (Alembic)
-│   ├── services/             Ties the pieces together: syncing, scheduling, live P/L
+│   ├── services/             Ties the pieces together: syncing, scheduling, live P/L;
+│   │                         updates.py (the daily check, download and install), update_risks.py (what is live when you install)
 │   ├── web/                  Pages and API
 │   │   ├── security.py       Refuses POSTs that don't come from the app's own pages
 │   │   ├── formatting.py     Template filters (money, numbers, Eastern time)
 │   │   ├── guide.py          Reads docs/guide/*.md (or the wheel's bundled guide/ folder) and renders it to HTML with GitHub-style anchors
-│   │   ├── routes/           One file per area (journal, dashboard, setup, settings, …); help_pages.py serves the guide at /help
+│   │   ├── routes/           One file per area (journal, dashboard, setup, settings, …); help_pages.py serves the guide at /help; update.py is the Install page
 │   │   ├── sockets.py        Socket.IO events for the charts and the risk graph
-│   │   ├── templates/
+│   │   ├── templates/        update.html (the Install page), startup_problem.html (the page the launcher shows when the app can't start)
 │   │   └── static/
 │   │       ├── css/, js/     This app's own styles and scripts
-│   │       ├── images/       The logo, favicon and app icons (from Tracker2)
+│   │       ├── images/       The logo mark, app icon and menu bar icon (SVG sources), favicon and PNG icons made from them
 │   │       ├── js/chart_grid/, js/charts/, css/chart_grid.css
 │   │       │                 Tracker2's chart grid, copied as it is (developer/charts.md)
 │   │       ├── js/modeler/   The risk graph's pricing and chart drawing, copied from Tracker2
 │   │       ├── js/trade/     The Trade page: Tracker2's chain helpers and ticket logic (copied), the inline chain panel, and the page's own code
 │   │       └── vendor/       Their libraries: Lightweight Charts, Socket.IO client, Tailwind;
 │   │                         vendor/fonts/ holds the charts' IBM Plex fonts
-│   └── launcher/             Menu bar / tray app: runs the web app in the background, status icon, start at login, keep awake, show app folder, open logs, restart
+│   └── launcher/             Menu bar / tray app: runs the web app in the background, status icon, start at login, keep awake, show app folder, open logs, restart, the update item, and startup_problem.py (the page shown, with restore, when the app can't start)
 │
 ├── tests/                    Mirrors src/optionsjourney/ (tests/core/, tests/brokers/, …)
+│   ├── scripts/              Tests for scripts/ (the site build)
 │   ├── web/routes/           Page tests by area (manual bots: test_automation_manual.py)
 │   └── web/static/js/        Browser-module tests: node --experimental-default-type=module --test tests/web/static/js/ (Node 20+, no npm)
 ├── bot-library/              Shared bot files (*.json) that users can download
-├── scripts/                  Install scripts (install-mac.sh + a double-click .command; install-windows.ps1 + a .bat) and developer tools (publish_public.py: a release to the public repo)
+├── scripts/                  Install scripts (install-mac.sh + Install OptionsJourney for Mac.command to double-click; install-windows.ps1 + Install OptionsJourney for Windows.bat) and developer tools (publish_public.py: a release to the public repo; build_site.py: builds the website; both stay private)
 ├── packaging/                Building the Mac .app and Windows .exe; app icons
+├── site/                     The website (optionsjourney.com): templates/, static/ (CSS), Dockerfile, Caddyfile and
+│                             railway.toml for the Railway service. Private: not in the public copy (developer/site.md)
 │
 └── docs/
     ├── README.md             Index of all documentation

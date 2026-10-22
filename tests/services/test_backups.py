@@ -139,3 +139,99 @@ def test_choose_folder_asks_the_computer(monkeypatch):
         lambda args, **kw: subprocess.CompletedProcess(args, 1, stdout="", stderr="User canceled"),
     )
     assert backups.choose_folder() is None
+
+
+def test_backup_before_upgrade_is_named_for_the_upgrade_and_keeps_three(app_db):
+    path, factory, folder = app_db
+    for minute in range(5):
+        made = NOW + timedelta(minutes=minute)
+        backups.backup_before_upgrade(path, factory, "0.1.9", "0.2.0", made)
+    names = sorted(p.name for p in folder.iterdir())
+    assert len(names) == 3
+    assert all(n.endswith("-before-0.2.0-from-0.1.9.db.gz") for n in names)
+
+
+def test_restore_point_is_the_newest_backup_from_before_an_upgrade_of_this_version(app_db):
+    path, factory, folder = app_db
+    backups.backup_before_upgrade(path, factory, "0.2.0", "0.2.1", NOW)
+    backups.backup_before_upgrade(path, factory, "0.2.0", "0.3.0", NOW + timedelta(days=2))
+    backups.backup_before_upgrade(path, factory, "0.2.1", "0.3.0", NOW + timedelta(days=3))
+    backups.backup_before_upgrade(path, factory, "unknown", "0.2.0", NOW + timedelta(days=4))
+    backups.backup_now(path, factory, NOW + timedelta(days=5))
+    point = backups.restore_point(factory, running="0.2.0")
+    assert point is not None
+    assert point.name.endswith("-before-0.3.0-from-0.2.0.db.gz")
+    assert backups.restore_point(factory, running="0.1.5") is None
+
+
+def test_restoring_before_an_upgrade_brings_back_that_backup(app_db):
+    path, factory, folder = app_db
+    backups.backup_before_upgrade(path, factory, "0.2.0", "0.3.0", NOW)
+    with factory() as session:
+        session.add(Tag(name="Added by the newer version"))
+        session.commit()
+    backups.restore_before_upgrade(path, factory, "0.2.0", NOW + timedelta(hours=1))
+    assert "Added by the newer version" not in _tags(path)
+
+
+def test_restoring_before_an_upgrade_without_a_backup_is_a_problem(app_db):
+    path, factory, _ = app_db
+    with pytest.raises(backups.BackupError, match="No backup from before the upgrade"):
+        backups.restore_before_upgrade(path, factory, "0.2.0", NOW)
+
+
+def _unusable(tmp_path, name):
+    """A folder that can't be made: its parent is a file (like a drive that's gone)."""
+    blocker = tmp_path / f"{name}-is-a-file"
+    blocker.write_text("x")
+    return blocker / "Backups"
+
+
+def _default_folder():
+    from pathlib import Path
+
+    from optionsjourney.core import settings as core_settings
+
+    return Path(core_settings.spec("backup_folder").default)  # in tmp (conftest)
+
+
+def test_before_an_upgrade_a_gone_backup_folder_falls_back_to_the_default(app_db, tmp_path, caplog):
+    path, factory, _ = app_db
+    chosen = _unusable(tmp_path, "usb")
+    settings.save_section(factory, "backups", {"backup_folder": str(chosen)})
+    target = backups.backup_before_upgrade(path, factory, "0.2.0", "0.3.0", NOW)
+    assert target.parent == _default_folder()
+    assert target.name.endswith("-before-0.3.0-from-0.2.0.db.gz")
+    assert str(chosen) in caplog.text and str(_default_folder()) in caplog.text
+
+
+def test_before_an_upgrade_both_folders_unusable_is_a_problem(app_db, tmp_path, monkeypatch):
+    from dataclasses import replace
+
+    from optionsjourney.core import settings as core_settings
+
+    path, factory, _ = app_db
+    chosen, default = _unusable(tmp_path, "usb"), _unusable(tmp_path, "documents")
+    settings.save_section(factory, "backups", {"backup_folder": str(chosen)})
+    monkeypatch.setitem(
+        core_settings._BY_KEY,
+        "backup_folder",
+        replace(core_settings.spec("backup_folder"), default=str(default)),
+    )
+    with pytest.raises(backups.BackupError) as raised:
+        backups.backup_before_upgrade(path, factory, "0.2.0", "0.3.0", NOW)
+    assert str(chosen) in str(raised.value) and str(default) in str(raised.value)
+
+
+def test_the_backup_in_the_default_folder_is_the_restore_point(app_db, tmp_path):
+    path, factory, folder = app_db
+    settings.save_section(factory, "backups", {"backup_folder": str(_unusable(tmp_path, "usb"))})
+    backups.backup_before_upgrade(path, factory, "0.2.0", "0.3.0", NOW)
+    with factory() as session:
+        session.add(Tag(name="Added by the newer version"))
+        session.commit()
+    settings.save_section(factory, "backups", {"backup_folder": str(folder)})  # drive back
+    point = backups.restore_point(factory, running="0.2.0")
+    assert point is not None and point.name.endswith("-before-0.3.0-from-0.2.0.db.gz")
+    backups.restore_before_upgrade(path, factory, "0.2.0", NOW + timedelta(hours=1))
+    assert "Added by the newer version" not in _tags(path)

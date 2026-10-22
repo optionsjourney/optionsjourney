@@ -74,10 +74,10 @@ def is_analyzer(data) -> bool:
 def _shared_bot(data: dict) -> dict:
     version = data.get("schema_version")
     if not isinstance(version, int) or isinstance(version, bool) or version < 1:
-        raise FileError("This Tracker2 bot file has no version number, so it can't be read.")
+        raise FileError("This bot file has no version number, so it can't be read.")
     if version > SCHEMA_VERSION:
-        raise FileError(f"This bot was shared by a newer Tracker2 (schema {version}); this app "
-                        f"reads schema {SCHEMA_VERSION}.")  # fmt: skip
+        raise FileError(f"This bot file is from a newer version of the app that made it "
+                        f"(schema {version}); this app reads schema {SCHEMA_VERSION}.")  # fmt: skip
     t = data.get("bot")
     if not isinstance(t, dict):
         raise FileError("This file has no bot in it.")
@@ -90,7 +90,7 @@ def _alert_rows(t: dict) -> list[dict]:
     if rows is None:
         return []
     if not (isinstance(rows, list) and all(isinstance(r, dict) for r in rows)):
-        raise FileError("This Tracker2 bot file can't be read: 'default_alerts' isn't a list "
+        raise FileError("This bot file can't be read: 'default_alerts' isn't a list "
                         "of objects.")  # fmt: skip
     return rows[:MAX_ALERTS]
 
@@ -111,7 +111,7 @@ def _amount(t: dict, kind: str) -> tuple[str, str]:
     unit = t.get(f"{kind}_unit") or "pct"
     value = t.get(f"{kind}_{unit}")
     if value is not None and (isinstance(value, bool) or not isinstance(value, int | float)):
-        raise FileError(f"This Tracker2 bot file can't be read: its {kind} isn't a number.")
+        raise FileError(f"This bot file can't be read: its {kind} isn't a number.")
     return "" if value is None else str(value), unit
 
 
@@ -126,10 +126,10 @@ def manual_of(data: dict) -> tuple[ManualRules | None, tuple[str, ...]]:
     stop, stop_unit = _amount(t, "stop_loss")
     close_dte = t.get("scheduled_close_dte")
     if close_dte is not None and (isinstance(close_dte, bool) or not isinstance(close_dte, int)):
-        raise FileError("This Tracker2 bot file can't be read: its close day isn't a number.")
+        raise FileError("This bot file can't be read: its close day isn't a number.")
     close_time = t.get("scheduled_close_time")
     if close_time is not None and not isinstance(close_time, str):
-        raise FileError("This Tracker2 bot file can't be read: its close time isn't a time.")
+        raise FileError("This bot file can't be read: its close time isn't a time.")
     name = t.get("name")
     form = {"name": name.strip()[:100] if isinstance(name, str) else "",
             "target_value": target, "target_unit": target_unit,
@@ -145,7 +145,7 @@ def manual_of(data: dict) -> tuple[ManualRules | None, tuple[str, ...]]:
         form[f"da-{i}-points"] = "" if row.get("points") is None else str(row["points"])
     rules, problems = read_form(form)
     if problems:
-        raise FileError("This Tracker2 bot file can't be read: " + " ".join(problems.values()))
+        raise FileError("This bot file can't be read: " + " ".join(problems.values()))
     notes = []
     if t.get("legs"):
         notes.append("Its legs aren't kept: a manual bot only sets exits, and works on the "
@@ -156,8 +156,8 @@ def manual_of(data: dict) -> tuple[ManualRules | None, tuple[str, ...]]:
     if t.get("underlying"):
         notes.append("Its ticker isn't kept: a manual bot works on any trade.")
     if t.get("default_alerts_in_app_only") and rules.alerts:
-        notes.append("Tracker2 kept this bot's alerts in the app only; here they go wherever "
-                     "alerts go.")  # fmt: skip
+        notes.append("The app it came from kept this bot's alerts in that app only; here they "
+                     "go wherever alerts go.")  # fmt: skip
     return rules, tuple(notes)
 
 
@@ -165,10 +165,10 @@ def translate(data: dict) -> tuple[dict, tuple[str, ...]]:
     """This app's bot file for a Tracker2 one, and the notes on what changed on the way."""
     version = data.get("schema_version")
     if not isinstance(version, int) or isinstance(version, bool) or version < 1:
-        raise FileError("This Tracker2 bot file has no version number, so it can't be read.")
+        raise FileError("This bot file has no version number, so it can't be read.")
     if version > SCHEMA_VERSION:
-        raise FileError(f"This bot was shared by a newer Tracker2 (schema {version}); this app "
-                        f"reads schema {SCHEMA_VERSION}.")  # fmt: skip
+        raise FileError(f"This bot file is from a newer version of the app that made it "
+                        f"(schema {version}); this app reads schema {SCHEMA_VERSION}.")  # fmt: skip
     t = data.get("bot")
     if not isinstance(t, dict):
         raise FileError("This file has no bot in it.")
@@ -197,20 +197,21 @@ def translate(data: dict) -> tuple[dict, tuple[str, ...]]:
     body["time_actions"] = [_time_action(row) for row in t.get("time_actions") or []]
     if any(row.get("adjust_sl_pct") is not None for row in t.get("time_actions") or []):
         notes.append("A time action that moves the stop sets it in each group's own stop "
-                     "style here; Tracker2 reads it as a % loss of the entry. They're the "
-                     "same for a group of one sold leg.")  # fmt: skip
+                     "style here; the app it came from reads it as a % loss of the entry. "
+                     "They're the same for a group of one sold leg.")  # fmt: skip
     for phase in ("entry", "exit"):
         config = (t.get("execution_configs") or {}).get(phase)
         if config is not None:
             body[f"{phase}_chase"] = _chase(phase, config, notes)
     if t.get("exit_mode") not in (None, "hybrid"):
         notes.append(
-            f"Tracker2's exit mode ({t['exit_mode']}) isn't a setting here: each "
+            f"Its exit mode in the app it came from ({t['exit_mode']}) isn't a setting here: "
+            "each "
             "group rests one exit at the broker and the app watches the other."
         )
     if t.get("entry_source") == "analyzer":
-        notes.append("Tracker2 entered this bot from the Analyzer; here it enters at its entry "
-                     "times.")  # fmt: skip
+        notes.append("The app it came from entered this bot by hand; here it enters at its "
+                     "entry times.")  # fmt: skip
     out = {"format": bot_file.FORMAT, "version": bot_file.VERSION,
            "exported_at": data.get("updated_at") or data.get("shared_at"),
            "bot": _whole_numbers(body)}  # fmt: skip
@@ -234,19 +235,19 @@ def _check_shapes(t: dict) -> None:
         rows = t.get(key)
         if rows is not None and not (isinstance(rows, list)
                                      and all(isinstance(r, dict) for r in rows)):  # fmt: skip
-            raise FileError(f"This Tracker2 bot file can't be read: '{key}' isn't a list of "
+            raise FileError(f"This bot file can't be read: '{key}' isn't a list of "
                             "objects.")  # fmt: skip
     for row in t.get("leg_groups") or []:
         if not isinstance(row.get("profit_actions") or [], list) or not all(
             isinstance(r, dict) for r in row.get("profit_actions") or []
         ):
-            raise FileError("This Tracker2 bot file can't be read: a group's 'profit_actions' "
+            raise FileError("This bot file can't be read: a group's 'profit_actions' "
                             "isn't a list of objects.")  # fmt: skip
     configs = t.get("execution_configs")
     if configs is not None and not (
         isinstance(configs, dict) and all(isinstance(c, dict) for c in configs.values())
     ):
-        raise FileError("This Tracker2 bot file can't be read: 'execution_configs' isn't "
+        raise FileError("This bot file can't be read: 'execution_configs' isn't "
                         "an object of objects.")  # fmt: skip
 
 
@@ -269,8 +270,8 @@ def _legs_and_sides(t: dict, notes: list[str]) -> tuple[list, list]:
     debit = t.get("premium_side") == "debit"
     if not grouped:
         sides = _whole_trade(t, rows, debit)
-        notes.append("Tracker2 traded this bot as one whole entry; here its legs are one "
-                     "group, Whole trade, with the bot's stop and target.")  # fmt: skip
+        notes.append("The app it came from traded this bot as one whole entry; here its legs "
+                     "are one group, Whole trade, with the bot's stop and target.")  # fmt: skip
         return legs, [sides]
     sides = []
     for n, row in enumerate(t["leg_groups"]):
@@ -312,9 +313,9 @@ def _dollars_per_unit(legs: list, sides: list, notes: list[str]) -> None:
                 changed |= _divide(action, "at", gcd)
             changed |= _divide(action, "stop_usd", gcd)
         if changed:
-            notes.append(f"{side['name']}: Tracker2 sets its $ amounts per {gcd} sets of its "
-                         f"legs and this app per one set, so they're ÷ {gcd} here, to the "
-                         "cent.")  # fmt: skip
+            notes.append(f"{side['name']}: the app it came from sets its $ amounts per {gcd} "
+                         f"sets of its legs and this app per one set, so they're ÷ {gcd} "
+                         "here, to the cent.")  # fmt: skip
 
 
 def _divide(row: dict, key: str, by: int) -> bool:

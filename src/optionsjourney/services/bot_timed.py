@@ -157,7 +157,7 @@ def _timed_run(deps, run_id, bot: BotDef, legs, expirations, local, frozen, clos
             bot_exits._alert(
                 deps, f"{bot.name}: timed close on a side with exits off",
                 f"{_side_name(bot, position)} has its stop or target switched off, and its "
-                f"{close_time} timed close is closing it now, as Tracker2's does: switching "
+                f"{close_time} timed close is closing it now: switching "
                 "exits off removes the stop and target, not the timed close.", bot.id,
                 run_id=run_id,
             )  # fmt: skip

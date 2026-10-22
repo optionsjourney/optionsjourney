@@ -348,7 +348,8 @@ def test_other_tracker2_settings_are_noted_only_when_they_matter():
     data = six_entry_ic()
     data["bot"] |= {"exit_mode": "poll", "entry_source": "analyzer"}
     notes = " ".join(read(data).notes)
-    assert "exit mode" in notes and "Analyzer" in notes
+    assert "exit mode" in notes and "by hand" in notes
+    assert "Tracker2" not in notes  # its name stays off the screen
 
 
 def test_private_settings_in_a_tracker2_file_are_ignored():
@@ -369,7 +370,7 @@ def test_private_settings_in_a_tracker2_file_are_ignored():
 
 
 @pytest.mark.parametrize("change, words", [
-    ({"schema_version": 2}, "newer Tracker2"),
+    ({"schema_version": 2}, "newer version of the app that made it"),
     ({"schema_version": None}, "no version"),
     ({"bot": []}, "no bot"),
     ({"bot": {"name": " "}}, "no name"),
@@ -480,7 +481,7 @@ def test_alerts_only_is_not_place_only_and_in_app_only_is_noted():
                      default_alerts=_ALERTS, default_alerts_in_app_only=True)  # fmt: skip
     assert not tracker2_file.is_place_only(only)
     rules, notes = tracker2_file.manual_of(only)
-    assert len(rules.alerts) == 2 and any("in the app only" in n for n in notes)
+    assert len(rules.alerts) == 2 and any("in that app only" in n for n in notes)
 
 
 def test_dollar_amounts_on_a_ratio_group_keep_their_size():

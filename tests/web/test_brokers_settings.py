@@ -34,7 +34,7 @@ def test_connecting_tastytrade(settings):
     client, provider = _client(settings)
     response = client.post(
         "/settings/brokers/tastytrade",
-        data={"client_secret": "s", "refresh_token": "r"},
+        data={"client_secret": "s", "refresh_token": "r", "risk": "1"},
         headers=ORIGIN,
         follow_redirects=True,
     )
@@ -48,7 +48,7 @@ def test_a_refused_login_is_explained_and_nothing_kept(settings):
     client, provider = _client(settings, accept=False)
     response = client.post(
         "/settings/brokers/tastytrade",
-        data={"client_secret": "s", "refresh_token": "r"},
+        data={"client_secret": "s", "refresh_token": "r", "risk": "1"},
         headers=ORIGIN,
         follow_redirects=True,
     )
@@ -60,7 +60,7 @@ def test_disconnecting(settings):
     client, provider = _client(settings)
     client.post(
         "/settings/brokers/tastytrade",
-        data={"client_secret": "s", "refresh_token": "r"},
+        data={"client_secret": "s", "refresh_token": "r", "risk": "1"},
         headers=ORIGIN,
     )
     client.post("/settings/brokers/tastytrade/disconnect", headers=ORIGIN)
@@ -90,7 +90,12 @@ def test_connecting_schwab_in_two_steps(settings):
     client, provider = _schwab_client(settings)
     start = client.post(
         "/settings/brokers/schwab/start",
-        data={"app_key": "key-1", "app_secret": "secret-1", "callback_url": "https://127.0.0.1"},
+        data={
+            "app_key": "key-1",
+            "app_secret": "secret-1",
+            "callback_url": "https://127.0.0.1",
+            "risk": "1",
+        },
         headers=ORIGIN,
     )
     assert start.status_code == 302
@@ -131,7 +136,12 @@ def test_the_app_details_can_be_changed_before_logging_in(settings):
     client, provider = _schwab_client(settings)
     client.post(
         "/settings/brokers/schwab/start",
-        data={"app_key": "key-1", "app_secret": "secret-1", "callback_url": "https://127.0.0.1"},
+        data={
+            "app_key": "key-1",
+            "app_secret": "secret-1",
+            "callback_url": "https://127.0.0.1",
+            "risk": "1",
+        },
         headers=ORIGIN,
     )
     page = client.get("/settings").get_data(as_text=True)
@@ -150,7 +160,12 @@ def test_starting_over_clears_the_app_details(settings):
     client, provider = _schwab_client(settings)
     client.post(
         "/settings/brokers/schwab/start",
-        data={"app_key": "key-1", "app_secret": "secret-1", "callback_url": "https://127.0.0.1"},
+        data={
+            "app_key": "key-1",
+            "app_secret": "secret-1",
+            "callback_url": "https://127.0.0.1",
+            "risk": "1",
+        },
         headers=ORIGIN,
     )
     assert "Start over" in client.get("/settings").get_data(as_text=True)
@@ -170,7 +185,12 @@ def test_a_refused_schwab_code_is_explained_in_the_brokers_section(settings):
     client = create_app(settings, credentials=provider, broker_clients=lambda: []).test_client()
     client.post(
         "/settings/brokers/schwab/start",
-        data={"app_key": "k", "app_secret": "s", "callback_url": "https://127.0.0.1:8080"},
+        data={
+            "app_key": "k",
+            "app_secret": "s",
+            "callback_url": "https://127.0.0.1:8080",
+            "risk": "1",
+        },
         headers=ORIGIN,
     )
     html = client.post(
@@ -207,3 +227,64 @@ def test_broker_status_pills(settings):
     html = client.get("/settings").get_data(as_text=True)
     assert "Log in again soon" in html and "pill--warn" in html
     assert 'aria-describedby="tip-schwab-reconnect"' in html
+
+
+def test_connecting_a_broker_asks_the_risk_box_once(settings):
+    client, provider = _client(settings)
+    assert 'name="risk"' in client.get("/settings").get_data(as_text=True)
+    unticked = client.post(
+        "/settings/brokers/tastytrade",
+        data={"client_secret": "s", "refresh_token": "r"},
+        headers=ORIGIN,
+        follow_redirects=True,
+    )
+    assert "Tick the box" in unticked.get_data(as_text=True)
+    assert not provider.connected("tastytrade")
+    client.post(
+        "/settings/brokers/tastytrade",
+        data={"client_secret": "s", "refresh_token": "r", "risk": "1"},
+        headers=ORIGIN,
+    )
+    assert provider.connected("tastytrade")
+    # Ticked once: the Schwab form doesn't ask again
+    page = client.get("/settings").get_data(as_text=True)
+    assert 'name="risk"' not in page
+    start = client.post(
+        "/settings/brokers/schwab/start",
+        data={"app_key": "k", "app_secret": "s", "callback_url": "https://127.0.0.1"},
+        headers=ORIGIN,
+    )
+    assert start.location.startswith("https://api.schwabapi.com/")
+
+
+def test_schwab_login_needs_the_risk_box(settings):
+    client, provider = _schwab_client(settings)
+    start = client.post(
+        "/settings/brokers/schwab/start",
+        data={"app_key": "k", "app_secret": "s", "callback_url": "https://127.0.0.1"},
+        headers=ORIGIN,
+    )
+    assert not start.location.startswith("https://")
+    assert provider.store.get("schwab") is None
+
+
+def test_reconnecting_a_login_from_before_the_box_doesnt_ask(settings):
+    from datetime import UTC, datetime
+
+    client, provider = _schwab_client(settings)
+    provider.store.set(
+        "schwab",
+        {
+            "app_key": "k",
+            "app_secret": "s",
+            "callback_url": "https://127.0.0.1",
+            "refresh_token": "r",
+            "logged_in_at": datetime.now(UTC).isoformat(),
+        },
+    )
+    start = client.post(
+        "/settings/brokers/schwab/start",
+        data={"app_key": "", "app_secret": "", "callback_url": ""},
+        headers=ORIGIN,
+    )
+    assert start.location.startswith("https://api.schwabapi.com/")

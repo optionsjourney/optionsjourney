@@ -10,7 +10,7 @@ from optionsjourney.brokers.credentials.base import CredentialsUnavailable
 from optionsjourney.brokers.credentials.local import LocalProvider
 from optionsjourney.core.settings import SECTIONS, SettingError
 from optionsjourney.db import migrate
-from optionsjourney.services import backups, economic_events, notify, settings
+from optionsjourney.services import backups, economic_events, notify, settings, setup
 from optionsjourney.web import services
 
 bp = Blueprint("settings", __name__)
@@ -139,17 +139,31 @@ def _local_provider():
     return credentials if isinstance(credentials, LocalProvider) else None
 
 
+def _risk_ticked(provider: LocalProvider, broker: str) -> bool:
+    """The connect forms' box (decision 0093): asked the first time a broker is
+    connected, until it's been ticked once. Reconnecting a connected broker (a
+    login from before the box) doesn't ask."""
+    accepted = setup.broker_risk_accepted(services().session_factory)
+    if accepted or provider.connected(broker) or request.form.get("risk") == "1":
+        return True
+    flash("Tick the box to show you understand first.", "broker-warning")
+    return False
+
+
 @bp.post("/settings/brokers/tastytrade")
 def connect_tastytrade():
     provider = _local_provider()
     if provider is None:
         abort(404)
+    if not _risk_ticked(provider, "tastytrade"):
+        return _back_to_brokers()
     try:
         provider.connect_tastytrade(
             request.form.get("client_secret", ""),
             request.form.get("refresh_token", ""),
             sandbox=request.form.get("sandbox") == "on",
         )
+        setup.accept_broker_risk(services().session_factory)
         flash(
             "TastyTrade connected. Click Sync now on the Transactions page to bring in "
             "your trades.",
@@ -167,6 +181,8 @@ def start_schwab():
     provider = _local_provider()
     if provider is None:
         abort(404)
+    if not _risk_ticked(provider, "schwab"):
+        return _back_to_brokers()
     try:
         login_url = provider.start_schwab(
             request.form.get("app_key", ""),
@@ -176,6 +192,7 @@ def start_schwab():
     except CredentialsUnavailable as e:
         flash(str(e), "broker-warning")
         return _back_to_brokers()
+    setup.accept_broker_risk(services().session_factory)
     return redirect(login_url)
 
 
@@ -219,6 +236,7 @@ def _render(values: dict, problems: dict | None = None, active: str = ""):
         backups=backups.list_backups(factory),
         backup_problem=backups.last_problem(),
         brokers=_local_provider(),
+        ask_risk=not setup.broker_risk_accepted(factory),
         streams=services().quote_hub.status(),
         calendar=_calendar(factory, datetime.now(UTC)),
         active=active,

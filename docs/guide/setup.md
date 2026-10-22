@@ -2,12 +2,22 @@
 
 The first time you open OptionsJourney, a short setup guide walks you through getting started. You can run it again any time from **Settings → Run setup again**, for example to add Schwab once Schwab has approved your app.
 
-1. **Welcome:** what the app does. Everything stays on your computer. Tick the box saying the app isn't financial advice and you're responsible for your orders (see the [disclaimer](disclaimer.md)), then press **Start**. You're asked once.
+1. **Welcome:** what the app does. It runs only on your computer. Tick the box saying the app isn't financial advice and you're responsible for your orders (see the [disclaimer](disclaimer.md)), then press **Start**. You're asked once.
+
+   ![Welcome](images/setup-welcome.jpg)
 2. **Your brokers:** tick TastyTrade, Schwab, or neither (then you'll add trades by hand).
-3. **Connect TastyTrade:** create an API application on tastytrade.com and paste its client secret and refresh token. They're checked with TastyTrade before they're kept, in your computer's keychain.
+
+   ![Your brokers](images/setup-brokers.png)
+3. **Connect TastyTrade:** create an API application on tastytrade.com and paste its client secret and refresh token. They're checked with TastyTrade before they're kept, in your computer's own password store. The first time you connect a broker, tick the box to say you understand the app can place real orders in your accounts and that you're responsible for every one.
+
+   ![Connect TastyTrade](images/setup-connect-tastytrade.jpg)
 4. **Connect Schwab:** register an app on developer.schwab.com (Schwab takes a few days to approve it), then log in. If your app isn't approved yet, click **Finish later**.
 5. **How you trade:** tick what you trade. Each one becomes a tag you can put on your trades, to filter and compare them. Starter tags you untick are removed if no trade has them.
+
+   ![How you trade](images/setup-how-you-trade.jpg)
 6. **Backups:** where copies of your journal go, and how often.
+
+   ![Backups](images/setup-backups.png)
 7. **All set:** click **Sync now** to bring in your trades. Your history starts on the day of the app's first sync: trades from before it aren't brought in (see [Troubleshooting](troubleshooting.md#why-is-a-trade-missing-from-the-journal)).
 
 ## TastyTrade or Schwab: what's different

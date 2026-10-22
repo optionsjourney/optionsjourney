@@ -16,6 +16,26 @@ def get(session_factory: sessionmaker, key: str) -> str:
     return row.value if row is not None else spec(key).default
 
 
+# Internal key in the settings table; not shown on the Settings page.
+_APP_VERSION = "_app_version"
+
+
+def get_app_version(session_factory: sessionmaker) -> str | None:
+    """The app version that last started on this data; None if never recorded."""
+    with session_factory() as session:
+        row = session.get(Setting, _APP_VERSION)
+    return row.value if row is not None else None
+
+
+def set_app_version(session_factory: sessionmaker, version: str) -> None:
+    with session_factory() as session:
+        row = session.get(Setting, _APP_VERSION) or Setting(key=_APP_VERSION)
+        row.value = version
+        row.updated_at = datetime.now(UTC)
+        session.add(row)
+        session.commit()
+
+
 def get_all(session_factory: sessionmaker) -> dict[str, str]:
     return {s.key: get(session_factory, s.key) for section in SECTIONS for s in section.settings}
 

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
@@ -51,26 +51,31 @@ def _md() -> MarkdownIt:
     return md
 
 
-def _rewrite_href(href: str) -> str | None:
-    """The in-app address for a guide link, or None to drop the link."""
+def help_url(stem: str) -> str:
+    """The in-app address of a guide page."""
+    return "/help" if stem == "README" else f"/help/{stem}"
+
+
+def _rewrite_href(href: str, page_url: Callable[[str], str]) -> str | None:
+    """The address for a guide link, or None to drop the link."""
     if href.startswith(("http://", "https://", "#")):
         return href
     if href.startswith("../"):
         return None
     path, sep, fragment = href.partition("#")
     if path.endswith(".md") and "/" not in path:
-        stem = path[:-3]
-        target = "/help" if stem == "README" else f"/help/{stem}"
-        return f"{target}{sep}{fragment}"
+        return f"{page_url(path[:-3])}{sep}{fragment}"
     return href
 
 
-def _rewrite_inline(children: list[Token]) -> list[Token]:
+def _rewrite_inline(
+    children: list[Token], page_url: Callable[[str], str], image_prefix: str
+) -> list[Token]:
     out: list[Token] = []
     dropping = False
     for tok in children:
         if tok.type == "link_open":
-            new = _rewrite_href(str(tok.attrGet("href") or ""))
+            new = _rewrite_href(str(tok.attrGet("href") or ""), page_url)
             if new is None:
                 dropping = True
                 continue
@@ -81,12 +86,19 @@ def _rewrite_inline(children: list[Token]) -> list[Token]:
         elif tok.type == "image":
             src = str(tok.attrGet("src") or "")
             if src.startswith("images/"):
-                tok.attrSet("src", f"/help/{src}")
+                tok.attrSet("src", f"{image_prefix}{src}")
         out.append(tok)
     return out
 
 
-def render_page(root: Path, name: str) -> GuidePage:
+def render_page(
+    root: Path,
+    name: str,
+    page_url: Callable[[str], str] = help_url,
+    image_prefix: str = "/help/",
+) -> GuidePage:
+    """A guide page as HTML. `page_url` gives the address of another guide page from its
+    file name without .md; `image_prefix` goes in front of images/... sources."""
     if name == "index":
         path = root / "README.md"
     elif name in page_names(root):
@@ -100,7 +112,7 @@ def render_page(root: Path, name: str) -> GuidePage:
     found_title = False
     for i, tok in enumerate(tokens):
         if tok.type == "inline" and tok.children:
-            tok.children = _rewrite_inline(tok.children)
+            tok.children = _rewrite_inline(tok.children, page_url, image_prefix)
         elif tok.type == "heading_open":
             anchor = tok.attrGet("id")
             if anchor:
