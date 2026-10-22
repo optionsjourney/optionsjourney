@@ -25,6 +25,7 @@ Each broker shows whether it's **Connected**. For Schwab, the pill turns amber (
 
 ## This computer
 - **Keep awake during market hours:** stops the computer going to sleep on weekdays from 9:15 to 4:15 New York time. It works with the [menu bar icon](menubar.md).
+- **Open from other devices:** off (the default) or on. On, your other computers and your phone can open the app at this computer's address followed by `:2026`. There's no login, so anyone who can reach this computer can see your accounts and place orders: only turn it on for networks you trust. It takes effect after **Restart OptionsJourney** in the OJ menu. See [Can I use it from my other computers or my phone?](faq.md#can-i-use-it-from-my-other-computers-or-my-phone)
 - **Check for new versions:** on (the default) or off. Once a day the app asks GitHub if a newer version is out. Nothing about you is sent. If there is one, the OJ menu offers it. See [Updating the app](updating.md).
 
 ## Syncing your trades

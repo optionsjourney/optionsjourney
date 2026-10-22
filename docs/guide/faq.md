@@ -1,10 +1,36 @@
-# Troubleshooting
+# FAQ
 
-*When something doesn't look right: the likely reasons, and what to check.*
+*Questions about running OptionsJourney, and what to check when something doesn't look right.*
 
+## About the app
+
+### Does my computer need to stay on?
+For bots, yes, during market hours. The app runs on your computer, so while that computer is off or asleep, bots don't enter and stops the app watches itself can't act. Stops and limit orders resting at your broker keep working. **Keep awake during market hours**, on by default in **Settings → This computer**, stops the computer sleeping on weekdays from 9:15 to 4:15 New York time. See [When the app or computer is off](behind-the-scenes.md#when-the-app-or-computer-is-off).
+
+### Where are my trades and broker logins kept?
+On your computer only. Your trades, bots and settings are in your data folder, and your broker logins are in the computer's own password store (see [Where things are](installing.md#where-things-are)). None of it goes to the people who make OptionsJourney: the app talks to your broker directly.
+
+### Can I use it from my other computers or my phone?
+Yes. Keep the app running on one computer, ideally one that stays on during market hours, such as a desktop or a spare Mac. Bots run there, whichever device you're looking from.
+
+1. On that computer, turn on **Settings → This computer → Open from other devices**, click **Save**, then choose **Restart OptionsJourney** in the OJ menu.
+2. **At home:** on another device on the same Wi-Fi, open `http://` followed by that computer's address and `:2026`, for example `http://192.168.1.20:2026`. You'll find the address in the computer's Wi-Fi or network settings.
+3. **Away from home, or on your phone:** install [Tailscale](https://tailscale.com) on that computer and on your phone or laptop, and sign in to the same account on each. Then open `http://` followed by the computer's Tailscale address and `:2026`. Only your own devices can reach it, and you don't have to change anything on your router.
+
+**Be careful:** the app has no login of its own. Anyone who can reach it can see your accounts and place orders. Only turn this on for networks you trust, such as your home Wi-Fi or your own Tailscale network, never on public Wi-Fi.
+
+### Can I put it on the internet, or on a server?
+Not as it is. Never make it reachable from the internet with port forwarding, a public server or a plain tunnel: with no login, anyone who found the address could trade your accounts.
+
+**For experienced users:** you can give it a web address if a login service stands in front of it and only lets you through, for example a Cloudflare Tunnel protected by Cloudflare Access that only accepts your own email (see [Cloudflare's guides](https://developers.cloudflare.com/cloudflare-one/)). That service is then the only thing between a stranger and your accounts, so check that it asks for a login before you rely on it. Tailscale is simpler and safer for most people.
+
+### Can friends share one copy?
+No. Everyone who opens a copy sees the same accounts and can trade them. Each person installs their own copy and connects their own broker (see [Setting up](setup.md)).
+
+## When something's wrong
 Each answer starts with the most common reason. Many come down to the app not running at the time: see [When the app or computer is off](behind-the-scenes.md#when-the-app-or-computer-is-off).
 
-## The app won't open or isn't working
+### The app won't open or isn't working
 - **There's no green check-mark icon** in the system tray (Windows) or the menu bar (Mac): the app isn't running. Open **OptionsJourney** from the Start menu (Windows), or from Spotlight (⌘ Space) or Launchpad (Mac).
 - **The icon is there, but the page won't load:** choose **Restart OptionsJourney** in the OJ menu, wait a few seconds, then choose **Open OptionsJourney**.
 - **A page says "Something went wrong":** see [below](#a-page-says-something-went-wrong).
@@ -12,7 +38,7 @@ Each answer starts with the most common reason. Many come down to the app not ru
 - **Reinstalling:** run the installer again, as in [Installing](installing.md). Your trades, bots and settings are kept, because they're stored separately from the app.
 - **Still stuck?** Send `optionsjourney.log` from the logs folder to [hello@optionsjourney.com](mailto:hello@optionsjourney.com), with a line on what happened.
 
-## Why is a trade missing from the Journal?
+### Why is a trade missing from the Journal?
 **The likely reasons:**
 - **It hasn't been read yet.** The sync after a fill takes a few seconds, and if your broker's fill notice doesn't arrive, the trade waits for the next timed sync: every minute in market hours by default, every hour at other times (see [How trades get into the Journal](behind-the-scenes.md#how-trades-get-into-the-journal)).
 - **The sync didn't work.** A broker that can't be reached, or a Schwab login that has run out, stops that broker's trades coming in.
@@ -24,7 +50,7 @@ Each answer starts with the most common reason. Many come down to the app not ru
 
 **What to check:** press **Sync now** at the top of the Journal. Then open **Transactions**: if the trade is listed there, the app has it, and it's the Journal's filters. If it isn't, look at **Last sync** at the bottom of that page for each account's last good sync and the problem, if any (see [Transactions](transactions.md#last-sync)).
 
-## Why didn't a bot enter?
+### Why didn't a bot enter?
 **Where to look first:** the bot's **Runs** page (on the bot's page), where each entry time has a run with its **Status** and **Reason**. The **Today** timeline on the Automation page shows today's entries too, and **📅 Schedule** shows what each armed bot does on any day (see [Today's schedule](automation.md#todays-schedule)).
 
 **No run at all** means the bot didn't try that day:
@@ -50,7 +76,7 @@ Each answer starts with the most common reason. Many come down to the app not ru
 
 **Missed** means the order went out and was chased but never filled, so there's no trade (see [What happens at an entry time](automation.md#what-happens-at-an-entry-time)).
 
-## What does "Needs a look" mean?
+### What does "Needs a look" mean?
 While a Live bot has a trade open, the app checks every 30 seconds that each group is protected. Anything it finds shows in **Needs a look** at the top of the Automation page, with a link to its run, and sends you one alert. The trade's **bot** badge in your journal turns red too. It goes by itself once it's sorted. The app never changes an order because of it.
 
 | It says | What it means | What to do |
@@ -63,19 +89,19 @@ While a Live bot has a trade open, the app checks every 30 seconds that each gro
 
 A run whose Reason starts **Needs you** is different: it's one the app couldn't settle by itself (its entry order wouldn't cancel, say), or a filled trade whose exits may be missing. Check your broker; an order the app marked **Unclear** is explained in [Unclear: check your broker](pausing-trading.md#unclear-check-your-broker).
 
-## Why does Schwab ask me to log in?
+### Why does Schwab ask me to log in?
 **The reason:** Schwab makes every app log in again every 7 days. The app reminds you with an alert at 48 hours left and at 12 hours left, and again once the login has run out (see [Broker logins](behind-the-scenes.md#broker-logins)). A banner shows on every page from a day before, and **Settings → Brokers** shows **Log in again soon**, then **Log in again**.
 
 Logging in to Schwab from this app on another computer, or from another program that uses the same Schwab app, also signs this one out (see [Schwab: one computer at a time](setup.md#schwab-one-computer-at-a-time)).
 
 **What to do:** click **Reconnect Schwab** in **Settings → Brokers** and log in. Until you do, Schwab accounts don't sync, and a Schwab bot can't send anything: stops and targets already resting at Schwab keep working, but a stop the app watches can't close a trade (see [Schwab bots](automation.md#schwab-bots)).
 
-## Why does P/L Day show "≈"?
+### Why does P/L Day show "≈"?
 **The reason:** P/L Day measures each open trade from the value the app saved shortly after the last close (4:15 PM New York time). If it has no saved value for a trade, because the app wasn't running then or it's your first day, it works from your broker's previous closing prices instead, which is close but not exact. The **≈** says part of the figure came that way ("≈ partly from the closes before").
 
 **What to do:** nothing. The next close the app is running for, it saves the value and the **≈** goes. To avoid it, keep the app running through 4:15 PM. See [P/L Day](behind-the-scenes.md#pl-day).
 
-## Why didn't an exit fill before the close?
+### Why didn't an exit fill before the close?
 **The likely reasons:**
 - **The close ran out of time.** A timed close, or a close you started, never chases past the market's close. When the market closes it stops, cancels its order and puts the stop back. On expiry day the options then simply expire (see [Timed close](automation.md#timed-close)).
 - **The app wasn't running at the close time, or orders were frozen.** That side shows **missed** on the run page and you get one alert.
@@ -84,7 +110,7 @@ Logging in to Schwab from this app on another computer, or from another program 
 
 **What to check:** open the run page. **Orders, step by step** shows every price the close tried, and **Exits** shows where each stop and target stands now. If something is still open that you wanted closed, close it at your broker or from the run page the next trading day.
 
-## Why is nothing syncing?
+### Why is nothing syncing?
 **The likely reasons:**
 - **The app isn't running,** or the computer is asleep. Nothing syncs then; trades filled meanwhile are read at the first sync after it starts.
 - **A broker can't be read:** Schwab's login has run out, or the broker didn't answer.
@@ -92,7 +118,7 @@ Logging in to Schwab from this app on another computer, or from another program 
 
 **What to check:** press **Sync now** in the Journal: the line it shows says how each broker did. **Transactions → Last sync** shows each account's last good sync and the problem that stopped the last one.
 
-## A page says "Something went wrong"
+### A page says "Something went wrong"
 **The reason:** the app hit an error it didn't expect. Your data is safe, and nothing is sent to your broker because of it.
 
 **What to do:** go back and try again. If it keeps happening, choose **Restart OptionsJourney** in the OJ menu. Still stuck? Choose **Open logs** in the same menu and send `optionsjourney.log` to [hello@optionsjourney.com](mailto:hello@optionsjourney.com), with the line the error page shows.

@@ -20,7 +20,7 @@
     <section class="help__body help__results" aria-live="polite">
         <h1>Search</h1>
         {% if not query %}
-        <p class="muted">Type a word or two in the box, like <em>stop loss</em> or <em>phone alerts</em>, and press Enter.</p>
+        <p class="muted">Type a word or two in the box, like <em>stop loss</em> or <em>phone alerts</em>. Results show as you type.</p>
         {% elif not results %}
         <p>Nothing found for “{{ query }}”. Try fewer words, or a different word for the same thing.</p>
         {% else %}
@@ -39,4 +39,5 @@
     </section>
     {% endif %}
 </div>
+<script type="module" src="{{ url_for('static', filename='js/help_search.js') }}"></script>
 {% endblock %}

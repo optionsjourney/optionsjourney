@@ -65,7 +65,7 @@
 {% endif %}
 {% if findings %}
 <section class="card section-gap" id="findings">
-    <h2 class="card__title">Needs a look {{ info('automation-needs-look', "Something the app found on an open bot trade, such as a side with no working stop. Each one links to its run and sends you one alert. It goes away once it is sorted. The app never changes an order because of it: check your broker.", 'Needs a look', more='/help/troubleshooting#what-does-needs-a-look-mean') }}</h2>
+    <h2 class="card__title">Needs a look {{ info('automation-needs-look', "Something the app found on an open bot trade, such as a side with no working stop. Each one links to its run and sends you one alert. It goes away once it is sorted. The app never changes an order because of it: check your broker.", 'Needs a look', more='/help/faq#what-does-needs-a-look-mean') }}</h2>
     <p class="muted small">The app checks its open bot trades for anything left unprotected. It never changes an order on its own; check these with your broker.</p>
     <ul>
         {% for f in findings %}

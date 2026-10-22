@@ -31,3 +31,34 @@ def test_a_refused_section_saves_nothing(session_factory):
             session_factory, "backups", {"backup_folder": "/tmp/oj", "backup_frequency": "hourly"}
         )
     assert settings.get(session_factory, "backup_folder") == spec("backup_folder").default
+
+
+def _settings(tmp_path, **env):
+    from optionsjourney.config import load_settings
+
+    return load_settings({"OPTIONSJOURNEY_DATA_DIR": str(tmp_path), **env})
+
+
+def test_the_app_answers_only_on_this_computer_by_default(session_factory, tmp_path):
+    assert settings.get(session_factory, "listen_on_network") == "off"
+    assert settings.bind_host(_settings(tmp_path), session_factory) == "127.0.0.1"
+
+
+def test_open_from_other_devices_listens_on_the_network(session_factory, tmp_path):
+    settings.save_section(
+        session_factory, "computer", {"keep_awake": "on", "listen_on_network": "on"}
+    )
+    assert settings.bind_host(_settings(tmp_path), session_factory) == "0.0.0.0"
+
+
+def test_the_env_setting_still_opens_it(session_factory, tmp_path):
+    env = _settings(tmp_path, LISTEN_ON_NETWORK="yes")
+    assert settings.bind_host(env, session_factory) == "0.0.0.0"
+
+
+def test_demo_mode_ignores_the_switch(session_factory, tmp_path):
+    settings.save_section(
+        session_factory, "computer", {"keep_awake": "on", "listen_on_network": "on"}
+    )
+    demo = _settings(tmp_path, BROKER_CREDENTIALS="demo")
+    assert settings.bind_host(demo, session_factory) == "127.0.0.1"

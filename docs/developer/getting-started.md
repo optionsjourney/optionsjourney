@@ -37,7 +37,7 @@ There are two kinds:
 | `BROKER_CREDENTIALS` | `local` | Where broker tokens come from (see [broker-credentials.md](broker-credentials.md)) |
 | `GATEWAY_URL`, `GATEWAY_SECRET` | none | Gateway mode only |
 | `PORT` | `2026` | Port for the web server |
-| `LISTEN_ON_NETWORK` | `no` | `yes` lets other devices on the network open the app; there is no login (see [0063](../decisions/0063-optional-local-network-access.md)) |
+| `LISTEN_ON_NETWORK` | `no` | `yes` lets other devices on the network open the app; there is no login (see [0063](../decisions/0063-optional-local-network-access.md)). The **Open from other devices** switch in Settings does the same and survives updates; either one turns it on, except in demo mode, which ignores the switch ([0104](../decisions/0104-open-from-other-devices-is-a-settings-switch.md)) |
 | `OPTIONSJOURNEY_DATA_DIR` | your user data folder | Where the database lives. On Mac: `~/Library/Application Support/OptionsJourney` |
 
 ## Health check

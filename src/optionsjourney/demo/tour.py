@@ -15,6 +15,14 @@ INSTALL_URL = "https://optionsjourney.com/install"
 _CONDOR = '[data-bot-name="SPX 0DTE condor"]'
 _DAY_OVER_TEXT = "The demo's trading day is over. Start a new day to see this step."
 _DAY_OVER_STEPS = (2, 3, 5, 7)
+# Step 5 is something to see, not something the visitor does: its target fills about
+# 6 minutes into the demo day, often before the visitor gets there. Arriving after it
+# filled, the tour stops on it anyway, with these words, until Next.
+_CALENDAR_STEP = 5
+_CALENDAR_FILLED_TEXT = (
+    "Your Weekly calendar reached its profit target while you were trading. Open its "
+    "runs to see how it closed, then press Next."
+)
 
 
 @dataclass(frozen=True)
@@ -152,6 +160,9 @@ class Tour:
         start = self.current
         step = start
         while step <= TOTAL and step not in self._held and DONE[step](facts):
+            if step == _CALENDAR_STEP and step != start:
+                self._held = self._held | {step}  # done before it was seen: show it
+                break
             step += 1
         if step == start:
             return None
@@ -183,7 +194,9 @@ class Tour:
             link = f"/automation/runs/{facts.condor_run_id}"
         elif self.current == 5 and facts.calendar_bot_id is not None:
             link = f"/automation/{facts.calendar_bot_id}/runs"
-        if facts.day_over and not finished and self.current in _DAY_OVER_STEPS:
+        if self.current == _CALENDAR_STEP and facts.calendar_target_filled:
+            text = _CALENDAR_FILLED_TEXT
+        elif facts.day_over and not finished and self.current in _DAY_OVER_STEPS:
             text, link = _DAY_OVER_TEXT, None
         return {
             "step": self.current,

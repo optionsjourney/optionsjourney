@@ -87,7 +87,7 @@ Documentation is a first-class part of this project. A feature isn't done until 
 | [0060](decisions/0060-schwab-bots-rest-their-exits-at-schwab.md) | Schwab bots rest their exits at Schwab, as TastyTrade bots do | Accepted |
 | [0061](decisions/0061-bots-are-live-or-paper.md) | Bots are Live or Paper; Preview becomes a button | Accepted |
 | [0062](decisions/0062-settle-expirations-at-the-close.md) | Settle expiring trades at the close, without waiting for the broker | Accepted (the "settle once at the daily closes" parts replaced by 0078) |
-| [0063](decisions/0063-optional-local-network-access.md) | The app can optionally answer on the local network | Accepted |
+| [0063](decisions/0063-optional-local-network-access.md) | The app can optionally answer on the local network | Accepted, amended by 0104 |
 | [0064](decisions/0064-history-starts-on-day-one.md) | Trade history starts the day the app is first used | Accepted |
 | [0065](decisions/0065-keep-conceding-and-bidless-longs.md) | Keep conceding and Ignore bid-less longs, as Tracker2 | Accepted |
 | [0066](decisions/0066-manual-bots.md) | Manual bots: reusable exit rules for a trade you opened | Accepted |
@@ -128,6 +128,7 @@ Documentation is a first-class part of this project. A feature isn't done until 
 | [0101](decisions/0101-the-site-and-demo-run-on-the-prod-mac.md) | The site, and later the demo, run on the prod Mac behind its Cloudflare tunnel | Accepted |
 | [0102](decisions/0102-demo-seats-a-manager-and-cookie-routing.md) | Demo seats: a seat manager, Caddy routing by cookie, and updates only when seats are empty | Accepted, amended by 0103 |
 | [0103](decisions/0103-demo-user-firewall.md) | The demo user is fenced off from the Mac's other services, and `oj-demo` lives where only root can change it | Accepted |
+| [0104](decisions/0104-open-from-other-devices-is-a-settings-switch.md) | Open from other devices is a switch in Settings | Accepted |
 
 ## Writing a new decision
 

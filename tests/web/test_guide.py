@@ -85,7 +85,7 @@ NEW_PAGES = [  # later tasks add their pages here
     "how-to-adjust-before-the-close",
     "how-to-phone-alerts",
     "updating",
-    "troubleshooting",
+    "faq",
     "transactions",
     "tags",
 ]

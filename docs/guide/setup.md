@@ -18,7 +18,7 @@ The first time you open OptionsJourney, a short setup guide walks you through ge
 6. **Backups:** where copies of your journal go, and how often.
 
    ![Backups](images/setup-backups.png)
-7. **All set:** click **Sync now** to bring in your trades. Your history starts on the day of the app's first sync: trades from before it aren't brought in (see [Troubleshooting](troubleshooting.md#why-is-a-trade-missing-from-the-journal)).
+7. **All set:** click **Sync now** to bring in your trades. Your history starts on the day of the app's first sync: trades from before it aren't brought in (see [FAQ](faq.md#why-is-a-trade-missing-from-the-journal)).
 
 ## TastyTrade or Schwab: what's different
 Most of the app works the same with either broker. Here's where they differ, so you know which one to use for what.

@@ -39,12 +39,12 @@ A guided tour for first-time visitors: seven steps and a finish, shown in a box 
 2. Arm a bot. Arm the SPX 0DTE condor (`condor_armed`).
 3. The stop. The condor's stop fills and the visitor opens that run's page (`opened_condor_run` and `condor_stopped`).
 4. Trade by hand. A put spread sent from the Trade page with Manage with = Put spread exits (the seed's manual bot, `MANUAL_EXITS`) and attached (`spread_managed`).
-5. A profit target. The seeded Weekly calendar's target fills (`calendar_target_filled`).
+5. A profit target. The seeded Weekly calendar's target fills (`calendar_target_filled`). It fills about 6 minutes into the demo day, often before the visitor gets here, so this is the one step that doesn't count as done on arrival: reaching it after the target filled stops on it (held, like a step after Restart) with "…reached its profit target while you were trading" and a link to its runs, until Next. Reaching it before, the visitor watches it fill and the tour moves on.
 6. Charts. The watchlist changes (`watchlist_changed`).
 7. Build a bot. A bot of the visitor's own enters (`own_bot_entered`).
 Then "That's the tour" with a link to the install page.
 
-**Facts.** `facts(session_factory, visited, clock)` works out `TourFacts` from what happened (bot armed, today's condor run stopped, a per-trade bot with a run today, the seeded calendar's target filled, the watchlist changed, a bot of the visitor's own filled today), so a step counts however it was done. Only "opened Automation / the condor's run page" come from `Visited`, the tour pages a visitor opened (thread-safe; query strings dropped). `Tour.update` moves past every consecutive done step, so a visitor who did things out of order jumps ahead. It only moves forward, except Restart. Steps 2, 3, 5 and 7 show "The demo's trading day is over" once the day has closed, since they can no longer happen.
+**Facts.** `facts(session_factory, visited, clock)` works out `TourFacts` from what happened (bot armed, today's condor run stopped, a per-trade bot with a run today, the seeded calendar's target filled, the watchlist changed, a bot of the visitor's own filled today), so a step counts however it was done. Only "opened Automation / the condor's run page" come from `Visited`, the tour pages a visitor opened (thread-safe; query strings dropped). `Tour.update` moves past every consecutive done step, so a visitor who did things out of order jumps ahead, except step 5 (above). It only moves forward, except Restart. Steps 2, 3, 5 and 7 show "The demo's trading day is over" once the day has closed, since they can no longer happen.
 
 **Restart.** `restart(facts)` goes back to step 1 but *holds* the steps already done: they stay until the visitor presses Next past them (otherwise the next update would skip them all). A step whose fact becomes true after the restart still advances.
 

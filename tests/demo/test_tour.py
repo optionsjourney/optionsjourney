@@ -93,22 +93,60 @@ def test_furthest_tracks_the_highest_step():
 
 def test_finished_after_step_seven():
     tour = Tour()
-    tour.update(
-        facts(
-            opened_automation=True,
-            condor_armed=True,
-            condor_stopped=True,
-            opened_condor_run=True,
-            spread_managed=True,
-            calendar_target_filled=True,
-            watchlist_changed=True,
-            own_bot_entered=True,
-        )
+    everything = facts(
+        opened_automation=True,
+        condor_armed=True,
+        condor_stopped=True,
+        opened_condor_run=True,
+        spread_managed=True,
+        calendar_target_filled=True,
+        watchlist_changed=True,
+        own_bot_entered=True,
     )
+    tour.update(everything)
+    assert tour.current == 5  # the calendar's step waits to be seen, even when done
+    tour.next(5)
+    assert tour.update(everything) == 8
     view = tour.view(facts())
     assert tour.current == 8
     assert view["finished"]
     assert view["link"] == "https://optionsjourney.com/install"
+
+
+_UP_TO_FOUR = {
+    "opened_automation": True,
+    "condor_armed": True,
+    "condor_stopped": True,
+    "opened_condor_run": True,
+    "spread_managed": True,
+}
+
+
+def test_a_calendar_target_that_filled_earlier_still_gets_its_step():
+    tour = Tour()
+    tour.current = 4
+    filled = facts(**_UP_TO_FOUR, calendar_target_filled=True)
+    assert tour.update(filled) == 5
+    assert tour.update(filled) is None  # stays until Next
+    assert tour.view(filled)["text"].startswith("Your Weekly calendar reached its profit target")
+    tour.next(5)
+    assert tour.current == 6
+
+
+def test_a_calendar_target_that_fills_while_you_watch_moves_on():
+    tour = Tour()
+    tour.current = 4
+    assert tour.update(facts(**_UP_TO_FOUR)) == 5
+    assert tour.view(facts(**_UP_TO_FOUR))["text"].startswith("Your Weekly calendar is near")
+    assert tour.update(facts(**_UP_TO_FOUR, calendar_target_filled=True)) == 6
+
+
+def test_a_filled_target_is_shown_even_after_the_close():
+    tour = Tour()
+    tour.current = 4
+    filled = facts(**_UP_TO_FOUR, calendar_target_filled=True, day_over=True)
+    tour.update(filled)
+    assert tour.view(filled)["text"].startswith("Your Weekly calendar reached its profit target")
 
 
 def test_step_three_links_the_condor_run():

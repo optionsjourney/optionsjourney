@@ -44,6 +44,8 @@ A screen that rebuilds its markup on a timer or a quote push skips the rebuild w
 ## Searching Help
 `/help/search?q=...` (`help_search` in `help_pages.py`, the box at the top of the Help sidebar) calls `search(root, query)` in `web/guide.py`. It splits every guide page into sections at its headings and keeps the sections whose heading or text holds every word typed (any case, part of a word counts). Ranking: a word in the heading is worth 10, each time a word appears in the text 1 (up to 3, so long sections don't win by length), and for two or more words the words together as typed are worth 20 in the heading and 10 each in the text (up to 3). Each hit links to `/help/<page>#<anchor>` and carries a snippet of about 200 characters around the phrase (else the first word), split into `(text, marked)` parts so the template marks the words with `<mark>` and Jinja still escapes everything. At most 50 hits; the pages are read on each search (the guide is small).
 
+The box searches as you type (`static/js/help_search.js`): 250 ms after the last key, with two letters or more, it fetches that same `/help/search` page, swaps in its `.help__body` and updates the address bar, so Enter and typing show the same thing. A reply to an older search than the latest is dropped. Clearing the box on a Help page puts that page back; on the search page it shows the hint. Without JavaScript, Enter still works.
+
 Images go in `docs/guide/images/` and are written as `images/name.png`. If that folder doesn't exist, `/help/images/...` answers 404.
 
 ## The link tests

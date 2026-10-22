@@ -29,6 +29,6 @@ The list shows 200 rows a page.
 - **Broker ID:** the numbers your broker gave these records, handy for finding them in its own app. **Order** is the order number; the other numbers are each fill's own.
 
 ## Last sync
-At the bottom, one line per account: the time the app last read it through, and **OK** or the problem that stopped the last sync. Check it first if a trade seems to be missing (see [Troubleshooting](troubleshooting.md#why-is-a-trade-missing-from-the-journal)).
+At the bottom, one line per account: the time the app last read it through, and **OK** or the problem that stopped the last sync. Check it first if a trade seems to be missing (see [FAQ](faq.md#why-is-a-trade-missing-from-the-journal)).
 
 If some stored records couldn't be read, a note at the top says how many. They're left out of the list and the details are in the app's log.

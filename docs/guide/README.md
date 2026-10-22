@@ -4,7 +4,7 @@ How to install and use OptionsJourney. Written for people who aren't programmers
 
 *The app is still being built (see the roadmap). These pages are written as each feature is finished.*
 
-In the app, **Help** in the top bar shows these pages, with a search box above the list of pages. Type a word or two (like *stop loss*) and press Enter: you get every part of the guide that mentions all of them, best first, each with a line of text and a link straight to it.
+In the app, **Help** in the top bar shows these pages, with a search box above the list of pages. Type a word or two (like *stop loss*): as you type, you get every part of the guide that mentions all of them, best first, each with a line of text and a link straight to it.
 
 **Please read the [disclaimer](disclaimer.md):** OptionsJourney is a tool, not financial advice, and you're responsible for every order.
 
@@ -16,7 +16,7 @@ How to…
 - [Adjust a bot's trade before the close](how-to-adjust-before-the-close.md): close part, move the stop or target, take an exit off, or roll a leg
 - [Get alerts on your phone](how-to-phone-alerts.md)
 - [Update the app](updating.md)
-- [Fix a problem](troubleshooting.md): a missing trade, a bot that didn't enter, "Needs a look", Schwab's login, P/L Day's ≈, an exit that didn't fill, nothing syncing, "Something went wrong"
+- [FAQ and fixing problems](faq.md): using it from your other computers or phone, keeping it running; and a missing trade, a bot that didn't enter, "Needs a look", Schwab's login, P/L Day's ≈, an exit that didn't fill, nothing syncing, "Something went wrong"
 
 Ready:
 - [Installing OptionsJourney](installing.md)

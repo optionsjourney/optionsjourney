@@ -4,6 +4,20 @@ Notable changes to OptionsJourney. The format follows [Keep a Changelog](https:/
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-22
+
+Open the app from your other computers and your phone, and Help that searches as you type.
+
+### Added
+- **Settings → This computer → Open from other devices.** Turn it on, restart the app, and your other computers can open it at this computer's address, and your phone can too over Tailscale. It's off unless you turn it on, and it stays on through updates. There's no login, so only use it on networks you trust: see the FAQ.
+- Help's search box shows results as you type, without pressing Enter. Clearing it takes you back to the page you were reading.
+
+### Fixed
+- In the demo, the tour no longer skips its profit-target step when the Weekly calendar's target filled before you got there.
+
+### Changed
+- The Troubleshooting page is now the **FAQ**, with new questions about keeping the computer on, where your data is kept, using the app from other devices and putting it on the internet.
+
 ## [0.3.0] - 2026-10-22
 
 A demo mode you can try at demo.optionsjourney.com, and small fixes.

@@ -83,7 +83,9 @@ def main() -> None:
         app.config["MENU_APP"] = True  # only the menu bar app can run the installer
         services = app.extensions["optionsjourney"]
         url = f"http://{HOST}:{settings.port}"
-        server = make_server(settings.bind_host, settings.port, app, threaded=True)
+        server = make_server(
+            saved.bind_host(settings, services.session_factory), settings.port, app, threaded=True
+        )
         web = threading.Thread(target=server.serve_forever, name="web", daemon=True)
         web.start()
 

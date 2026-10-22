@@ -5,7 +5,8 @@ A static site: the Home page and four guide pages (Install, Broker setup, Troubl
 ## How it's built
 - `scripts/build_site.py` writes plain files to `build/site/`:
   - `index.html` from `site/templates/home.html`;
-  - `install.html`, `brokers.html`, `troubleshooting.html` and `disclaimer.html` from `docs/guide/installing.md`, `broker-api-keys.md`, `troubleshooting.md` and `disclaimer.md`, rendered by the same code as the app's Help pages (`web/guide.py`);
+  - `install.html`, `brokers.html`, `faq.html` and `disclaimer.html` from `docs/guide/installing.md`, `broker-api-keys.md`, `faq.md` and `disclaimer.md`, rendered by the same code as the app's Help pages (`web/guide.py`);
+  - `troubleshooting.html`, the FAQ's old address: a small page (`templates/moved.html`) that sends the browser on to `/faq`, keeping any `#part` (`MOVED` in the script). It's a page rather than a Caddy redirect so it goes live with the build, without restarting Caddy;
   - `404.html`, the CSS from `site/static/`, the guide's screenshots (under `guide/images/`) and the logo and favicon from `src/optionsjourney/web/static/images/`.
 - Links between the four guide pages stay on the site (`installing.md` becomes `/install`). Links to any other guide page go to that page on GitHub, at `main`.
 - The text on those four pages is the guide's own, so it's written once. The only site-only text is the short disclaimer in the footer and at the top of Install.

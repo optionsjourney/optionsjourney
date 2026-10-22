@@ -220,6 +220,20 @@ SECTIONS = SECTIONS + (
                 choices=(("on", "On"), ("off", "Off")),
             ),
             Setting(
+                key="listen_on_network",
+                label="Open from other devices",
+                help="Lets your other computers and phone open the app.",
+                tip=(
+                    "On: other devices on your network (or your Tailscale network) can open "
+                    "the app at this computer's address, followed by :2026. There's no login, so "
+                    "anyone who can reach it can see your accounts and place orders: only use it "
+                    "on networks you trust. Takes effect after Restart OptionsJourney in the OJ "
+                    "menu."
+                ),
+                default="off",
+                choices=(("off", "Off"), ("on", "On")),
+            ),
+            Setting(
                 key="check_updates",
                 label="Check for new versions",
                 help="Once a day, asks GitHub if a newer version is out.",

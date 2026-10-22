@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 from werkzeug.test import Client
@@ -212,9 +213,9 @@ def test_a_backup_folder_that_cant_be_read_means_no_restore_point(settings, monk
 
 
 class _FakeWebApp:
-    def __init__(self):
+    def __init__(self, session_factory):
         self.config = {}
-        self.extensions = {"optionsjourney": object()}
+        self.extensions = {"optionsjourney": SimpleNamespace(session_factory=session_factory)}
 
 
 class _FakeServer:
@@ -240,10 +241,13 @@ def menu_start(settings, monkeypatch):
     from optionsjourney.launcher import app as launcher
 
     events = []
+    engine = make_engine(settings.database_path)
+    migrate(engine)
+    factory = make_session_factory(engine)
     monkeypatch.setattr(launcher.logs, "start_console", lambda: None)
     monkeypatch.setattr(launcher.logs, "start_file", lambda data_dir: None)
     monkeypatch.setattr(launcher, "load_settings", lambda: settings)
-    monkeypatch.setattr(web_app, "create_app", lambda settings: _FakeWebApp())
+    monkeypatch.setattr(web_app, "create_app", lambda settings: _FakeWebApp(factory))
     monkeypatch.setattr(
         startup_problem, "run_problem_icon", lambda s, kind, detail: events.append((kind, detail))
     )

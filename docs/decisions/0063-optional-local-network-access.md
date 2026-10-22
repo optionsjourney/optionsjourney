@@ -1,6 +1,6 @@
 # 0063. The app can optionally answer on the local network
 
-- **Status:** Accepted
+- **Status:** Accepted, amended by [0104](0104-open-from-other-devices-is-a-settings-switch.md)
 - **Date:** 2026-10-16
 - **Replaces:** [0013](0013-local-only-web-server.md)
 

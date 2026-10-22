@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 from sqlalchemy.orm import sessionmaker
 
+from optionsjourney.config import ALL_INTERFACES, HOST, Settings
 from optionsjourney.core.settings import SECTIONS, clean_section, spec
 from optionsjourney.db.models import Setting
 
@@ -14,6 +15,17 @@ def get(session_factory: sessionmaker, key: str) -> str:
     with session_factory() as session:
         row = session.get(Setting, key)
     return row.value if row is not None else spec(key).default
+
+
+def bind_host(settings: Settings, session_factory: sessionmaker) -> str:
+    """The address the web server listens on: this computer only, unless .env's
+    LISTEN_ON_NETWORK or the Open from other devices switch opens it to the network
+    (decision 0104). Demo mode never takes the switch from its Settings page."""
+    if settings.listen_on_network:
+        return ALL_INTERFACES
+    if not settings.is_demo and get(session_factory, "listen_on_network") == "on":
+        return ALL_INTERFACES
+    return HOST
 
 
 # Internal key in the settings table; not shown on the Settings page.

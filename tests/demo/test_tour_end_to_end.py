@@ -92,11 +92,16 @@ def test_the_whole_tour_on_a_test_clock(demo_app):
         _advance(s, deps, 10)
     assert step() == 5
 
-    # 5 -> 6: the calendar's target fills.
+    # 5 -> 6: the calendar's target fills, about 6 minutes into the day. Usually that's
+    # before the visitor gets here (it is in this run); then step 5 waits for Next.
     for _ in range(6):
-        if step() == 6:
+        view = client.get("/demo/tour").get_json()
+        if view["step"] != 5:
             break
-        _advance(s, deps, 60)
+        if view["text"].startswith("Your Weekly calendar reached its profit target"):
+            client.post("/demo/tour/next", json={"from": 5}, headers=HEADERS)
+        else:
+            _advance(s, deps, 60)
     assert step() == 6
 
     # 6 -> 7: change the watchlist.

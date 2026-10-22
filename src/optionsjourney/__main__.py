@@ -31,6 +31,7 @@ def main() -> None:
         sys.exit(f"Settings problem: {e}")
 
     from optionsjourney.services import background
+    from optionsjourney.services import settings as saved
     from optionsjourney.web import services
 
     with app.app_context():
@@ -39,7 +40,8 @@ def main() -> None:
     from optionsjourney.services import notify  # noqa: PLC0415
 
     try:
-        app.run(host=settings.bind_host, port=settings.port)
+        host = saved.bind_host(settings, app.extensions["optionsjourney"].session_factory)
+        app.run(host=host, port=settings.port)
     finally:
         notify.wait_idle(5)  # alerts still queued get a few seconds to go out
 

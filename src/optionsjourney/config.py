@@ -18,7 +18,7 @@ CREDENTIAL_MODES = (LOCAL, GATEWAY, DEMO)
 
 DEFAULT_PORT = 2026  # the year the project started
 # The address this computer's own browser uses. By default the app listens
-# only here; LISTEN_ON_NETWORK opens it to the local network (decision 0063).
+# only here; LISTEN_ON_NETWORK or the Settings switch opens it (decisions 0063, 0104).
 HOST = "127.0.0.1"
 ALL_INTERFACES = "0.0.0.0"
 
@@ -38,7 +38,8 @@ class Settings:
 
     @property
     def bind_host(self) -> str:
-        """The address the web server listens on."""
+        """The address .env alone asks for. The app's server listens on
+        services.settings.bind_host, which also follows the Settings page."""
         return ALL_INTERFACES if self.listen_on_network else HOST
 
     @property

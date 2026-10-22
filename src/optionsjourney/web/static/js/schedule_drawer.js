@@ -14,7 +14,7 @@ const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '
 export const SKIP_TIP = "Adds this day to the bot's blackout days, so none of its entries open that day. Open trades keep being managed. You can undo it right after.";
 export const SKIP_MORE = '/help/automation#blackout-days-and-skip-a-day';
 export const BLOCKED_TIP = "Entries that won't trade that day: the market is shut, it's one of the bot's blackout days, a date list the bot blacks out can't tell about that day, Freeze or No new trades is on today, or the entry is past the cut-off. They're counted here but not listed.";
-export const BLOCKED_MORE = '/help/troubleshooting#why-didnt-a-bot-enter';
+export const BLOCKED_MORE = '/help/faq#why-didnt-a-bot-enter';
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MODE_KEY = 'schedule_mode';
