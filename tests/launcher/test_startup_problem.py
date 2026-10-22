@@ -314,3 +314,20 @@ def test_without_the_port_the_problem_icon_still_shows_and_the_log_says_why(
     assert shown == ["OptionsJourney · couldn't start"]
     assert opened == []
     assert f"port {settings.port} is in use" in caplog.text
+
+
+def test_the_restart_after_a_restore_outlives_the_old_process():
+    # The restore button runs in a web-server thread, which is a daemon; a timer it
+    # starts would be one too, and Python ends daemon threads at exit, so the old
+    # process quit before starting the new copy (found on a fresh Mac, v0.2.1 → v0.2.0)
+    import threading
+
+    made = []
+
+    def from_a_request():
+        startup_problem.in_a_moment(lambda: None, made.append)
+
+    request = threading.Thread(target=from_a_request, daemon=True)
+    request.start()
+    request.join()
+    assert made and made[0].daemon is False

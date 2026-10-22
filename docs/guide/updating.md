@@ -3,9 +3,15 @@
 When a newer version is out, the OJ menu tells you. You can also update by hand.
 
 ## From the OJ menu
-1. Once a day the app checks GitHub for a new version. When there is one, the [OJ menu](menubar.md) shows **Download v0.2.1** (the number will be the new version). Click it. It says **Downloading v0.2.1…** for a moment.
+1. When the app starts, and then once a day, it checks GitHub for a new version. When there is one, the [OJ menu](menubar.md) shows **Download v0.2.1** (the number will be the new version). Click it. It says **Downloading v0.2.1…** for a moment.
+
+   ![Download v0.2.1 in the OJ menu](images/update-download.png)
 2. When it is ready, the item changes to **Install v0.2.1…**. Click it. The app opens the Install page.
+
+   ![Install v0.2.1 in the OJ menu](images/update-install-item.png)
 3. The page lists what is live right now. Tick each box to say you know. If a number changes while you are on the page, tick that box again. Last, tick the box that says you understand the app stops for about a minute.
+
+   ![The Install page](images/update-install-page.jpg)
 4. Click **Install now**. A window opens and runs the installer. Leave it open until it says it is done. OptionsJourney stops and comes back by itself in about a minute. Then press Return (Enter on Windows) to close the window.
 
 What the warnings mean:
@@ -32,6 +38,9 @@ Sometimes you want the older version again. Before every update that changes you
 1. Go to the [Releases page](https://github.com/optionsjourney/optionsjourney/releases), pick the older version, and download its zip.
 2. Unzip it and run its installer, as in "By hand" above.
 3. The older app sees that your data is from a newer version and won't use it. It opens a page that says so, with a button: **Restore the backup from before the upgrade**. Click it. The app restarts on the older data.
+
+   ![The older app's page: Restore the backup from before the upgrade](images/going-back-newer-data.jpg)
+4. If the app hasn't come back after a minute, start it yourself: **OptionsJourney** in Spotlight or Launchpad on a Mac, or in the Start menu on Windows. (Going back to v0.2.0 or v0.2.1 always needs this step.)
 
 Two things to know:
 - Anything you changed after the upgrade is lost. That includes tags, notes and bot edits.

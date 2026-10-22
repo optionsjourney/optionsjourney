@@ -122,6 +122,17 @@ def restart(stop: Callable[[], None]) -> None:
     places.start_again(launch_command(), places.app_folder())
 
 
+def in_a_moment(fn: Callable[[], None], started: Callable | None = None) -> None:
+    """Run `fn` in a second, so the "Restoring…" page reaches the browser first. Not a
+    daemon thread: this is called from a web-server (daemon) thread, and the timer would
+    inherit that, so the process could quit before `fn` starts the new copy."""
+    timer = threading.Timer(1.0, fn)
+    timer.daemon = False
+    timer.start()
+    if started:
+        started(timer)
+
+
 def restore_and_restart(
     settings: Settings,
     stop: Callable[[], None],
@@ -129,9 +140,6 @@ def restore_and_restart(
 ) -> Callable[[], None]:
     """What the restore button does: restore the backup from before the upgrade
     (raises BackupError), then restart once the page has answered."""
-
-    def in_a_moment(fn: Callable[[], None]) -> None:
-        threading.Timer(1.0, fn).start()  # lets the "Restoring…" page reach the browser
 
     def on_restore() -> None:
         engine, factory = _bare_factory(settings)

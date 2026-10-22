@@ -1,6 +1,6 @@
 [project]
 name = "optionsjourney"
-version = "0.2.1"
+version = "0.2.2"
 description = "A local-first options trading journal and automation app."
 readme = "README.md"
 license = "LicenseRef-PolyForm-Noncommercial-1.0.0"

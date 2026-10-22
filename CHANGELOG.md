@@ -4,6 +4,14 @@ Notable changes to OptionsJourney. The format follows [Keep a Changelog](https:/
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-21
+
+### Fixed
+- After **Restore the backup from before the upgrade**, the app starts again by itself (it quit without restarting).
+
+### Added
+- The guide's Updating page has pictures of each step, and of the page you see when going back.
+
 ## [0.2.1] - 2026-10-21
 
 The first update you can install from the OJ menu.
