@@ -19,8 +19,10 @@
     const compact = () => document.documentElement.dataset.tradeView === "compact";
 
     // Compact (#156, Tracker2's journal_compact.js): a click pins a row open with a detail
-    // line under it holding copies of its legs, closing legs, premium and fees.
-    const DETAIL = [["col-legs", "Legs"], ["col-closing", "Closing legs"], ["col-premium", "Premium"], ["col-fees", "Fees"]];
+    // line under it holding copies of its legs, closing legs, entry, exit, premium and fees
+    // (#282: entry and exit too).
+    const DETAIL = [["col-legs", "Legs"], ["col-closing", "Closing legs"], ["col-entry", "Entry"],
+        ["col-exit", "Exit"], ["col-premium", "Premium"], ["col-fees", "Fees"]];
     function toggleDetail(row) {
         const next = row.nextElementSibling;
         if (next && next.classList.contains("compact-detail")) {

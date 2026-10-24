@@ -38,8 +38,10 @@ from optionsjourney.web.routes import (
     chart_grid,
     health,
     help_pages,
+    ideas,
     journal,
     manual,
+    pending,
     quotes,
     risk_graph,
     setup,
@@ -242,11 +244,13 @@ def create_app(
         from optionsjourney.services.alerts import system_alerts
 
         s = app.extensions["optionsjourney"]
-        system = len(system_alerts(s.session_factory, credentials=s.credentials))
+        # #272: problems count until they're fixed; notes are listed but don't count
+        alerts = system_alerts(s.session_factory, credentials=s.credentials)
+        problems = sum(a.level == "problem" for a in alerts)
         # #186: unread alerts (a shown P/L changed) count in the same badge
         return {
-            "alert_count": system + app_alerts.unread_count(s.session_factory),
-            "system_alert_count": system,
+            "alert_count": problems + app_alerts.unread_count(s.session_factory),
+            "problem_alert_count": problems,
         }
 
     @app.context_processor
@@ -263,6 +267,8 @@ def create_app(
     app.register_blueprint(chain.bp)
     app.register_blueprint(risk_graph.bp)
     app.register_blueprint(trade.bp)
+    app.register_blueprint(pending.bp)
+    app.register_blueprint(ideas.bp)
     app.register_blueprint(automation.bp)
     app.register_blueprint(journal.bp)
     app.register_blueprint(manual.bp)

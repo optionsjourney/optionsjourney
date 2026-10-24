@@ -85,6 +85,24 @@ def test_restoring_brings_back_the_backup_and_keeps_a_copy_of_now(app_db):
     assert "Added after the backup" in _tags(newest)  # the state before restoring was saved
 
 
+def test_backup_and_restore_include_changes_still_in_the_wal_file(app_db):
+    path, factory, _ = app_db
+    with factory() as session:
+        session.add(Tag(name="Only in the WAL"))
+        session.commit()
+    assert path.with_name(path.name + "-wal").exists()  # not yet folded into the file
+    made = backups.backup_now(path, factory, now=NOW)
+    assert "Only in the WAL" in _tags(made)
+    with factory() as session:
+        session.add(Tag(name="After the backup"))
+        session.commit()
+        backups.restore(path, factory, made.name, now=NOW + timedelta(hours=1))
+        # the app's open connection sees the restored data, not the old WAL
+        names = {tag.name for tag in session.query(Tag)}
+    assert "Only in the WAL" in names
+    assert "After the backup" not in names
+
+
 def test_only_backups_in_the_folder_can_be_restored(app_db):
     path, factory, _ = app_db
     with pytest.raises(backups.BackupError):
@@ -94,7 +112,12 @@ def test_only_backups_in_the_folder_can_be_restored(app_db):
 def test_backups_are_compressed(app_db):
     path, factory, _ = app_db
     made = backups.backup_now(path, factory, now=NOW)
-    assert made.name.endswith(".db.gz") and made.stat().st_size < path.stat().st_size
+    # the database's size, not the file's: recent pages may still be in the -wal file
+    with sqlite3.connect(path) as connection:
+        pages = connection.execute("pragma page_count").fetchone()[0]
+        page_size = connection.execute("pragma page_size").fetchone()[0]
+    connection.close()
+    assert made.name.endswith(".db.gz") and made.stat().st_size < pages * page_size
 
 
 def test_how_many_to_keep_is_a_setting(app_db):

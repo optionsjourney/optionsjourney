@@ -6,7 +6,7 @@ and closes are kept a minute; prices are live."""
 import logging
 from decimal import Decimal
 
-from optionsjourney.brokers.credentials import CredentialsUnavailable
+from optionsjourney.brokers.credentials import CredentialsUnavailable, NotConnected
 from optionsjourney.brokers.http import BrokerError
 from optionsjourney.core.holdings import Holding, StockPosition, holdings
 from optionsjourney.services.chain import Cache
@@ -18,9 +18,13 @@ KEEP_FOR = 60  # seconds
 _cache = Cache()
 
 
-def broker_positions(clients: list, *, strict: bool = False) -> list[StockPosition] | None:
+def broker_positions(
+    clients: list, *, strict: bool = False, skipped: set[str] | None = None
+) -> list[StockPosition] | None:
     """Every account's shares. A broker that can't be reached is left out,
-    or with `strict` makes the whole answer None (the daily save needs all)."""
+    or with `strict` makes the whole answer None (the portfolio value chart needs all).
+    A broker that was never connected is left out either way, and its name
+    (`client.broker`) is added to `skipped` when one is given."""
     found: list[StockPosition] = []
     for client in clients:
         if not hasattr(client, "stock_positions"):
@@ -31,6 +35,10 @@ def broker_positions(clients: list, *, strict: bool = False) -> list[StockPositi
             else:
                 for account in client.accounts():
                     found += client.stock_positions(account.number)
+        except NotConnected as e:
+            logger.info("%s positions unavailable: %s", client.name, e)
+            if skipped is not None:
+                skipped.add(client.broker)
         except (BrokerError, CredentialsUnavailable, OSError) as e:
             logger.info("%s positions unavailable: %s", client.name, e)
             if strict:
@@ -38,10 +46,10 @@ def broker_positions(clients: list, *, strict: bool = False) -> list[StockPositi
     return found
 
 
-def stock_holdings(clients: list, hub, account: str = "") -> list[Holding]:
+def stock_holdings(clients: list, hub, accounts=()) -> list[Holding]:
     positions = _cache.get(("positions",), KEEP_FOR, lambda: broker_positions(clients)) or []
-    if account:
-        positions = [p for p in positions if p.account == account]
+    if accounts:  # "broker:number" each (#285); none: every account
+        positions = [p for p in positions if p.account in accounts]
     tickers = sorted({p.ticker for p in positions if p.quantity})
     hub.subscribe(set(tickers))
     prices = {}

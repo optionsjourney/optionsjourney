@@ -190,3 +190,21 @@ def test_an_unexpected_error_in_one_account_is_recorded_on_its_sync_state(sessio
         assert state.synced_through is None
         assert state.last_error == "TastyTrade sent a reply the app couldn't read."
         assert session.get(SyncState, ("tastytrade", "5WY05678")).synced_through == NOW
+
+
+def test_a_sync_with_new_trades_matches_them_to_bots(session_factory, monkeypatch):
+    """#276: and a failing auto-match never fails the sync."""
+    from optionsjourney.services import bot_match
+
+    calls = []
+
+    def boom(factory):
+        calls.append(factory)
+        raise RuntimeError("no")
+
+    monkeypatch.setattr(bot_match, "auto_match", boom)
+    tasty = FakeBroker([ALPHA], {"5WX01234": [_raw("1")]})
+    [result] = sync_all([tasty], session_factory, now=lambda: NOW)
+    assert result.ok and calls == [session_factory]
+    sync_all([tasty], session_factory, now=lambda: NOW)  # nothing new: no match
+    assert len(calls) == 1

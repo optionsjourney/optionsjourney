@@ -75,6 +75,12 @@ def market_day(value: datetime) -> str:
     return value.astimezone(MARKET_TZ).date().isoformat()
 
 
+def market_date_label(value: datetime) -> str:
+    """The New York trading day, "Mar 1, 2026" (no %-d: it isn't on Windows)."""
+    day = value.astimezone(MARKET_TZ).date()
+    return f"{day:%b} {day.day}, {day.year}"
+
+
 def login_due(expires_at: datetime | None) -> str:
     """ "problem" once the Schwab login has run out, "warning" in the day
     before, else "": the same rule as the alert."""
@@ -98,5 +104,6 @@ def register(app: Flask) -> None:
     app.add_template_filter(number)
     app.add_template_filter(premium)
     app.add_template_filter(market_time)
+    app.add_template_filter(market_date_label)
     app.add_template_filter(market_day)
     app.add_template_filter(login_due)

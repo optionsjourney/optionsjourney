@@ -4,6 +4,24 @@ Notable changes to OptionsJourney. The format follows [Keep a Changelog](https:/
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-24
+
+Save trades as ideas and see how they would have done, every order waiting at your brokers in one place, a Stocks page, and a better bell.
+
+### Added
+- **Ideas:** press **Idea ☆** on the Trade page to save the trade you built. The Journal's **💡 Ideas** drawer follows how it would have done, and **Trade it** brings it back to the ticket. See the guide's Ideas page.
+- **Pending orders:** the Journal's **⏳ Pending** drawer lists every order still waiting at your brokers, in every account, with live prices. You can change the price of, or cancel, the orders you sent from the app; the others are shown and changed where they came from.
+- **Stocks:** the Journal's **Stocks** tab shows every share position in your connected accounts, with live prices. Three cards at the top add them up: **Total P&L** (against what you paid), **Total market value** and **Day P&L**. Under them, a **Portfolio value** chart shows what your shares were worth at each day's close since the app first synced, and two tabs list your **Holdings** and your **Transaction History** (every stock buy, sell, assignment and exercise the app has synced). See the guide's Journal page.
+- Clicking the bell opens a list of **recent alerts** under it: problems and notes first, then the newest alerts with the new ones highlighted, and a link to the whole Alerts page.
+- An alert that goes off now pops up on whatever page you're on, with a chime, like a trade popup. That includes your price and trade alerts, your bots' alerts, and P/L corrections.
+- The Alerts page has two tabs. **Price alerts** lists every alert, yours and your bots', with its condition, the live value, whether it's armed, went off or is off, and when it went off, with filters and Turn off / Set again / Delete on each row. **Trades** lists the trades of the last day, as before.
+
+### Fixed
+- The red number on the bell goes down once you've seen what's new. Notes like "Schwab last synced 3 days ago" no longer keep it up; real problems still do until they're fixed.
+- The Alerts page's history is headed **Recent**, not "Unread".
+- No more alert every evening saying today's expirations settled. You only hear about it when something differs: the official close corrected a trade's P/L, or your broker's record doesn't match.
+- "Last synced N days ago" and "didn't sync" only show for brokers you've connected, and not for an account you've closed.
+
 ## [0.4.0] - 2026-10-22
 
 Open the app from your other computers and your phone, and Help that searches as you type.

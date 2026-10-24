@@ -296,27 +296,14 @@ def test_a_prelim_price_settles_and_is_stored_as_prelim(factory):
     assert _entry(factory).position.status.value == "closed"
 
 
-def test_the_run_says_the_days_pl_in_one_unread_alert(factory):
+def test_a_settling_run_raises_no_alert(factory):
+    """#273: a normal close is quiet; only a correction or a broker record that
+    differs raises an alert."""
     expiry_settle.set_on(factory, True)
     sync_broker(Broker(), factory, now=lambda: SYNCED)
-    _run(factory, final=False)
-    [alert] = _alerts(factory)
-    assert alert.kind == "settled" and alert.link == "/journal" and alert.read_at is None
-    assert alert.title == "Today's expirations settled: P/L $200.00 (prelim)"
-    assert alert.detail.startswith("1 trade settled at the close.")
-    assert alert.dedupe_key.startswith("settled:2026-10-09:") and len(alert.dedupe_key) < 50
-    expiry_settle._save(factory, expiry_settle.LAST_RUN_KEY, "{}")  # run again the same day
-    _run(factory, final=False)
-    assert len(_alerts(factory)) == 1
-
-
-def test_a_final_price_says_no_prelim(factory):
-    expiry_settle.set_on(factory, True)
-    sync_broker(Broker(), factory, now=lambda: SYNCED)
+    assert _run(factory, final=False)[0]["settled"] == 1
     _run(factory)
-    [alert] = _alerts(factory)
-    assert alert.title == "Today's expirations settled: P/L $200.00"
-    assert "preliminary" not in alert.detail
+    assert _alerts(factory) == []
 
 
 def test_no_alert_when_nothing_settled(factory):

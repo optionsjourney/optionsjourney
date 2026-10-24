@@ -105,3 +105,20 @@ def test_the_columns_and_the_view_choice_have_tips(client):
     # The tip sits beside the Show label, never inside it (a click on the label would open it)
     assert not re.search(r"<label>\s*Show\s*<select[^>]*>.*?tip-transactions-show.*?</label>",
                          orders, re.S)  # fmt: skip
+
+
+def test_search_filters_orders_and_fills(client):
+    client.post("/sync", headers=ORIGIN)
+    for view in ("orders", "fills"):
+        html = client.get(f"/transactions?view={view}&q=spx+put").get_data(as_text=True)
+        assert "SPX 10/09/26 5800 Put" in html
+        html = client.get(f"/transactions?view={view}&q=AAPL").get_data(as_text=True)
+        assert "Nothing matches “AAPL” in this period." in html
+        assert "5800 Put" not in html
+
+
+def test_search_finds_ids_and_account_names(client):
+    client.post("/sync", headers=ORIGIN)
+    for q in ("9001", "401234567", "alpha", "sell to open"):
+        html = client.get(f"/transactions?view=fills&q={q}").get_data(as_text=True)
+        assert "SPX 10/09/26 5800 Put" in html, q

@@ -173,10 +173,3 @@ test('tradeBotsRequest carries the ticker only when given', () => {
   assert.equal(K.tradeBotsRequest({ legs: [] }, 3, '/ES').ticker, '/ES');
   assert.equal('ticker' in K.tradeBotsRequest({ legs: [] }, 3), false);
 });
-
-test('tradeRequest carries idea_id only when given an integer', () => {
-  const base = { tray: { legs: [] }, accountId: 1, ticker: 'SPX', botId: K.PLACE_ONLY, mode: 'limit', price: 1, effect: 'credit', token: 't' };
-  assert.equal(K.tradeRequest({ ...base, ideaId: 7 }).idea_id, 7);
-  assert.equal('idea_id' in K.tradeRequest(base), false);
-  assert.equal('idea_id' in K.tradeRequest({ ...base, ideaId: null }), false);
-});

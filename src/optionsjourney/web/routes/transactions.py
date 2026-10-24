@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from optionsjourney.core.orders import group_fills
+from optionsjourney.core.transactions import matches_search
 from optionsjourney.services import account_values
 from optionsjourney.services.sync import sync_all
 from optionsjourney.services.transactions import load_fills
@@ -30,18 +31,21 @@ def transactions_page():
     if view_mode not in VIEWS:
         view_mode = VIEWS[0]
     account = _account_filter(request.args.get("account", ""))
+    query = request.args.get("q", "").strip()
 
     view = load_fills(
         services().session_factory,
         since=datetime.now(UTC) - timedelta(days=days),
         account=account,
     )
+    rows = group_fills(view.fills) if view_mode == "orders" else view.fills
+    if query:
+        rows = [row for row in rows if _matches(row, query, view.accounts)]
     return render_template(
         "transactions.html",
         view=view,
-        page=paginate(
-            group_fills(view.fills) if view_mode == "orders" else view.fills, ROWS_PER_PAGE
-        ),
+        page=paginate(rows, ROWS_PER_PAGE),
+        query=query,
         view_mode=view_mode,
         periods=PERIODS,
         days=days,
@@ -69,6 +73,13 @@ def sync_now():
     if back.startswith("/") and not back.startswith("//") and not urlsplit(back).netloc:
         return redirect(back)
     return redirect(url_for("transactions.transactions_page", **request.args))
+
+
+def _matches(row, query: str, accounts: dict) -> bool:
+    """The search (#287) also finds a row by its account's name."""
+    account = accounts.get((row.broker, row.account_number))
+    name = f"{account.display_name} {account.masked_number}" if account else row.broker
+    return matches_search(f"{row.search_text} {name}", query)
 
 
 def _account_filter(value: str) -> tuple[str, str] | None:

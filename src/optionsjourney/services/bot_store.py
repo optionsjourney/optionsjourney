@@ -37,6 +37,7 @@ from optionsjourney.bots.definition import (
     normalize_delta,
     normalize_tags,
     retag,
+    tags_with_main,
 )  # fmt: skip
 from optionsjourney.bots.exit_math import after_expiry, row_legs
 from optionsjourney.bots.schedule import normalize_time, parse_date_list, skip_target_day
@@ -56,7 +57,7 @@ from optionsjourney.db.models import (
     Setting,
     Tag,
 )  # fmt: skip
-from optionsjourney.services import bot_paper
+from optionsjourney.services import bot_paper, journal
 from optionsjourney.trading.orders import Side
 
 logger = logging.getLogger(__name__)
@@ -251,14 +252,31 @@ def listing(session_factory: sessionmaker, archived: bool = False) -> list[BotDe
         return [_to_def(session, bot) for bot in bots]
 
 
+NEW_TAG = -1  # a main tag that doesn't exist yet: made when the bot is saved
+
+
+def _with_main_tag(session, bot: BotDef) -> BotDef:
+    """#278 (decision 0110): the bot's tags, its main one first, with tag_id set to it
+    (NEW_TAG when it's new). A tag_id given (an import, a manual bot, a clone) is the main
+    tag and among its tags; the form gives none, so the bot keeps its main tag while it's
+    still listed. A bot with no tag at all has tag_id None, for validation to name."""
+    given = session.get(Tag, bot.tag_id) if bot.tag_id and bot.tag_id != NEW_TAG else None
+    row = session.get(Bot, bot.id) if bot.id else None
+    kept = session.get(Tag, row.tag_id) if row is not None and row.tag_id else None
+    main = given or kept
+    names = (given.name, *bot.tags) if given is not None else bot.tags
+    tags = tags_with_main(names, main.name if main is not None else None)
+    if not tags:
+        return replace(bot, tags=(), tag_id=None)
+    found = journal.find_tag(session, tags[0])
+    return replace(bot, tags=tags, tag_id=found.id if found is not None else NEW_TAG)
+
+
 def all_tags(session_factory: sessionmaker) -> tuple[str, ...]:
-    """What the bot form's tag picker offers (#109): every tag on a bot that isn't
-    deleted, archived ones too (Tracker2's _tag_catalogue), and the journal's tags
-    (#110, decision 0049), a bot's spelling first."""
+    """What the bot form's tag picker offers (#109): the journal's tags, which since #278
+    (decision 0110) hold every bot's tags too. Never a state word."""
     with session_factory() as session:
-        lists = session.scalars(select(Bot.tags).where(Bot.hidden.is_(False)))
-        on_bots = [tag for tags in lists for tag in tags or ()]
-        return normalize_tags([*on_bots, *session.scalars(select(Tag.name))])
+        return normalize_tags(session.scalars(select(Tag.name)))
 
 
 def armed(session_factory: sessionmaker) -> list[BotDef]:
@@ -292,7 +310,8 @@ def save(
     `imported_from_url` one fetched from a link.
     Saving never arms, goes live, archives or unarchives."""
     with session_factory() as session:
-        tag_ids = set(session.scalars(select(Tag.id)))
+        tag_ids = set(session.scalars(select(Tag.id))) | {NEW_TAG}
+        bot = _with_main_tag(session, bot)
     problems = validate(bot, tag_ids) | dict(form_problems or {})
     if not problems and bot.id:
         problem = _underlying_problem(session_factory, bot, now)
@@ -305,6 +324,8 @@ def save(
     if problems:
         return None, problems
     with session_factory() as session:
+        found = journal.tags_for(session, bot.tags)  # #278: made if new; first is main
+        bot = replace(bot, tag_id=found[0].id, tags=tuple(t.name for t in found))
         row = session.get(Bot, bot.id) if bot.id else None
         if row is None:
             # New bots start disarmed (0009), and Live (0061), whether typed, cloned or imported.
@@ -348,7 +369,7 @@ def save(
         row.close_time, row.close_dte = bot.close_time, bot.close_dte
         row.use_time_actions = bot.use_time_actions
         row.time_actions = [_action_row(a) for a in bot.time_actions]
-        row.tags = list(normalize_tags(bot.tags))
+        row.tags = list(bot.tags)
         for name in WATCH_FIELDS:
             setattr(row, name, getattr(bot, name))
         row.alert_name = bot.alert_name
@@ -712,26 +733,32 @@ def skip_many(session_factory, bot_ids, now: datetime) -> tuple[list[int], list[
     return skipped, refused
 
 
-def tag_many(session_factory, bot_ids, add, remove) -> tuple[list[int], list[str]]:
+def tag_many(session_factory, bot_ids, add, remove) -> tuple[list[int], list[str], list[str]]:
     """Bulk tagging (bots slice 20; Tracker2's api_bulk_tag_bots): add and/or remove tags
     on several bots, touching nothing but their tags (so armed and live bots too).
-    (the ids changed, the names of bots left as they were because they'd pass MAX_TAGS).
-    An id that isn't a bot is skipped."""
-    changed, too_many = [], []
+    (the ids changed, the names of bots left as they were because they'd pass MAX_TAGS,
+    and of those left as they were because they'd have no tag; #278). Removing a bot's
+    main tag makes its first other tag the main one (tags_with_main). An id that isn't a
+    bot is skipped."""
+    changed, too_many, emptied = [], [], []
     with session_factory() as session:
         for bot_id in bot_ids:
             row = session.get(Bot, bot_id)
             if row is None or row.hidden:
                 continue
             old = tuple(row.tags or ())
-            new = retag(old, add, remove)
+            main = session.get(Tag, row.tag_id) if row.tag_id else None
+            new = tags_with_main(retag(old, add, remove), main.name if main else None)
             if len(new) > MAX_TAGS:
                 too_many.append(row.name)
-            elif new != normalize_tags(old):
-                row.tags = list(new)
+            elif not new:
+                emptied.append(row.name)
+            elif new != old:
+                found = journal.tags_for(session, new)
+                row.tag_id, row.tags = found[0].id, [t.name for t in found]
                 changed.append(bot_id)
         session.commit()
-    return changed, too_many
+    return changed, too_many, emptied
 
 
 def runs(session_factory, bot_id: int, limit: int = 100) -> list[BotRun]:

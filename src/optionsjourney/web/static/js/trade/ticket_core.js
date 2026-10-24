@@ -80,18 +80,26 @@ export function confirmParts(summary) {
   return { legs: legs.split(' / '), terms: i < 0 ? '' : summary.slice(i + 3) };
 }
 
-// The working list's rows. price is the logged limit without its sign, effect says which side
-// it is on (null when the order isn't yours): Replace keeps that side.
+// The working list's rows. price is the limit without its sign (the logged one for your orders,
+// the broker's otherwise), effect says which side it is on: Replace keeps that side. The server
+// says who owns the order (from) and what it allows; a row it didn't say so for allows nothing.
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// An option symbol's parts ("SPXW 261023C07645000" -> {root: 'SPXW', month: 'Oct', day: 23,
+// strike: 7645, right: 'C'}); null for anything else (a stock, a future).
+export function optionParts(symbol) {
+  const m = /^([A-Z.]+)\s*(\d{2})(\d{2})(\d{2})([CP])(\d+(?:\.\d+)?)$/.exec(symbol || '');
+  if (!m) return null;
+  const [, root, , mm, dd, right, raw] = m;
+  const strike = raw.length === 8 && !raw.includes('.') ? Number(raw) / 1000 : Number(raw);
+  return { root, month: MONTHS[Number(mm) - 1], day: Number(dd), strike, right };
+}
 
 // An option symbol as the Send button writes it ("SPXW 261023C07645000" -> "SPXW 23 Oct 7645C");
 // anything else (a stock, a future) as it is.
 export function readableSymbol(symbol) {
-  const m = /^([A-Z.]+)\s*(\d{2})(\d{2})(\d{2})([CP])(\d+(?:\.\d+)?)$/.exec(symbol || '');
-  if (!m) return symbol;
-  const [, root, , mm, dd, right, raw] = m;
-  const strike = raw.length === 8 && !raw.includes('.') ? Number(raw) / 1000 : Number(raw);
-  return `${root} ${Number(dd)} ${MONTHS[Number(mm) - 1]} ${strike}${right}`;
+  const p = optionParts(symbol);
+  return p ? `${p.root} ${p.day} ${p.month} ${p.strike}${p.right}` : symbol;
 }
 
 export function workingRows(orders) {
@@ -105,9 +113,20 @@ export function workingRows(orders) {
     yours: !!o.yours,
     price: o.price == null ? null : Math.abs(o.price),
     effect: o.price == null ? null : o.price < 0 ? 'debit' : 'credit',
-    // A partly filled order can only be cancelled: a replace would go out at the full size.
-    canReplace: o.legs.every(l => l.remaining == null || l.remaining === l.quantity),
+    from: ownerLabel(o.owner),
+    canChange: o.can_change === true,
+    canCancel: o.can_cancel === true,
+    reason: o.reason ?? null,
   }));
+}
+
+function ownerLabel(owner) {
+  const kind = owner && owner.kind;
+  if (kind === 'you') return 'You';
+  if (kind === 'bot') return owner.name || 'A bot';
+  if (kind === 'managed') return owner.name || "This trade's rules";
+  if (kind === 'unknown') return 'The app (unknown part)';
+  return 'Outside the app';
 }
 
 // The signed price for Replace (+ credit, − debit), or null when the typed price isn't usable.
@@ -125,8 +144,8 @@ export function newToken(bytes) {
 
 // The ticket as a bot's entry: its legs and size, the bot, the token and the review's code (the
 // server uses the code up, so one review sends one order, by Send or by the bot). The bot's chase
-// sets the price, so the limit and time in force aren't sent.
-export function botRequest(tray, { accountId, botId, token, code, ticker }) {
+// sets the price, so the limit and time in force aren't sent. ideaId as in confirmRequest.
+export function botRequest(tray, { accountId, botId, token, code, ticker, ideaId }) {
   if (!tray.legs.length) return { error: 'Pick a bid (sell) or ask (buy) first.' };
   if (accountId == null) return { error: 'Pick an account.' };
   if (botId == null) return { error: 'Pick a bot.' };
@@ -138,6 +157,7 @@ export function botRequest(tray, { accountId, botId, token, code, ticker }) {
     code,
     quantity: u,
     legs: tray.legs.map(l => ({ stream_symbol: l.stream_symbol, side: l.side, ratio: l.qty / u })),
+    ...(Number.isInteger(ideaId) ? { idea_id: ideaId } : {}),
   }, ticker);
 }
 
@@ -171,10 +191,12 @@ export function manageOptions(bots) {
     ...(bots || []).map(b => ({ value: String(b.id), label: b.name }))];
 }
 
-// What Send posts (POST /api/trade/confirm): manual_bot_id only when a manual bot is chosen.
-export function confirmRequest(accountId, code, manualBotId) {
+// What Send posts (POST /api/trade/confirm): manual_bot_id only when a manual bot is chosen,
+// idea_id only when the ticket is a saved idea (#292: the server retires it once sent).
+export function confirmRequest(accountId, code, manualBotId, ideaId) {
   const body = { account_id: accountId, code };
   if (manualBotId != null && manualBotId !== '') body.manual_bot_id = Number(manualBotId);
+  if (Number.isInteger(ideaId)) body.idea_id = ideaId;
   return body;
 }
 

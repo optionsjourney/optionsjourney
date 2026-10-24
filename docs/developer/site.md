@@ -1,16 +1,17 @@
 # The website (optionsjourney.com)
 
-A static site: the Home page and four guide pages (Install, Broker setup, Troubleshooting, Disclaimer). It lives in the working repo only; the public copy doesn't include it (decision 0097).
+A static site: the Home page and five guide pages (Features, Install, Broker setup, FAQ, Disclaimer). It lives in the working repo only; the public copy doesn't include it (decision 0097).
 
 ## How it's built
 - `scripts/build_site.py` writes plain files to `build/site/`:
   - `index.html` from `site/templates/home.html`;
-  - `install.html`, `brokers.html`, `faq.html` and `disclaimer.html` from `docs/guide/installing.md`, `broker-api-keys.md`, `faq.md` and `disclaimer.md`, rendered by the same code as the app's Help pages (`web/guide.py`);
+  - `features.html`, `install.html`, `brokers.html`, `faq.html` and `disclaimer.html` from `docs/guide/features.md`, `installing.md`, `broker-api-keys.md`, `faq.md` and `disclaimer.md`, rendered by the same code as the app's Help pages (`web/guide.py`);
   - `troubleshooting.html`, the FAQ's old address: a small page (`templates/moved.html`) that sends the browser on to `/faq`, keeping any `#part` (`MOVED` in the script). It's a page rather than a Caddy redirect so it goes live with the build, without restarting Caddy;
   - `404.html`, the CSS from `site/static/`, the guide's screenshots (under `guide/images/`) and the logo and favicon from `src/optionsjourney/web/static/images/`.
-- Links between the four guide pages stay on the site (`installing.md` becomes `/install`). Links to any other guide page go to that page on GitHub, at `main`.
-- The text on those four pages is the guide's own, so it's written once. The only site-only text is the short disclaimer in the footer and at the top of Install.
-- The build stops if one of the four guide pages is missing, so the last good version stays up.
+- Links between the five guide pages stay on the site (`installing.md` becomes `/install`). Links to any other guide page go to that page on GitHub, at `main`.
+- The text on those five pages is the guide's own, so it's written once. The only site-only text is the short disclaimer in the footer and at the top of Install.
+- The build stops if one of the five guide pages is missing, so the last good version stays up.
+- The Home page's drawn panels (Charts, Risk graph and the rest) are plain HTML and CSS in `home.html` and `site.css`, with made-up numbers. The Charts and Risk graph panels use the app's own colours so they look like the app; they're drawings, not screenshots, so no real account shows.
 
 ## Trying it locally
 ```bash

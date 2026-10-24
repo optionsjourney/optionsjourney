@@ -210,7 +210,12 @@ h2 { font-size: 1.1rem; }
     vertical-align: middle;
     text-decoration: none;
 }
+/* #280: a puts-only or calls-only trade (Tracker2's rose and teal Put / Call chips) */
+.tag--put { background: #881337; color: #fecdd3; }
+.tag--call { background: #134e4a; color: #ccfbf1; }
 .badge--bot { background: #1e3a8a; color: #dbeafe; display: inline-flex; align-items: center; gap: 0.3rem; vertical-align: middle; }
+/* #276: matched to a bot, placed outside the app: outlined, so it isn't mistaken for one the app runs */
+.badge--matched { background: transparent; color: #93c5fd; box-shadow: inset 0 0 0 1px #3b82f6; font-weight: 500; }
 /* #242: an open bot trade listed under Needs a look (Tracker2's red, pulsing bot chip) */
 .badge--alert { background: #dc2626; color: #fff; box-shadow: 0 0 0 2px #f87171; animation: badge-pulse 2s ease-in-out infinite; }
 .badge--alert:hover { background: #b91c1c; }
@@ -226,6 +231,9 @@ details > summary { cursor: pointer; }
 .link:hover { text-decoration: underline; }
 .link-button { background: none; border: none; padding: 0; font: inherit; color: #93c5fd; cursor: pointer; }
 .link-button:hover { text-decoration: underline; }
+/* #285: a dashboard's Delete, kept small and quiet at the end of the filters */
+.filters__delete { margin-left: auto; align-self: center; color: var(--text-muted); font-size: 0.8rem; }
+.filters__delete:hover { color: var(--negative); }
 .button--quiet { background: var(--surface); border: 1px solid var(--border); }
 .button--quiet:hover { background: var(--border); }
 .button--danger { background: transparent; border: 1px solid var(--negative); color: var(--negative); }
@@ -278,6 +286,35 @@ details > summary { cursor: pointer; }
     padding: 0.5rem;
 }
 .popover { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.75rem; }
+/* #284: the Journal's date picker (Tracker2's daterangepicker): presets, then two months */
+.date-range__menu { display: flex; gap: 0.75rem; max-height: none; padding: 0; width: max-content; max-width: calc(100vw - 2rem); }
+.date-range__presets { display: flex; flex-direction: column; min-width: 10rem; padding: 0.4rem 0; border-right: 1px solid var(--border); }
+.date-range__presets button { background: none; border: 0; color: var(--text); text-align: left; padding: 0.45rem 0.9rem; font: inherit; font-size: 0.85rem; cursor: pointer; }
+.date-range__presets button:hover { background: rgba(59, 130, 246, 0.15); }
+.date-range__presets button.is-active { background: var(--button); color: #fff; }
+.date-range__custom { display: flex; flex-direction: column; gap: 0.5rem; padding: 0.6rem 0.75rem 0.6rem 0; }
+.date-range__calendars { display: flex; gap: 1rem; flex-wrap: wrap; }
+.date-range__month { width: 15rem; }
+.date-range__head { position: relative; text-align: center; font-weight: 600; font-size: 0.85rem; padding: 0.3rem 0; background: var(--border); border-radius: var(--radius) var(--radius) 0 0; }
+.date-range__arrow { position: absolute; top: 0; bottom: 0; background: none; border: 0; color: var(--text); font-size: 1.1rem; padding: 0 0.6rem; cursor: pointer; }
+.date-range__arrow--prev { left: 0; }
+.date-range__arrow--next { right: 0; }
+.date-range__grid { display: grid; grid-template-columns: repeat(7, 1fr); background: var(--bg); }
+.date-range__weekday { text-align: center; font-size: 0.75rem; font-weight: 600; color: var(--text-muted); padding: 0.3rem 0; }
+.date-range__day { background: none; border: 0; color: var(--text); font: inherit; font-size: 0.8rem; padding: 0.35rem 0; cursor: pointer; border-radius: 0.25rem; }
+.date-range__day:hover { background: rgba(59, 130, 246, 0.25); }
+.date-range__day.is-off { color: var(--text-muted); opacity: 0.6; }
+.date-range__day.is-today { box-shadow: inset 0 0 0 1px var(--text-muted); }
+.date-range__day.is-between { background: rgba(37, 99, 235, 0.35); border-radius: 0; }
+.date-range__day.is-picked { background: var(--button); color: #fff; }
+.date-range__foot { display: flex; align-items: flex-end; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end; border-top: 1px solid var(--border); padding-top: 0.5rem; }
+.date-range__foot .filters__dates { margin-right: auto; }
+@media (max-width: 640px) {
+    .date-range__menu { flex-direction: column; }
+    .date-range__presets { border-right: 0; border-bottom: 1px solid var(--border); flex-direction: row; flex-wrap: wrap; }
+    .date-range__custom { padding: 0.5rem; }
+    .date-range__month { width: 100%; }
+}
 .check { display: flex; gap: 0.5rem; align-items: center; padding: 0.25rem 0.25rem; font-size: 0.875rem; cursor: pointer; }
 
 /* Stat tiles */
@@ -451,6 +488,11 @@ details > summary { cursor: pointer; }
 .alert--problem { border-color: var(--negative); background: var(--loss-1); }
 .alert--warning { border-color: var(--warning); background: var(--warning-bg); }
 .alert--unread { border-color: var(--button); border-left-width: 4px; background: var(--surface); }
+form.inline { display: inline; }
+.alert-state { display: inline-block; padding: 0 0.45rem; border-radius: 999px; font-size: 0.8rem; font-weight: 600; }
+.alert-state--armed { background: var(--success-bg); color: var(--success); }
+.alert-state--fired { background: var(--warning-bg); color: var(--warning); }
+.alert-state--off { background: var(--border); color: var(--text-muted); }
 .alert__icon { flex: 0 0 1.75rem; height: 1.75rem; border-radius: 50%; display: grid; place-items: center; font-weight: 800; background: var(--surface); }
 .alert__body { flex: 1; min-width: 0; }
 .alert__title { font-weight: 600; }
@@ -1021,13 +1063,12 @@ details > summary { cursor: pointer; }
 
 /* Compact table (#156, Tracker2's): one line per trade. Legs, closing legs, premium and
    fees open in a line under a clicked row (journal_select.js). */
-[data-trade-view="compact"] .journal-table :is(th, td):is(.col-legs, .col-closing, .col-premium, .col-fees) { display: none; }
+[data-trade-view="compact"] .journal-table :is(th, td):is(.col-legs, .col-closing, .col-entry, .col-exit, .col-premium, .col-fees) { display: none; }
 [data-trade-view="compact"] .journal-table td { padding-top: 0.35rem; padding-bottom: 0.35rem; vertical-align: middle; }
 [data-trade-view="compact"] .journal-table .col-trade .chips { display: inline-flex; margin: 0 0 0 0.4rem; vertical-align: middle; }
 [data-trade-view="compact"] .journal-table .col-trade .trade-name { display: inline; }
 [data-trade-view="compact"] .journal-table .col-trade :is(.trade-status, .notes) { display: none; }
-[data-trade-view="compact"] .journal-table .col-pl > div:not([data-open-pl-key]),
-[data-trade-view="compact"] .journal-table .col-entry > div { display: none; }
+[data-trade-view="compact"] .journal-table .col-pl > div:not([data-open-pl-key]) { display: none; }
 [data-trade-view="compact"] .journal-table .col-account * { display: inline; }
 [data-trade-view="compact"] .journal-table .col-account > div + div { margin-left: 0.3rem; }
 [data-trade-view="compact"] .journal-table tr.trade-row td.col-actions { visibility: hidden; }
@@ -1141,3 +1182,132 @@ details > summary { cursor: pointer; }
 .stock-chart__buy { fill: #22c55e; }
 .stock-chart__sell { fill: #ef4444; }
 .stock-chart__bg { fill: var(--bg); opacity: 0.85; }
+
+/* The Pending and Ideas drawers (#292, restyled #294): a slim header on a gray-800 panel */
+.drawer__panel--wide { width: min(100vw, 1150px); }
+.drawer__panel--medium { width: min(100vw, 900px); }
+.drawer__panel--surface { background: var(--surface); }
+.slim-drawer__head {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.75rem 1rem; border-bottom: 1px solid var(--border);
+}
+.slim-drawer__title { margin: 0; font-size: 1.125rem; font-weight: 600; color: var(--text); }
+.slim-drawer__status { font-size: 0.75rem; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.slim-drawer__refresh { margin-left: auto; background: none; border: 0; padding: 0; cursor: pointer; color: #60a5fa; font-size: 1.05rem; line-height: 1; }
+.slim-drawer__refresh:hover { text-decoration: underline; }
+.slim-drawer__close { background: none; border: 0; padding: 0; cursor: pointer; color: #6b7280; font-size: 1.15rem; line-height: 1; }
+.slim-drawer__close:hover { color: #e5e7eb; }
+.slim-drawer__body { font-size: 0.875rem; padding: 0.75rem 1rem 2rem; }
+
+/* The toolbar's Pending and Ideas pills: a tinted outline (amber, red when an account failed, violet) */
+.toolbar-pill {
+    display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.25rem 0.5rem;
+    border: 1px solid; border-radius: 0.375rem; font: inherit; font-size: 0.75rem; font-weight: 500;
+    cursor: pointer; transition: background-color 150ms;
+}
+.toolbar-pill[hidden] { display: none; }
+.toolbar-pill--amber { border-color: #b45309; color: #fcd34d; background: rgba(120, 53, 15, 0.3); }
+.toolbar-pill--amber:hover { background: rgba(120, 53, 15, 0.5); }
+.toolbar-pill--amber.toolbar-pill--warn { border-color: #b91c1c; color: #fca5a5; background: rgba(127, 29, 29, 0.3); }
+.toolbar-pill--amber.toolbar-pill--warn:hover { background: rgba(127, 29, 29, 0.5); }
+.toolbar-pill--violet { border-color: #6d28d9; color: #c4b5fd; background: rgba(76, 29, 149, 0.3); }
+.toolbar-pill--violet:hover { background: rgba(76, 29, 149, 0.5); }
+
+/* Small outlined buttons in the drawers' rows (Change price, Cancel, Save) */
+.mini-btn {
+    padding: 0.125rem 0.5rem; border: 1px solid; border-radius: 0.25rem; background: none;
+    font: inherit; font-size: 0.75rem; cursor: pointer; white-space: nowrap;
+}
+.mini-btn--blue { border-color: #1d4ed8; color: #93c5fd; }
+.mini-btn--red { border-color: #b91c1c; color: #fca5a5; }
+.mini-btn--gray { border-color: #4b5563; color: #e5e7eb; }
+.mini-btn:hover { background: rgba(255, 255, 255, 0.05); }
+
+/* Pending: the filter bar, a section per account and a compact table (stacked cards on a phone) */
+.pending-filters {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem;
+    padding: 0.5rem 1rem; border-bottom: 1px solid var(--border); font-size: 0.75rem;
+}
+.pending-filters__chips { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+.pending-filters__outside { margin-left: auto; display: inline-flex; align-items: center; gap: 0.25rem; color: #d1d5db; }
+.chip-pill {
+    padding: 0.125rem 0.5rem; border: 1px solid #4b5563; border-radius: 999px; background: none;
+    color: #e5e7eb; font: inherit; cursor: pointer;
+}
+.chip-pill--on { background: var(--button); border-color: var(--button); color: #fff; }
+.pending-account { margin-bottom: 1rem; }
+.pending-account__head { margin: 0 0 0.25rem; font-size: 0.75rem; font-weight: 400; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); }
+.pending-error { margin: 0.25rem 0; color: var(--negative); }
+.pending-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; color: #d1d5db; font-variant-numeric: tabular-nums; }
+.pending-table th {
+    padding: 0.25rem 0.5rem; text-align: left; font-size: 0.6875rem; font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); border-bottom: 1px solid var(--border);
+}
+.pending-table td { padding: 0.375rem 0.5rem; vertical-align: top; border-bottom: 1px solid var(--border); }
+.pending-table tr.is-busy { opacity: 0.5; }
+.pending-table .pending-col--actions { text-align: right; }
+.pending-col--actions .pending-row__buttons { justify-content: flex-end; }
+.pending-tag { padding: 0 0.375rem; border-radius: 0.25rem; background: var(--border); color: #e5e7eb; font-size: 0.6875rem; white-space: nowrap; }
+.pending-owner { font-weight: 500; color: var(--text); }
+.pending-link { color: #60a5fa; text-decoration: none; }
+.pending-symbol { font-weight: 600; color: var(--text); }
+.pending-status { display: inline-flex; align-items: center; gap: 0.25rem; white-space: nowrap; }
+.pending-dot { display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 50%; background: #f59e0b; }
+.pending-tiny { font-size: 0.625rem; color: var(--text-muted); }
+.pending-num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pending-side--cr { color: #4ade80; }
+.pending-side--db { color: #f87171; }
+.pending-leg { display: flex; flex-wrap: wrap; align-items: center; gap: 0 0.375rem; font-variant-numeric: tabular-nums; }
+.pending-leg__qty { display: inline-block; width: 1.75rem; text-align: right; }
+.pending-leg__qty--sell { color: #f87171; }
+.pending-leg__qty--buy { color: #4ade80; }
+.pending-leg__strike { font-weight: 500; color: var(--text); }
+.pending-badge { padding: 0 0.25rem; border-radius: 0.25rem; font-size: 0.625rem; font-weight: 600; }
+.pending-badge--sell { background: rgba(127, 29, 29, 0.4); color: #fca5a5; }
+.pending-badge--buy { background: rgba(20, 83, 45, 0.4); color: #86efac; }
+.pending-reason { font-size: 0.6875rem; color: var(--text-muted); }
+.pending-reason--strong { color: var(--text); }
+.pending-row__buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; }
+.pending-row__price { width: 5rem; text-align: right; font-size: 0.75rem; }
+@media (max-width: 767px) {
+    .pending-table thead { display: none; }
+    .pending-table, .pending-table tbody { display: block; }
+    .pending-table tr { display: block; border: 1px solid var(--border); border-radius: 0.375rem; margin-bottom: 0.5rem; padding: 0.5rem; }
+    .pending-table td { display: inline-block; border-bottom: 0; padding: 0; margin-right: 0.75rem; }
+    .pending-table td.pending-col--from { display: block; margin-bottom: 0.25rem; }
+    .pending-table td.pending-col--description, .pending-table td.pending-col--actions { display: block; margin-top: 0.25rem; text-align: left; }
+    .pending-col--actions .pending-row__buttons { justify-content: flex-start; }
+}
+
+/* Ideas: a bordered card per idea */
+.idea-list { display: flex; flex-direction: column; gap: 0.75rem; }
+.idea-card { border: 1px solid var(--border); border-radius: 0.5rem; padding: 0.75rem; }
+.idea-card__top { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.idea-card__ticker { font-weight: 600; color: var(--text); }
+.idea-card__label { color: #e5e7eb; }
+.idea-card__pnl { margin-left: auto; font-variant-numeric: tabular-nums; }
+.idea-pnl { font-weight: 600; }
+.idea-pnl__pct { font-size: 0.75rem; }
+.idea-flat { color: var(--text-muted); }
+.idea-chip { font-size: 0.6875rem; padding: 0.125rem 0.375rem; border-radius: 999px; }
+.idea-chip--live { background: rgba(20, 83, 45, 0.4); color: #86efac; }
+.idea-chip--partly_expired { background: rgba(120, 53, 15, 0.4); color: #fcd34d; }
+.idea-chip--expired { background: var(--border); color: #d1d5db; }
+.idea-card__meta { margin-top: 0.125rem; font-size: 0.75rem; color: var(--text-muted); }
+.idea-note { margin-top: 0.25rem; font-size: 0.75rem; color: #d1d5db; }
+.idea-note--edit { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25rem; }
+.idea-note--edit input { flex: 1; min-width: 10rem; font-size: 0.75rem; }
+.idea-faint { color: #6b7280; }
+.idea-pencil { margin-left: 0.25rem; background: none; border: 0; padding: 0; cursor: pointer; color: #6b7280; }
+.idea-pencil:hover { color: #60a5fa; }
+.idea-table { width: 100%; margin-top: 0.5rem; border-collapse: collapse; font-size: 0.75rem; font-variant-numeric: tabular-nums; color: #d1d5db; }
+.idea-table th { text-align: left; font-weight: 400; color: #6b7280; }
+.idea-table td { padding: 0.125rem 0; }
+.idea-table .idea-num { text-align: right; }
+.idea-foot { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.5rem; font-size: 0.75rem; }
+.idea-foot__right { margin-left: auto; display: inline-flex; align-items: center; gap: 0.5rem; }
+.idea-link { background: none; border: 0; padding: 0; cursor: pointer; font: inherit; color: #60a5fa; }
+.idea-link:hover { text-decoration: underline; }
+.idea-text-btn { background: none; border: 0; padding: 0; cursor: pointer; font: inherit; color: #6b7280; }
+.idea-text-btn--delete:hover, .idea-text-btn--danger { color: var(--negative); font-weight: 500; }
+.idea-text-btn--delete:hover { font-weight: 400; }

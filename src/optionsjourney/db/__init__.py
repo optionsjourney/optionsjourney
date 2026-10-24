@@ -18,6 +18,7 @@ from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy.types import TypeDecorator
 
 MIGRATIONS = Path(__file__).parent / "migrations"
+BUSY_TIMEOUT_MS = 10_000  # how long a write waits for another to finish
 
 
 class Base(DeclarativeBase):
@@ -61,9 +62,14 @@ def make_engine(path: Path) -> Engine:
     engine = create_engine(f"sqlite:///{path}")
 
     @event.listens_for(engine, "connect")
-    def _foreign_keys_on(connection, _record):
+    def _connection_settings(connection, _record):
         # SQLite ignores foreign keys unless asked, per connection.
         connection.execute("PRAGMA foreign_keys = ON")
+        # Decision 0112: reads never wait on a write, and a second writer waits
+        # its turn instead of failing with "database is locked". WAL is kept in
+        # the file, so older data switches the first time it's opened.
+        connection.execute("PRAGMA journal_mode = WAL")
+        connection.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
 
     return engine
 

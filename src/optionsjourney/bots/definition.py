@@ -547,6 +547,18 @@ def normalize_tags(tags) -> tuple[str, ...]:
     return tuple(sorted(seen.values(), key=str.lower))
 
 
+def tags_with_main(tags, main: str | None = None) -> tuple[str, ...]:
+    """#278 (decision 0110): a bot's tags are journal tags, all put on its trades, its
+    main one first (Bot.tag_id: what its Record counts for trades no bot is linked to).
+    The main tag stays while it's still among them; otherwise the first one given."""
+    kept = normalize_tags(tags)
+    by_lower = {t.lower(): t for t in kept}
+    given = [" ".join(str(t).split())[:TAG_MAX_LEN].strip().lower() for t in tags]
+    order = ([main.lower()] if main else []) + given
+    first = next((by_lower[t] for t in order if t in by_lower), None)
+    return (first, *(t for t in kept if t != first)) if first else ()
+
+
 def retag(tags, add=(), remove=()) -> tuple[str, ...]:
     """Bulk tagging (bots slice 20; Tracker2's api_bulk_tag_bots): `remove` dropped
     ignoring case, then `add` put in with the bot's own spelling winning, through

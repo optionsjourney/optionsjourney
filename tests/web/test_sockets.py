@@ -48,3 +48,21 @@ def test_a_drawing_change_reaches_charts_watching_it(app):
             "namespace": "/",
         }
     ]
+
+
+def test_a_new_alert_pops_up_on_every_page(app):
+    """#275: the server sends `alert_fired`, which the pages show as a popup."""
+    from datetime import UTC, datetime
+
+    from optionsjourney.services import app_alerts
+
+    client = socket_client(app)
+    with app.app_context():
+        app_alerts.add(
+            app.extensions["optionsjourney"].session_factory, dedupe_key="k", kind="user_alert",
+            title="SPX went above 7,600.00", detail="now 7,646.98", link="/trade?ticker=SPX",
+            now=datetime.now(UTC), send=False,
+        )  # fmt: skip
+    [fired] = [m for m in client.get_received() if m["name"] == "alert_fired"]
+    payload = fired["args"][0]
+    assert payload["title"] == "SPX went above 7,600.00" and payload["link"] == "/trade?ticker=SPX"

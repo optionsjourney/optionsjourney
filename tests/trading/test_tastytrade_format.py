@@ -123,3 +123,28 @@ def test_a_replaced_order_names_its_replacement():
     raw = {"id": 41, "status": "Cancelled", "replacing-order-id": 42, "legs": []}
     assert broker_order(raw).replaced_by == "42"
     assert broker_order({"id": 41, "status": "Cancelled", "legs": []}).replaced_by is None
+
+
+def _raw(**extra):
+    leg = {"symbol": "SPXW  261016P05800000", "action": "Sell to Open", "quantity": 1,
+           "instrument-type": "Equity Option"}  # fmt: skip
+    return {"id": 1, "status": "Live", "legs": [leg], **extra}
+
+
+def test_broker_order_reads_the_signed_price():
+    found = broker_order(_raw(**{"price": "1.25", "price-effect": "Credit"}))
+    assert found.price == Decimal("1.25")
+    debit = broker_order(_raw(price="0.80", **{"price-effect": "Debit"}))
+    assert debit.price == Decimal("-0.80")
+    assert broker_order(_raw()).price is None
+
+
+def test_broker_order_flags_a_change_already_under_way():
+    assert broker_order(_raw()).changing is False
+    assert broker_order(_raw(status="Cancel Requested")).changing is True
+    assert broker_order(_raw(status="Replace Requested")).changing is True
+
+
+def test_broker_order_price_without_a_known_effect_is_unknown():
+    assert broker_order(_raw(price="0.80")).price is None
+    assert broker_order(_raw(price="0.80", **{"price-effect": "None"})).price is None

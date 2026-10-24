@@ -42,13 +42,16 @@ Each answer starts with the most common reason. Many come down to the app not ru
 **The likely reasons:**
 - **It hasn't been read yet.** The sync after a fill takes a few seconds, and if your broker's fill notice doesn't arrive, the trade waits for the next timed sync: every minute in market hours by default, every hour at other times (see [How trades get into the Journal](behind-the-scenes.md#how-trades-get-into-the-journal)).
 - **The sync didn't work.** A broker that can't be reached, or a Schwab login that has run out, stops that broker's trades coming in.
-- **The filters hide it.** The trade list opens on your open trades and those closed today. A closed trade from another day shows once you pick **Open and closed** or **Closed**. A dashboard, a tag, an account, a period or a search can hide it too.
+- **The filters hide it.** The trade list opens on your open trades and those closed today. A closed trade from another day shows once you pick **All Time**, or a date range that includes the day it opened, in the date button. A dashboard, a tag, an account, a period or a search can hide it too.
 - **It's a stock trade.** **All trades** lists options only; shares are on the **Stocks** tab.
 - **It's a Paper bot's trade.** Pretend trades are only in the Journal's **Paper trades** view (see [Paper trades](journal.md#paper-trades)).
 - **It's from before the app's history starts.** History starts on the day of the app's first sync. A trade you already held then has no opening here, so its close is listed in the folded box **… broker records not placed in a trade** at the bottom of the Journal: click it to open it.
 - **It's at another broker.** Only TastyTrade and Schwab come in by themselves. Add other trades with **＋ Add a trade** (see [Adding a trade by hand](journal.md#adding-a-trade-by-hand)).
 
 **What to check:** press **Sync now** at the top of the Journal. Then open **Transactions**: if the trade is listed there, the app has it, and it's the Journal's filters. If it isn't, look at **Last sync** at the bottom of that page for each account's last good sync and the problem, if any (see [Transactions](transactions.md#last-sync)).
+
+### Why does a trade still have a generic name like "SPX Double Calendar"?
+Each sync links a trade to its bot and gives it the bot's name only when the match is clear: the bot's account, underlying and legs, opened within 2 minutes of one of its entry times, and no other bot fits as well. If two bots fit, the bot has no entry times, or you once unlinked the trade, it's left for you. Use **Match all bots** on the Automation page (see [Matched for you after each sync](automation.md#matched-for-you-after-each-sync)).
 
 ### Why didn't a bot enter?
 **Where to look first:** the bot's **Runs** page (on the bot's page), where each entry time has a run with its **Status** and **Reason**. The **Today** timeline on the Automation page shows today's entries too, and **📅 Schedule** shows what each armed bot does on any day (see [Today's schedule](automation.md#todays-schedule)).
@@ -100,6 +103,17 @@ Logging in to Schwab from this app on another computer, or from another program 
 **The reason:** P/L Day measures each open trade from the value the app saved shortly after the last close (4:15 PM New York time). If it has no saved value for a trade, because the app wasn't running then or it's your first day, it works from your broker's previous closing prices instead, which is close but not exact. The **≈** says part of the figure came that way ("≈ partly from the closes before").
 
 **What to do:** nothing. The next close the app is running for, it saves the value and the **≈** goes. To avoid it, keep the app running through 4:15 PM. See [P/L Day](behind-the-scenes.md#pl-day).
+
+### Why does my stock chart start on a certain date?
+**The reason:** the **Portfolio value** chart on the Journal's **Stocks** tab starts on the day the app first synced your trades. Your brokers only tell the app what you hold today, so the app works backwards from there through your synced buys and sells. It has no trades from before that first sync, so it can't work out earlier days. Shares you already owned then still count from that day on.
+
+**Also:** if the chart isn't drawn at all and says a broker didn't answer, one of your connected brokers couldn't be reached. Reload the page in a while. A broker you never connected doesn't stop the chart. If one of your stocks split after your first sync, the line is wrong for that stock before the split. See [Portfolio value](journal.md#portfolio-value).
+
+### Why can't I change a bot's order in Pending?
+A bot, or a trade the app manages for you, places and moves its own orders: its stop, its target and its entry chase. If you changed one by hand, the bot would be working against you. So those rows have no buttons, say "Managed by …, use its controls." A bot's row names the bot, and links to its run when known; a managed trade's row says it's managed by the trade's rules. To change what a bot does, use its page, or pause it (see [Pausing trading](pausing-trading.md)). Only orders you sent from the app can be changed or cancelled there; an order placed at your broker or in another app is changed where it came from (see [Pending orders](journal.md#pending-orders)).
+
+### When does an idea leave my Ideas list?
+Only when you **Delete** it, or when you trade it and your broker accepts the order (or a bot takes it as its entry). A refused order, a preview, or an unclear outcome keeps the idea. An idea whose options have expired stays, with its final result, until you delete it. See [Ideas](ideas.md).
 
 ### Why didn't an exit fill before the close?
 **The likely reasons:**

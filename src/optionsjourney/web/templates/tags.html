@@ -4,7 +4,7 @@
 
 {% block content %}
 <p><a class="link" href="{{ url_for('journal.journal_page') }}">← Back to the journal</a></p>
-<div class="page-header"><h1>Tags {{ info('tags-bot-tag', "Every bot has a Journal tag. Each trade it places gets that tag, and the bot's record also counts trades with that tag in its account that no bot is linked to, including ones you opened by hand. That's why a tag a bot uses can't be deleted here.", "a bot's tag", more='/help/tags#tags-that-come-by-themselves') }}</h1></div>
+<div class="page-header"><h1>Tags {{ info('tags-bot-tag', "Each trade a bot places or is matched to gets all the bot's tags. A bot's main tag also brings into its record the trades with that tag in its account that no bot is linked to, including ones you opened by hand. That's why a bot's main tag can't be deleted here; deleting any other tag takes it off bots too.", "a bot's tag", more='/help/tags#tags-that-come-by-themselves') }}</h1></div>
 
 <section class="card">
     <p class="muted small">Tags are how you group your trades: give a trade as many as you like, then filter the journal or save a dashboard by them. A bot puts its tag on every trade it places. Stock trades always show the Stocks tag.</p>
@@ -23,7 +23,7 @@
                 <td class="muted small">{{ n }} trade{{ 's' if n != 1 }}{% if bots.get(t.id) %} · bot: {% for bot_id, name, deleted in bots[t.id] %}{% if deleted %}{{ name }} (deleted){% else %}<a class="link" href="{{ url_for('automation.bot_page', bot_id=bot_id) }}#basics" title="Change the tag {{ name }} files its trades under">{{ name }}</a>{% endif %}{{ ', ' if not loop.last }}{% endfor %}{% endif %}</td>
                 <td class="num">
                     {% if bots.get(t.id) %}
-                    <span class="muted small">A bot files its trades under this tag, so it can't be deleted. To move a bot off it, open the bot and pick another Journal tag.</span>
+                    <span class="muted small">It's a bot's main tag, so it can't be deleted. To move a bot off it, open the bot and take this tag off its Tags.</span>
                     {% else %}
                     <form method="post" action="{{ url_for('journal.delete_tag', tag_id=t.id) }}"
                           onsubmit='return confirm({{ ("Delete the " ~ t.name ~ " tag? It comes off every trade.") | tojson }})'>

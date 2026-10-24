@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_tooltip.html" import tip_text %}
+{% from "_tooltip.html" import info, tip_text %}
 {% block title %}Alerts · OptionsJourney{% endblock %}
 
 {% block content %}
@@ -8,8 +8,8 @@
 </div>
 
 {% if unread_alerts %}
-<section class="card section-gap" id="unread-alerts">
-    <h2 class="card__title">Unread</h2>
+<section class="card section-gap" id="recent-alerts">
+    <h2 class="card__title">Recent</h2>
     <ul class="alert-list">
         {% for a in unread_alerts %}
         <li class="alert{{ ' alert--unread' if a.id in unread_ids }}">
@@ -39,8 +39,8 @@
             </div>
             <a class="button button--quiet" href="{{ a.link }}">{{ a.action }}</a>
             {% if a.user_alert_id %}
-            <form method="post" action="{{ url_for('alerts.change', alert_id=a.user_alert_id, action='rearm') }}"><span class="tip tip--end"><button class="button button--quiet" type="submit" aria-describedby="tip-alerts-set-again-{{ a.user_alert_id }}">Set again</button>{{ tip_text('alerts-set-again-' ~ a.user_alert_id, "Turns this alert back on, with the same level. If the price or P/L is still past that level, it goes off again at the next check, within about 15 seconds.", more='/help/alerts#your-own-alerts') }}</span></form>
-            <form method="post" action="{{ url_for('alerts.change', alert_id=a.user_alert_id, action='dismiss') }}"><span class="tip tip--end"><button class="button button--quiet" type="submit" aria-describedby="tip-alerts-dismiss-{{ a.user_alert_id }}">Dismiss</button>{{ tip_text('alerts-dismiss-' ~ a.user_alert_id, "Clears it from this list. The alert stays off and won't go off again.", more='/help/alerts#your-own-alerts') }}</span></form>
+            <form method="post" action="{{ url_for('alerts.change', alert_id=a.user_alert_id, action='rearm') }}"><span class="tip tip--end"><button class="button button--quiet" type="submit" aria-describedby="tip-alerts-set-again-{{ a.user_alert_id }}">Set again</button>{{ tip_text('alerts-set-again-' ~ a.user_alert_id, "Turns this alert back on, with the same level. If the price or P/L is still past that level, it goes off again at the next check, within about 15 seconds.", more='/help/alerts#price-alerts') }}</span></form>
+            <form method="post" action="{{ url_for('alerts.change', alert_id=a.user_alert_id, action='dismiss') }}"><span class="tip tip--end"><button class="button button--quiet" type="submit" aria-describedby="tip-alerts-dismiss-{{ a.user_alert_id }}">Dismiss</button>{{ tip_text('alerts-dismiss-' ~ a.user_alert_id, "Clears it from this list. The alert stays off and won't go off again.", more='/help/alerts#price-alerts') }}</span></form>
             {% endif %}
         </li>
         {% endfor %}
@@ -48,11 +48,17 @@
 </section>
 {% endif %}
 
-<section class="card section-gap">
-    <h2 class="card__title">Your alerts</h2>
-    <p class="muted small">Checked every 15 seconds from your broker's live prices while OptionsJourney is running. Each one goes off once; set it again from the list above.</p>
+<nav class="tabs section-gap" aria-label="Alerts">
+    <a class="tabs__tab tabs__tab--active" href="#price" data-tab="price">Price alerts</a>
+    <a class="tabs__tab" href="#trades" data-tab="trades">Trades</a>
+</nav>
+
+<section class="card" id="price" data-tab-panel="price">
+    <h2 class="card__title">Price alerts</h2>
+    <p class="muted small">Your alerts and your bots'. Checked every 15 seconds from your broker's live prices while OptionsJourney is running. Each one goes off once; set it again from here.</p>
     <form class="inline-form alert-form" method="post" action="{{ url_for('alerts.create') }}">
         <input type="hidden" name="kind" value="price">
+        <input type="hidden" name="next" value="{{ url_for('alerts.alerts_page', show=show) }}#price">
         <label>When <input type="text" name="symbol" placeholder="SPX" required maxlength="20" class="chart-pane__symbol"></label>
         <select name="direction" aria-label="Above or below"><option value="below">goes below</option><option value="above">goes above</option></select>
         <input type="text" name="level" inputmode="decimal" placeholder="7,700" required aria-label="Price" size="9">
@@ -60,28 +66,43 @@
         <button class="button" type="submit">Set alert</button>
     </form>
     <p class="muted small">To alert on a trade's open P/L, open the trade from the journal.</p>
-    {% if mine %}
-    <div class="table-scroll"><table class="table table--compact section-gap">
-        <thead><tr><th>Alert</th><th>Note</th><th></th></tr></thead>
+    <div class="chips section-gap" aria-label="Show">
+        {% for key, label in [('active', 'Armed + fired today'), ('armed', 'Armed'), ('fired', 'Fired'), ('all', 'All')] %}<a class="chip{% if show == key %} chip--picked{% endif %}" href="{{ url_for('alerts.alerts_page', show=key, kind=kind or None) }}#price">{{ label }}</a>{% endfor %}
+    </div>
+    <div class="table-scroll"><table class="table table--compact section-gap" id="price-alerts">
+        <thead><tr><th>Alert</th><th>When it</th><th>Now</th><th>State {{ info('alerts-state', "Armed: watching. Went off: waiting for you to set it again or dismiss it. Off: turned off, dismissed, or ended with its bot's trade.", 'State', more='/help/alerts#price-alerts') }}</th><th>Went off</th><th></th></tr></thead>
         <tbody>
-            {% for alert in mine %}
+            {% for a in price_alerts %}
             <tr>
-                <td>{{ describe(alert).title.replace(' went ', ' goes ') }}</td>
-                <td class="muted small">{{ alert.note or '' }}</td>
-                <td><form method="post" action="{{ url_for('alerts.change', alert_id=alert.id, action='delete') }}"><button class="link small" type="submit">Delete</button></form></td>
+                <td><a class="link" href="{{ a.link }}">{{ a.name }}</a>{% if a.bot %} <span class="muted small">{{ a.bot }}</span>{% endif %}
+                    {%- if a.note %}<div class="muted small">{{ a.note }}</div>{% endif %}</td>
+                <td>{{ a.condition }}</td>
+                <td class="nowrap">{{ a.live }}</td>
+                <td><span class="alert-state alert-state--{{ a.state }}">{{ {'armed': 'Armed', 'fired': 'Went off', 'off': 'Off'}[a.state] }}</span></td>
+                <td class="nowrap">{% if a.fired_at %}{{ a.fired_at | market_time }}{% if a.fired_value %} <span class="muted small">at {{ a.fired_value }}</span>{% endif %}{% endif %}</td>
+                <td class="nowrap">
+                    {% set back = url_for('alerts.alerts_page', show=show) ~ '#price' %}
+                    {% if a.state == 'armed' %}
+                    <form class="inline" method="post" action="{{ url_for('alerts.change', alert_id=a.id, action='disable') }}"><input type="hidden" name="next" value="{{ back }}"><button class="link-button small" type="submit">Turn off</button></form>
+                    {% else %}
+                    <form class="inline" method="post" action="{{ url_for('alerts.change', alert_id=a.id, action='rearm') }}"><input type="hidden" name="next" value="{{ back }}"><button class="link-button small" type="submit">Set again</button></form>
+                    {% endif %}
+                    · <form class="inline" method="post" action="{{ url_for('alerts.change', alert_id=a.id, action='delete') }}"><input type="hidden" name="next" value="{{ back }}"><button class="link-button small" type="submit">Delete</button></form>
+                </td>
             </tr>
+            {% else %}
+            <tr><td colspan="6" class="muted">{{ 'No alerts yet.' if show == 'all' else 'None here. Choose All to see every alert.' }}</td></tr>
             {% endfor %}
         </tbody>
     </table></div>
-    {% endif %}
 </section>
 
-<section class="card section-gap" id="trades">
+<section class="card" id="trades" data-tab-panel="trades">
     <h2 class="card__title">Trades</h2>
     <p class="muted small">Every trade that opened, rolled or closed in the last day, as your broker's fills were synced. The same events pop up on any page{% if not popups %} when Trade popups are on in <a class="link" href="{{ url_for('settings.settings_page') }}#notifications">Settings</a>{% endif %}.</p>
     <div class="chips" aria-label="Filter by type">
-        <a class="chip{% if not kind %} chip--picked{% endif %}" href="{{ url_for('alerts.alerts_page') }}#trades">All</a>
-        {% for key, label in kinds.items() %}<a class="chip{% if kind == key %} chip--picked{% endif %}" href="{{ url_for('alerts.alerts_page', kind=key) }}#trades">{{ label }}</a>{% endfor %}
+        <a class="chip{% if not kind %} chip--picked{% endif %}" href="{{ url_for('alerts.alerts_page', show=show) }}#trades">All</a>
+        {% for key, label in kinds.items() %}<a class="chip{% if kind == key %} chip--picked{% endif %}" href="{{ url_for('alerts.alerts_page', kind=key, show=show) }}#trades">{{ label }}</a>{% endfor %}
     </div>
     <div class="table-scroll"><table class="table table--compact section-gap">
         <thead><tr><th>When</th><th>What</th><th>Trade</th><th>Account</th><th>Cash</th></tr></thead>
@@ -102,6 +123,17 @@
     </table></div>
 </section>
 <script>
+// The tabs (#274): the one in the address's #, else Price alerts. Without this both show.
+(() => {
+    const tabs = [...document.querySelectorAll('[data-tab]')];
+    const show = () => {
+        const want = location.hash === '#trades' ? 'trades' : 'price';
+        tabs.forEach((t) => t.classList.toggle('tabs__tab--active', t.dataset.tab === want));
+        document.querySelectorAll('[data-tab-panel]').forEach((p) => { p.hidden = p.dataset.tabPanel !== want; });
+    };
+    window.addEventListener('hashchange', show);
+    show();
+})();
 // A trade event that comes in while this page is open joins the top of the list
 window.addEventListener('trade-event', (ev) => {
     const e = ev.detail, kind = new URLSearchParams(location.search).get('kind');

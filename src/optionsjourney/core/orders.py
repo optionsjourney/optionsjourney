@@ -56,6 +56,20 @@ class OrderGroup:
     def fees(self) -> Decimal:
         return sum((fill.fees for fill in self.fills), Decimal("0"))
 
+    @property
+    def search_text(self) -> str:
+        """What the Transactions search looks in: the name, action, legs and IDs."""
+        legs = [self.leg_label(leg) for leg in self.legs]
+        return " ".join(
+            [
+                self.name,
+                self.action_label,
+                *legs,
+                self.order_id or "",
+                *(fill.search_text for fill in self.fills),
+            ]
+        )
+
     def leg_label(self, leg: Leg) -> str:
         """e.g. "-1 SPX 10/09/26 5800 Put"."""
         underlying = next(f.underlying for f in self.fills if f.symbol == leg.symbol)

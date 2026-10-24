@@ -5,7 +5,8 @@ late changes (TastyTrade finalizes estimated fees the next day) are picked up.
 History starts on the day of the app's first sync (decision 0064): that day is
 stored as `history_starts`, and nothing dated before it is fetched or added.
 Transactions already stored from before it (a kept trade's opening, after
-trimming a development database to a later date, #148) still update."""
+trimming a development database to a later date, #148) still update. A sync that
+brings in or changes trades then matches them to their bots (#276, bot_match.auto_match)."""
 
 import logging
 import threading
@@ -85,7 +86,20 @@ def sync_all(
             except Exception as e:  # one broker's failure never stops the next
                 name = getattr(client, "name", "?")
                 results.append(SyncResult(broker=name, problems=[problem_text(name, e)]))
+        if any(r.new or r.updated for r in results):
+            _auto_match(session_factory)
         return results
+
+
+def _auto_match(session_factory: sessionmaker) -> None:
+    """#276: new trades go to their bot, as Match all bots would tick them. A problem
+    here never fails the sync; Match all bots is still there."""
+    from optionsjourney.services import bot_match  # bot_match reads the journal
+
+    try:
+        bot_match.auto_match(session_factory)
+    except Exception:  # noqa: BLE001
+        logger.exception("auto-match after sync failed")
 
 
 def sync_broker(

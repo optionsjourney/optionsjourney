@@ -37,6 +37,7 @@ _WORKING = {
     "Received", "Routed", "In Flight", "Live", "Contingent", "Cancel Requested",
     "Replace Requested",
 }  # fmt: skip
+_CHANGING = {"Cancel Requested", "Replace Requested"}
 _STATUS = {
     "Filled": OrderStatus.FILLED,
     "Cancelled": OrderStatus.CANCELLED,
@@ -99,6 +100,20 @@ def _average_fill(fills: list) -> Decimal | None:
     return (total / count).quantize(Decimal("0.0001")).normalize() if count else None
 
 
+def _decimal(value) -> Decimal | None:
+    return None if value in (None, "") else Decimal(str(value))
+
+
+def _signed_price(raw: dict) -> Decimal | None:
+    """TastyTrade's price is unsigned with a price-effect; + is a credit. A price
+    with no readable effect is unknown (None), not assumed to be a debit."""
+    price = _decimal(raw.get("price"))
+    effect = raw.get("price-effect")
+    if price is None or effect not in ("Credit", "Debit"):
+        return None
+    return price if effect == "Credit" else -price
+
+
 def broker_order(raw: dict) -> BrokerOrder:
     legs = []
     for leg in raw.get("legs", []):
@@ -127,4 +142,6 @@ def broker_order(raw: dict) -> BrokerOrder:
         tag=raw.get("external-identifier") or None,
         entered_at=_time(raw.get("received-at")),
         replaced_by=str(raw["replacing-order-id"]) if raw.get("replacing-order-id") else None,
+        price=_signed_price(raw),
+        changing=text in _CHANGING,
     )

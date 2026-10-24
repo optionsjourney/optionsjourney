@@ -9,6 +9,11 @@ class CredentialsUnavailable(Exception):
     """No usable token right now. The message is shown to the user."""
 
 
+class NotConnected(CredentialsUnavailable):
+    """The broker was never connected (or was disconnected): there is nothing
+    to read from it, which isn't the same as it failing to answer."""
+
+
 @dataclass(frozen=True)
 class AccessToken:
     value: str

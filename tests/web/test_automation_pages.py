@@ -90,7 +90,8 @@ def test_the_new_bot_form_starts_with_a_blank_iron_condor(app):
 
 def test_a_new_tag_can_be_made_from_the_bot_form(app):
     client = app.test_client()
-    assert "+ New tag" in client.get("/automation/new").get_data(as_text=True)
+    html = client.get("/automation/new").get_data(as_text=True)
+    assert 'name="tag_id"' not in html and 'name="tags"' in html  # #278: one Tags box
     r = client.post("/automation/journal-tags", data={"name": "  Iron  fly "}, headers=ORIGIN)
     assert r.status_code == 200
     with sf(app)() as session:
@@ -99,7 +100,7 @@ def test_a_new_tag_can_be_made_from_the_bot_form(app):
     # The bot saves with it, and the form lists it from then on
     saved = client.post("/automation/save", data=form(app, tag_id=str(tid)), headers=ORIGIN)
     assert saved.status_code == 302
-    assert ">Iron fly</option>" in client.get("/automation/new").get_data(as_text=True)
+    assert "Iron fly" in client.get("/automation/new").get_data(as_text=True)  # the picker
 
 
 def test_a_new_tag_with_a_name_taken_picks_that_tag(app):
@@ -1244,7 +1245,7 @@ def test_import_preview_then_save(app):
     with sf(app)() as session:
         new = session.scalars(select(Bot).order_by(Bot.id.desc())).first()
     assert new.name == "Friend's IC" and new.live and not new.enabled
-    assert new.tags == [] and new.imported_at is not None
+    assert new.tags == ["0DTE"] and new.imported_at is not None  # #278: its main tag
     html = client.get(f"/automation/{new.id}").get_data(as_text=True)
     assert "Imported from a bot file" in html
 
@@ -1257,7 +1258,7 @@ def test_an_import_without_an_account_saves_nothing(app):
     response = app.test_client().post("/automation/import/save", data=data, headers=ORIGIN)
     html = response.get_data(as_text=True)
     assert response.status_code == 400
-    assert "Pick the tag" in html and "Pick the TastyTrade account" in html
+    assert "Give the bot at least one tag" in html and "Pick the TastyTrade account" in html
     assert "Contracts per entry must be a whole number" in html
     with sf(app)() as session:
         assert len(session.scalars(select(Bot)).all()) == 1
@@ -2935,7 +2936,7 @@ def test_every_basics_field_has_a_tooltip(app):
     """#113: an ⓘ on each Basics field, read by screen readers through aria-describedby."""
     html = app.test_client().get("/automation/new").get_data(as_text=True)
     basics = html[html.index('id="basics"') : html.index('id="schedule"')]
-    for field in ("name", "journal-tag", "account", "underlying", "sizing", "contracts",
+    for field in ("name", "account", "underlying", "sizing", "contracts",
                   "buying-power", "per-trade", "per-day", "entries", "open", "tags"):  # fmt: skip
         assert f'aria-describedby="tip-bot-{field}"' in basics, field
         assert f'role="tooltip" id="tip-bot-{field}"' in basics, field
@@ -3180,10 +3181,10 @@ def test_bulk_tagging_from_the_list(app):
                                               "add": "Beta, Wings"}, headers=ORIGIN,
                     follow_redirects=True)  # fmt: skip
     assert "Tagged 2 bots." in r.get_data(as_text=True)
-    assert bot_store.load(sf(app), first).tags == ("Beta", "Wings")
+    assert bot_store.load(sf(app), first).tags == ("0DTE", "Beta", "Wings")  # 0DTE: main
     client.post("/automation/tags", data={"bot_id": [str(first)], "remove": "beta"},
                 headers=ORIGIN)  # fmt: skip
-    assert bot_store.load(sf(app), first).tags == ("Wings",)
+    assert bot_store.load(sf(app), first).tags == ("0DTE", "Wings")
     r = client.post("/automation/tags", data={"add": "x"}, headers=ORIGIN, follow_redirects=True)
     assert "Tick the bots to tag first." in r.get_data(as_text=True)
     # #144: one Tags box, read by whichever button was pressed
@@ -3948,7 +3949,8 @@ def test_match_all_bots_links_the_ticked_trades_and_undoes(app):
     html = response.get_data(as_text=True)
     assert "Matched 1 trade" in html and "Undo" in html and "No trades to match" in html
     journal_html = client.get("/journal?status=all").get_data(as_text=True)
-    assert "bot-icon" in journal_html and "Matched to Put seller" in journal_html
+    assert "badge--matched" in journal_html and "Matched to Put seller" in journal_html
+    assert ">matched" in journal_html  # #276: an outlined word, not the bot icon
     html = client.post("/automation/match/undo", headers=ORIGIN,
                        follow_redirects=True).get_data(as_text=True)  # fmt: skip
     assert "Undone: 1 trade" in html and "Put seller</a> (1)" in html

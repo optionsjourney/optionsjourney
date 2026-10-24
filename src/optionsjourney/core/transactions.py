@@ -89,6 +89,29 @@ class Fill:
             return self.side.value.title()
         return f"{self.side.value.title()} to {self.effect.value.title()}"
 
+    @property
+    def search_text(self) -> str:
+        """What the Transactions search looks in."""
+        return " ".join(
+            filter(
+                None,
+                [
+                    self.instrument_label,
+                    self.symbol,
+                    self.action_label,
+                    self.transaction_id,
+                    self.order_id,
+                    self.description,
+                ],
+            )
+        )
+
+
+def matches_search(text: str, query: str) -> bool:
+    """True when every word of `query` is somewhere in `text`, ignoring case."""
+    text = text.lower()
+    return all(word in text for word in query.lower().split())
+
 
 def instrument_label(underlying: str, option: OptionDetails | None, symbol: str) -> str:
     """e.g. "SPX 10/09/26 5800 Put", or the underlying for stock and futures."""

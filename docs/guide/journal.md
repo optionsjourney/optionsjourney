@@ -8,20 +8,20 @@ Each row is one trade, from the moment you opened it until it closed:
 - **Trade:** a name based on what you traded, like "SPX Iron Condor" or "TSLA Short Put". Its full history (when it was opened, any partial closes or rolls, and how it ended) is on [the trade's own page](#the-trades-own-page): click the gear (⚙), then **Edit name, tags and notes**.
 - **Legs:** what the trade holds, e.g. `-2 777 P 10/12` (2 sold, 777 put, expiring 10/12), each with its live price (`@0.34`). Closing fills are listed underneath in grey with the price they closed at.
 - **Status:** **Open**, **Partial** (part of it is closed) or **Closed**. Under it you'll see how it ended if it didn't close normally, e.g. **Expired** or **Assigned**. **Expired, waiting on broker** means the options have expired but your broker hasn't sent the expiration record yet, which can take a day or so. Meanwhile, the P/L column shows an **estimate** (≈ … est.) worked out from the underlying's closing price from your broker. The broker's own record replaces it when it arrives, and estimates are never counted in totals. There's no estimate for monthly SPX options (they settle on the next morning's prices) or for stock options that finished in the money (they turn into shares).
-- **Settle expirations at 4:15 PM:** a switch above the trade list, off unless you turn it on. When it's on, at 4:15 PM New York time on trading days the app closes trades whose options expired that day, so 0DTE trades close the same day and count in your P/L straight away. It works with TastyTrade, Schwab, or both: it uses the best price either broker gives at that moment, so one broker being down or logged out doesn't stop it. It first pulls in your latest trades from your brokers, so anything you closed before the bell is counted. It only waits for the accounts that have something expiring, and each account waits on its own. If one broker can't connect (say Schwab's weekly login ran out), the accounts that did sync settle straight away. That account's trades are listed under the switch as waiting for a sync, and the app keeps trying for them until 8 PM. Some trades are left for your broker: monthly SPX options, futures options, stock options that finished in the money, trades with a closing order the app couldn't match, and any where no price was available. The note under the switch lists them, with the reason.
-- **Settled at close (prelim):** a trade settled at 4:15 PM at the latest price, before the official closing price is out, says this under its status. *Prelim* means preliminary. The app then corrects it to the official close, usually within hours, or the next morning for index options like SPX, and the label changes to **Settled at close**. If the correction changes the trade's P/L by $1 or more, you get an alert (see [Alerts](alerts.md#unread-alerts)); most trades expire worthless and don't change at all. Your broker's own record, when it arrives the next day, takes over from the app's. If it differs by $1 or more, you get an alert for that too.
+- **Settle expirations at 4:15 PM:** a setting in **Settings → Syncing your trades**, off unless you turn it on (see [Settings](settings.md#syncing-your-trades)). When it's on, at 4:15 PM New York time on trading days the app closes trades whose options expired that day, so 0DTE trades close the same day and count in your P/L straight away. It works with TastyTrade, Schwab, or both: it uses the best price either broker gives at that moment, so one broker being down or logged out doesn't stop it. It first pulls in your latest trades from your brokers, so anything you closed before the bell is counted. It only waits for the accounts that have something expiring, and each account waits on its own. If one broker can't connect (say Schwab's weekly login ran out), the accounts that did sync settle straight away. For that account's trades, the app keeps trying until 8 PM. Some trades are left for your broker: monthly SPX options, futures options, stock options that finished in the money, trades with a closing order the app couldn't match, and any where no price was available. Those show **Expired, waiting on broker** until the broker's record arrives.
+- **Settled at close (prelim):** a trade settled at 4:15 PM at the latest price, before the official closing price is out, says this under its status. *Prelim* means preliminary. The app then corrects it to the official close, usually within hours, or the next morning for index options like SPX, and the label changes to **Settled at close**. If the correction changes the trade's P/L by $1 or more, you get an alert (see [Alerts](alerts.md#new-alerts)); most trades expire worthless and don't change at all. Your broker's own record, when it arrives the next day, takes over from the app's. If it differs by $1 or more, you get an alert for that too.
 - **Qty:** how many spreads (or contracts, or shares) the trade holds.
 - **Entry / Exit:** the price per spread. **cr** means you received money (a credit), **db** means you paid (a debit).
 - **Premium:** the cash the trade took in (**cr**) or paid (**db**) to open, rolls included.
 - **Realized P/L:** what the trade made or lost, after fees, with that as a percentage of the premium. An open trade shows its live open P/L (and percentage) and its P/L Day underneath.
 - **Fees:** all the trade's fees, commissions included. Once it has closing fees, the line underneath splits them: opening + closing.
-- **Tags:** 0DTE means the options expired the same day you opened them. **Rolled ×2** means you rolled the trade twice. The entry then shows the combined credit, with the original underneath.
+- **Badges beside the name:** **Put** (red) or **Call** (green) means every option leg is a put, or a call, like one side of a split iron condor. **Rolled ×2** means you rolled the trade twice. The entry then shows the combined credit, with the original underneath.
 
 ## Risk graphs
 - The **chart icon** (next to the ⚙ gear) on an open trade opens its profit-and-loss picture in a panel over the journal. **Pop out ⧉** moves it to its own window; **✕** or Escape closes it.
 - **Reading it:** the green line is what the trade makes or loses at expiry, at each price of the underlying. The dashed blue line is the same thing today. The thin upright line is where the price is now.
-- **Trying "what if":** the **Time** slider moves toward expiry, and the **IV** slider tries a different volatility. **σ** shades the expected move, **Δ** shows the Greeks (delta, gamma, theta, vega), and **⊹** adds price slices that show the P/L at a price you pick.
-- **Views:** the switch above the list picks **Cards** (one card per trade: name, P/L, day P/L, when and where; click a card to see its legs and prices), **Table** (every column), **Compact** (one line per trade without the legs, premium and fees; click a row to see them under it), or **Grid** (risk graphs of the open trades side by side). Your browser remembers your choice; on a phone it starts on Cards.
+- **Trying "what if":** the **Time** slider moves toward expiry, and the **IV** slider tries a different volatility. **σ** shades the expected move, **Δ** shows the Greeks (delta, gamma, theta, vega), and **⊹** adds price slices that show the P/L at a price you pick (its menu, and the **Remove all** next to the slice list, clear them all). Scrolling over the chart zooms in and out.
+- **Views:** the switch above the list picks **Compact** (one line per trade without the legs, entry, exit, premium and fees; click a row to see them under it), **Cards** (one card per trade: name, P/L, day P/L, when and where; click a card to see its legs and prices), **Table** (every column), or **Grid** (risk graphs of the open trades side by side). It starts on Compact, or Cards on a phone, and your browser remembers your choice after that.
 - **Columns:** each trade shows its name and tags first, then **P/L Day** (since the last close, with its % of the premium) and **P/L** (with its % of the premium; open trades show live P/L), then when it opened, the account, the legs still open, and the **closing legs**, grouped by closing order with the time and fill prices.
 - **Open and closed:** with both showing, open trades come first under **Open**, then closed ones under **Closed** with their total P/L. Closed trades are grouped by the day they closed, and within a day listed by when they opened, latest first; each day shows how many trades closed and that day's P/L. Click a column heading to sort the whole list by it instead.
 - **Several at once:** tick the box at the start of open trades and click **Risk graph together** to see them as one position, for example the put and call sides of an iron condor. Each trade gets a checkbox, so you can take one out and see the rest; trades on different underlyings get a tab each.
@@ -46,10 +46,10 @@ Click the gear (⚙) on any trade, then **Edit name, tags and notes** at the bot
 - **A bot's trades** always carry the bot's tag (you pick it on the bot's page), along with any tags you add.
 
 **Journal → Tags** lists every tag with how many trades you've given it. There you can **add** a tag, **rename** one (every trade with it shows the new name), or **delete** one (it comes off every trade). A tag a bot puts on its trades can't be deleted while that bot exists: the page says which bot, so give the bot another tag first. You'll find starter tags there already: 0DTE, Credit Spreads, Iron Condors, Calendars and Wheel.
-- **A bot's past trades:** to give many trades a bot placed to that bot at once, use **Match trades** on the bot's page or **Match all bots** on the Automation page (see [Finding a bot's past trades](automation.md#finding-a-bots-past-trades)). A matched trade shows **bot ·** and the bot's name, like a trade the bot placed here; clicking it opens the bot's record. Its gear panel has no bot controls, because the bot didn't place it and isn't managing it.
+- **A bot's past trades:** to give many trades a bot placed to that bot at once, each sync links the clear matches for you; for the rest, use **Match trades** on the bot's page or **Match all bots** on the Automation page (see [Finding a bot's past trades](automation.md#finding-a-bots-past-trades)). A matched trade shows an outlined **matched** badge (with the bot's name if the trade has its own), not the bot icon a trade placed here shows, so you can tell a trade this app runs from one placed elsewhere; clicking it opens the bot's record. Its gear panel has no bot controls, because the bot didn't place it and isn't managing it.
 
 ## The trade's own page
-Click the gear (⚙) on a trade, then **Edit name, tags and notes**, to open the trade's own page. At the top are its account, status, when it opened and closed, its size, entry and exit prices and fees, then its **History**: the opening, any partial closes or rolls, and how it ended. An open trade also has **Risk graph** and **Alert me when its open P/L goes** above or below an amount (see [Alerts](alerts.md#your-own-alerts)).
+Click the gear (⚙) on a trade, then **Edit name, tags and notes**, to open the trade's own page. At the top are its account, status, when it opened and closed, its size, entry and exit prices and fees, then its **History**: the opening, any partial closes or rolls, and how it ended. An open trade also has **Risk graph** and **Alert me when its open P/L goes** above or below an amount (see [Alerts](alerts.md#price-alerts)).
 
 Under **Edit** you can:
 - **Rename the trade**, if the automatic name doesn't suit you. Leave it blank to go back to the automatic name.
@@ -60,26 +60,50 @@ Under **Edit** you can:
 Click **Save** to keep the changes. The page also has **Manage this trade…** and **Hand this trade to a bot…** when they apply (see [Manage this trade](#manage-this-trade)), the split and combine buttons for an iron condor (see [Iron condors](#iron-condors-one-trade-or-two)), and, for a trade you entered by hand, its entries (see [Adding a trade by hand](#adding-a-trade-by-hand)).
 
 ## Stocks
-**All trades** lists your options trades only; stock buys and sells are left out. The **Stocks** tab next to it shows **every share position in all your connected broker accounts**, as your brokers report them, not just shares you bought through this app. Long-term holdings show here too:
-- **Ticker** and **Qty** (negative if you're short). A ticker held in several accounts shows once, added up. Pick an account to see just that one.
+**All trades** lists your options trades only; stock buys and sells are left out. The **Stocks** tab next to it shows **every share position in all your connected broker accounts**, as your brokers report them, not just shares you bought through this app. Long-term holdings show here too. At the top are three totals, then a chart of what your shares have been worth, then two tabs: **Holdings** and **Transaction History**.
+
+Everything on the tab **follows the account picker**. With no account picked it adds up all your accounts; pick one or more to see just those.
+
+### The totals at the top
+Three cards add up the shares shown. They update every few seconds with live prices, and show **—** until the first price arrives.
+- **Total P&L:** how much the shares you still hold are up or down compared with what you paid for them, in dollars and as a percent of what you paid. Shares you've already sold aren't counted.
+- **Total market value:** what the shares are worth right now, at live prices. This is your **current portfolio value**.
+- **Day P&L:** how much they've made or lost since the previous close, in dollars and as a percent of what they were worth then.
+
+Green means up, red means down.
+
+### Portfolio value
+This chart shows **what your shares were worth at each day's close**, from the day the app first synced your trades up to today. Hover the line to see a day's value.
+- **How it's worked out.** Your brokers only tell the app what you hold today. So the app starts there and works backwards through your synced buys and sells, including shares you got or gave up through an option's **assignment or exercise**: if you bought 10 shares last week, you held 10 fewer before then. Each day's shares are then valued at that day's closing price. That's why shares you owned before your first sync count too.
+- **Today's point** uses live prices once the market has opened, so it matches **Total market value**. Before the open it uses the last close.
+- **The line steps when you buy or sell,** because it's the value of what you held, not your profit. Every step that isn't a price move is a trade listed in **Transaction History**.
+- **It starts on your first sync.** The app has no trades from before then, so it can't work out earlier days. See [Why does my stock chart start on a certain date?](faq.md#why-does-my-stock-chart-start-on-a-certain-date)
+- **Stock splits:** if one of your stocks split after your first sync, the line is wrong for that stock before the split.
+- **If a broker doesn't answer,** the chart isn't drawn, rather than drawn with an account missing. It says "Your stock chart couldn't load because a broker didn't answer. It will try again when you reload." The totals and the table still show. A broker you haven't connected (say, Schwab when you only use TastyTrade) doesn't count: the chart is drawn from the brokers you have connected.
+- **If no prices can be found,** it says "Prices aren't available right now."
+- **No shares and no stock trades** since your first sync: the chart isn't shown. The **Holdings** tab says "No shares held".
+- **Shares the trades can't explain.** If your synced trades don't add up to what you hold today (shares transferred in or out, say), working backwards could give a day with fewer than zero shares. The chart counts zero shares of that stock on those days instead.
+- Closing prices come from Schwab, or from TastyTrade if Schwab can't supply them.
+
+### Holdings
+The table of what you hold now:
+- **Ticker** and **Qty** (negative if you're short). A ticker held in several accounts shows once, added up.
 - **Cost basis:** the broker's average price per share, with the total underneath.
 - **Current price:** live.
+- **Market value:** price × quantity.
 - **P/L:** in dollars and percent.
 - **Today's P/L:** measured from the previous close.
 
 It comes from your brokers, not from the journal's trades, so shares bought before your synced history, or transferred in, show with their real cost.
 
-### Your stocks against what you paid
-Above the table, a line chart shows your **total profit or loss on shares, day by day, measured against what you paid for them**. The figure above it is the latest day's P/L in dollars and as a percent of what you paid.
-- **It follows the account picker.** With no account picked it adds up all your accounts; pick one to see just that account.
-- **Ranges:** **1M**, **3M**, **1Y** and **All**. Hover a point to see that day's P/L.
-- **How it's built.** The app can't ask your broker for last March's holdings, so it saves them itself. Shortly after each close (4:15 PM New York time, or 1:15 PM on early-close days) it saves every share position and the day's closing price. That's why **the line starts on the day of the first save**, and starts empty. The first point appears after the close of the first day the app is running with a stock position. **Days the app, or your computer, was off are missing** from the line; they aren't filled in afterwards.
-- **If your broker doesn't answer,** nothing is saved that day yet. The app waits until **every connected broker** has answered, and keeps trying every 10 minutes. Saving only some of your accounts would make the line jump. If a broker is still not answering at midnight New York time, that day is lost.
-- **If a closing price is missing,** the app keeps trying until 8 PM. After that it saves the day anyway, and shares without a price are left out of that day's figure. The chart then says, for example, "2 of 3 priced".
-- **The price used** is normally the official close, or else the regular session's last price that day.
+### Transaction History
+Every stock trade the app has synced, **newest first**: buys, sells, and shares from an option that was **assigned** or that you **exercised**.
+- **Date** (New York time), **Account**, **Ticker**, **Action** (Buy, Sell, Assigned or Exercised), **Qty**, **Price**, **Value** (money in is positive, money out negative) and **Fees**.
+- A ticker you still hold opens its chart (below). One you've sold out of is plain text.
+- **Trades from before your first sync, and shares transferred in, aren't listed,** because the app has no trade for them.
 
 ### A stock's own chart
-Click a ticker in the table to open its chart in a side panel, with the same ranges.
+Click a ticker in **Holdings** or **Transaction History** to open its chart in a side panel, with ranges **1M**, **3M**, **1Y** and **All**. Only stocks you still hold open it.
 - The line is the stock's **daily price**.
 - The **yellow dashed line** is your broker's **average cost per share**.
 - **▲** marks a buy and **▼** a sell, from your synced trades. Shares you got through **assignment or exercise** of an option count too.
@@ -93,15 +117,22 @@ All the shares you hold of a stock in one account are **one trade**. Each buy, i
 An iron condor normally shows as one trade. This works for any trade that sold a put and a call and bought a put and a call in one order, all with the same expiration, even when the sides have different numbers of contracts (an iron butterfly too). Four legs with different expirations, such as a double calendar, can't be split. If you'd rather track the put side and the call side separately, open the trade and click **Split into put and call spreads**. Each half then has its own P/L, notes and tags, and starts with the whole trade's tags (so a trade with a bot's tag stays in its record). You can **Combine** them again at any time.
 
 ## Filters and dashboards
-Use the filters above the list to narrow it down by tag, account, open or closed, and time period. Click **Apply** to see the result.
+Use the filters above the list to narrow it down by tag, account and dates. They apply as soon as you change them: a tick list when you close it (or click anywhere else), the search when you press Enter or leave the box.
 
+- **Accounts:** tick one or more accounts (each shows its broker, so two accounts with the same name can be told apart). None ticked means all your accounts.
 - **Tags:** tick one or more; a trade shows if it has any of them. **No tags** shows the trades you haven't tagged. A dashboard you saved with a strategy filter now filters by that strategy's tag, and one saved with "No strategy" by **No tags**.
 - **Totals:** the numbers above the list (and on P/L and Trading metrics) always come from the trades shown, each counted once. A trade with three tags still counts once, even if you pick all three.
 
-The trade list opens on your **open** trades plus the ones **closed today** (New York date), and a line above the summary says so, since its numbers are then for those trades only. Choose **Open and closed**, **Open** or **Closed** in the status filter (or click **Show open and closed**) to see the rest. **P/L** and **Trading metrics** open on all your trades. A status you choose yourself stays as you move between Trades, P/L and Trading metrics, and a dashboard keeps the status it was saved with.
+**Dates:** the date button opens a list of choices and a calendar.
+
+- **Open + Today:** your open trades plus the ones closed today (New York date). The trade list opens on this; the summary's numbers are then for those trades only.
+- **Yesterday**, **Last 7 Days**, **Last 14 Days**, **Last 30 Days**, **This Month**, **Last Month**, **Year to Date:** every trade, open or closed, that you opened in those days. They move with the calendar, so a dashboard saved with **Last 7 Days** always shows the last 7 days.
+- **All Time:** every trade. **P/L Calendar** and **Trading metrics** open on this.
+- **Custom Range:** click a first and a last day in the calendar (or type them in the two boxes) and press **Apply**. **Cancel** closes it without changing anything.
+
+A date choice you make yourself stays as you move between Trades, P/L and Trading metrics, and a dashboard keeps the one it was saved with.
 
 - **Search:** type words that appear in a trade's name, symbol, tags or notes (`hood`, `earnings`). Type `#` and a broker order number (`#123456`) to find that exact order's trade.
-- **Opened … to …:** only trades opened between two dates. Leave either side empty for no limit.
 
 **Sorting:** click a column heading in the trade list (Opened, Trade, Qty, Realized P/L …) to sort by it, and click again to reverse. Trades with nothing in that column, like the exit of an open trade, go last. Changing the filters goes back to newest first. When trades open in the same minute, sorting by when they opened keeps each entry's sides together: a bot's put side and call side in one account stay next to each other, even if another account opened its own sides a few seconds in between.
 
@@ -111,7 +142,7 @@ To keep a set of filters, click **＋ Save view** and give it a name. It becomes
 
 For the trades the filters show:
 
-- **Closed P/L:** what your trades have realized. A trade you've rolled and still hold isn't counted until it's closed. On **Open + closed today**, an open trade counts only what it closed today.
+- **Closed P/L:** what your trades have realized. A trade you've rolled and still hold isn't counted until it's closed. On **Open + Today**, an open trade counts only what it closed today.
 - **Open Premium** and **Premium:** the cash your option trades took in (or paid) to open, counting rolls. **Open Premium** is for what's still open; **Premium** is for what's closed, including the closed part of a partly closed trade.
 - **Per lot:** the average trade, average winner and loser, and the biggest winner and loser, each per lot (a 2-lot spread counts as 2). These count closed trades only, plus the closed part of partly closed ones; open trades aren't counted until they close.
 - **Trades** and **Winners:** Trades counts every trade shown, open or closed. Winners counts closed trades that made money.
@@ -127,10 +158,10 @@ After the market closes and before it opens, brokers often pull the bid on index
 - **Without that note** (the first day, or the app was off at the close), it's worked out from TastyTrade's closing prices instead, or Schwab's during the trading day if TastyTrade doesn't answer. A price that couldn't be read is tried again every 2 minutes. The box then says "≈ partly from the closes before".
 - **At the weekend or on a holiday** it shows the last trading day's change, labelled with that day ("Fri 10/9").
 
-To change a dashboard, adjust the filters and click **Save to "…"**. To remove it, click **Delete dashboard**. Deleting a dashboard never touches your trades.
+To change a dashboard, adjust the filters: a blue **Save to "…"** button appears as soon as they differ from what the dashboard saved, so you can't miss it; click it to keep them. To remove the dashboard, click the small **Delete dashboard** at the right of the filters. Deleting a dashboard never touches your trades.
 
 ## The P/L view: calendar and charts
-Click **P/L** under the filters. Like **Trading metrics**, it uses the same filters and dashboards as the trade list.
+Click **P/L Calendar** under the filters. Like **Trading metrics**, it uses the same filters and dashboards as the trade list.
 
 ### The P/L calendar
 The **P/L calendar** shows the month one day at a time, Monday to Friday, with a total for each week. Use **‹** and **›** to move between months. It follows the filters, so on a dashboard it shows only that dashboard's trades.
@@ -150,7 +181,7 @@ Under the calendar, two charts show how your P/L has built up. Like everything e
 Move the pointer over either chart (or click it and use the arrow keys) to see the numbers for any day: the running total, that day's P/L, and the drawdown. **Show as a table** lists the same numbers month by month.
 
 ## Trading metrics
-Click **Trading metrics** under the filters (next to **Trades** and **P/L**) to see the numbers behind your trading. It uses the same filters and dashboards as the trade list, and **Trades** takes you back.
+Click **Trading metrics** under the filters (next to **Trades** and **P/L Calendar**) to see the numbers behind your trading. It uses the same filters and dashboards as the trade list, and **Trades** takes you back.
 
 - **At the top:**
   - **Realized P/L**, split between trades you've closed and partial closes of trades still open.
@@ -225,6 +256,34 @@ A bot set to **Paper** makes pretend trades. They never appear in the Journal an
 - Paper trades are pretend. Fills are estimated at the mid price, and stops are watched by the app instead of resting at the broker, so real results would differ.
 
 On the Automation list, a Paper bot shows its paper P/L with a **paper** tag. Live bots are unchanged.
+
+## Pending orders
+The amber **⏳ Pending** button at the top of the Journal shows how many orders are still waiting at your brokers, across all your accounts. It is hidden when there are none, and turns red and reads **⚠** with the count when an account couldn't be read. Next to it, **💡 Ideas** opens your saved [ideas](ideas.md).
+
+Press it to open the drawer. It has one section per account (so a broker that can't be reached shows its own error and doesn't hide the others), and the round buttons **All**, **0DTE**, **Calendars** and **Options** (each with its count) narrow the list. Next to the title, "as of 10:42" says when the list was last read, in New York time. A box, **Outside the app only**, shows just the orders you didn't send from here. Each order shows:
+- **From:** who placed it. **You** (sent from this app), **Outside the app** (placed at your broker or in another app), or the bot that placed it, with a link to its run when known (a managed trade says it's managed by the trade's rules).
+- **Market:** the live mid price of the whole order, to compare with your **Price**. Credits read **cr** in green, debits **db** in red.
+- **Status, time and description.** The description has one line per leg: the quantity (minus for a sell), the expiration, the strike, P or C, and a tag saying what the leg does: **BTO** (buy to open), **STO** (sell to open), **BTC** (buy to close) or **STC** (sell to close).
+
+The list refreshes every 30 seconds while the drawer is open, and **↻** refreshes it now.
+
+### Changing or cancelling an order
+- **Change price:** type a new price and confirm. The legs and quantity stay the same, and a credit stays a credit. The order goes through the same checks as a new order, including your broker's own check.
+- **Cancel:** asks first, then cancels the order at your broker.
+- After either, the row says **updating…** and the list reloads in a moment.
+
+**Only the orders you sent from the app can be changed or cancelled here.** Every other order is shown so you can see it, and is changed where it came from. An order placed at your broker or in another app says "Placed outside the app. Change or cancel it at your broker."
+
+A partly filled order of yours can only be cancelled, because changing it would send the full size again. Cancel it and make a new order for the rest.
+
+**A bot's orders and a managed trade's orders can't be changed here,** because that would break the bot's exits or its chase. The row says "Managed by …, use its controls.", names the bot, and links to its run when known (a managed trade's row says it's managed by the trade's rules). See [Pausing trading](pausing-trading.md) to stop a bot.
+
+Some orders show no buttons, with the reason:
+- **Your broker is already changing the order.** Wait a moment and refresh.
+- **The app sent the order but can't tell which part of it owns it.** Change or cancel that one at your broker.
+- **The order isn't working any more** (it filled or was cancelled while you looked). Refresh.
+
+The Trade page's [Working orders](trade.md#working-orders) list shows the same orders and follows the same rules. Freeze all orders stops changes and cancels too.
 
 ## Broker records not placed in a trade
 If a folded box reading, for example, **2 broker records not placed in a trade** appears at the bottom, click it to open it. It lists records from your broker the app couldn't put into a trade. Usually they're closes of trades opened before the app's history starts (on the day of its first sync, so a trade you already held then has no opening here), or broker events such as a stock split. It's nothing to worry about.

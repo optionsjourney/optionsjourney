@@ -31,3 +31,12 @@ test('a reload keeps only the popups whose time is not up', () => {
   assert.deepEqual(stillUp(kept, 1000).map(k => k.e.id), [1]);
   assert.deepEqual(stillUp('junk', 1000), []);
 });
+
+test('an alert that went off pops up with its own colour and detail (#275)', () => {
+  const v = toastView({ id: 'alert:7', kind: 'alert', label: 'Alert', name: 'SPX went above 7,600.00',
+                        detail: 'now 7,646.98 · testing', link: '/trade?ticker=SPX' });
+  assert.equal(v.tone, 'alert');
+  assert.equal(v.title, 'SPX went above 7,600.00');
+  assert.equal(v.detail, 'now 7,646.98 · testing');
+  assert.deepEqual(v.lines, []);
+});

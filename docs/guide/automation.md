@@ -21,7 +21,7 @@ Open **Automation** in the top bar to see your bots. **New bot** starts a fresh 
 
 **Today** draws today's entries on a timeline from about 9:15 to 4:15, one line per strategy. Each dot is an entry: filled (solid green), still to come (a ring), skipped or blocked (a dashed amber ring), or not filled or missed (red). A green line marks the time now. Point at a dot to see its accounts and what happened; click it to jump to the bot's row.
 
-**Bots sit under their strategy**, the journal tag their trades are filed under. Bots that are switched off are listed last, under **Off**. **Group: Day** lists them by the weekday they enter instead (Every weekday, Monday, Tuesday … or Specific dates & monthly); the page remembers your choice.
+**Bots sit under their strategy**, their main tag. Bots that are switched off are listed last, under **Off**. **Group: Day** lists them by the weekday they enter instead (Every weekday, Monday, Tuesday … or Specific dates & monthly); the page remembers your choice.
 
 **One row for the same bot in several accounts.** If you keep a copy of a bot for each account and end each copy's name with its account, like "Iron Condor - Beta" in your Beta account and "Iron Condor - IRA" in your Roth IRA, they share one row called "Iron Condor". Each copy stays its own bot, with its own size, times and switches. Copies only share a row when the end of the name matches that bot's own account name, and only under the same strategy; a name like "Butterfly - XSP" stays as it is.
 
@@ -74,7 +74,6 @@ A bot doesn't say whether it opens for a credit or a debit. A trade takes **whic
 Every field in Basics has an **ⓘ** beside its name: point at it, tab to it or tap it to see what the field does.
 
 - A name.
-- The **journal tag** it puts on its trades in your journal (required). Pick one of your journal's tags, or press **+ New tag** under the list, type a name (it starts with the bot's name) and press **Create**: the tag is made (or, if you already have one by that name, picked) and nothing else on the form changes. It shows in **Journal → Tags** too, where you can rename it. While the bot exists, that tag can't be deleted.
 - The **account** it trades in: a TastyTrade or a Schwab account, shown by its nickname at the broker.
 - The **underlying**: SPX, XSP, or a stock or ETF ticker. See [Which underlying](#which-underlying).
 - **Size each entry by:** **Contracts** (every bot starts this way) or **Buying power**. Only the box for the one you pick shows:
@@ -82,7 +81,8 @@ Every field in Basics has an **ⓘ** beside its name: point at it, tab to it or 
   - **Most buying power per entry**: the app asks your broker what one contract needs and buys as many as that covers. See [Sizing by buying power](#sizing-by-buying-power).
 - Under **Size and limits**, two contract limits, **Max contracts per trade** and **Max contracts per day**, counted in **contracts in the largest leg**. **You can leave both blank** for **Auto**: per trade is the biggest entry the bot makes on its own (its contracts, or an entry time's own number); per day is what the entry times that are on add up to (an entry window counts as one entry), no more than **Max entries per day** of them. The box shows the number it uses, for example "Auto: 6". Every order the bot sends is still checked against them, so if something went wrong and an entry fired twice, it couldn't repeat all day. Blank limits don't hold back entries you start yourself (Trade now, the Trade page, taking over a trade): those are capped only at 100 contracts and don't count toward the bot's own day. Type a number to set a limit of your own; it then applies to everything. For a shape where every ratio is 1, like an iron condor, that's simply the contracts. A butterfly whose middle leg is sold 2 at a time uses 2 for each contract you enter: 3 contracts per entry need a limit of at least 6. Contracts per entry × the largest ratio can't be more than either limit (picking a shape raises the limits for you if they're too low). Only the orders that **open** a trade count toward them; the bot's own stops and closes don't. When the app re-sends the unfilled rest of a partly filled entry, that doesn't count a second time.
 - **Max entries per day** and **Max open trades.** Both are optional: leave them blank for no limit. See [Limits on entries and open trades](#limits-on-entries-and-open-trades).
-- **Tags** (optional): your own labels, like `0DTE` or `Mornings`. The bot's tags show as chips; press **×** on one to take it off. **Pick tags** lists every tag your bots and your journal already use, to tick; to make a new one, type it in the **New tag** box and press **Add** (or Enter, which never saves the bot). They help you find bots on the list and never change how a bot trades. They're never in a shared bot file. See [Tags](#tags).
+- **Tags** (at least one): your journal tags for this bot, like `Iron Condors`, `0DTE` and `FOMC`. Every one goes on the trades the bot places or is matched to, so a Journal view filtered by any of them shows those trades, and the Automation list filters by them too. The bot's tags show as chips; press **×** on one to take it off. **Pick tags** lists your journal's tags, to tick; to make a new one, type it in the **New tag** box and press **Add** (or Enter, which never saves the bot). A new tag is added to **Journal → Tags**, where you can rename it. Changing a bot's tags changes them on its past trades too. Tags never change how a bot trades and are never in a shared bot file. See [Tags](#tags).
+  - **Main tag:** shown under the box. It's the bot's first tag, and it also brings into the bot's record the trades with that tag in its account that no bot is linked to, such as ones you opened by hand. It stays the main tag while it's on the bot; take it off and another of the bot's tags takes over. While the bot exists, its main tag can't be deleted from Journal → Tags.
 
 ### Which underlying
 Type the **underlying** the bot trades: **SPX**, **XSP**, or any **stock or ETF** your broker lists options on, like `SPY`, `QQQ`, `IWM` or `AAPL`. The box suggests the first five. When you save a bot with a new stock, the app checks your broker lists options on it. If it doesn't, or the app can't reach your broker, the bot isn't saved and the page says why. Other indexes (RUT, NDX, VIX) aren't traded. Type SPX, not SPXW: the bot picks SPX's weekly options itself. A share class with a dot, like BRK.B, can't be traded yet: its options trade under another symbol (BRKB) that the bot can't match to it. The examples on this page use SPX; everything works the same way on the others, in their own prices.
@@ -933,13 +933,13 @@ It counts the trades the bot placed or that you matched to it, plus every other 
 For example: 5 closed trades, 3 made money, together +$250. The record shows win rate 60% (3 of 5) and closed P/L +$250. The numbers come from your journal, so they update after a sync.
 
 ## Tags
-Tags are labels you give your bots. The Automation list shows them under each bot's name, and the row above the list filters by one: click **Mornings** to see only bots tagged Mornings, or **All** to see every bot again. **Armed**, **Off**, **Live** and **Paper** are always there and filter by the bot's state; you can't use those words as your own tags.
+A bot's tags are journal tags: they go on its trades, and the Automation list shows them under each bot's name, and the row above the list filters by one: click **Mornings** to see only bots tagged Mornings, or **All** to see every bot again. **Armed**, **Off**, **Live** and **Paper** are always there and filter by the bot's state; you can't use those words as your own tags.
 
 **Search** above the list finds bots by name, account number or underlying, and every word must match: "beta spx" finds bots with both. A day word (mon, tue, wed, thu, fri, or the full name) finds the bots that enter that day instead.
 
-**On a bot's page**, Basics has the tag picker: chips for the bot's tags, **Pick tags** for the ones your other bots use (archived ones too) and your journal's tags (picking one here labels the bot only, not its trades; the **journal tag** above is the one its trades get), and a **New tag** box. A tag you type that a bot already has, in any capitals, keeps that bot's spelling, so `mornings` becomes **Mornings**.
+**On a bot's page**, Basics has the tag picker: chips for the bot's tags, **Pick tags** for your journal's tags, and a **New tag** box. A tag you type that a bot already has, in any capitals, keeps that bot's spelling, so `mornings` becomes **Mornings**.
 
-**Tagging several bots at once:** tick the bots and a bar appears at the bottom of the window. Type a tag (or a few, separated by commas) in its box and press **Add tag**, or **Remove tag** to take them off. **Clear** unticks them all. Only the tags change, so armed and live bots can be tagged too. A bot can have up to 20 tags; one that would go past that is left as it was and named.
+**Tagging several bots at once:** tick the bots and a bar appears at the bottom of the window. Type a tag (or a few, separated by commas) in its box and press **Add tag**, or **Remove tag** to take them off. **Clear** unticks them all. Only the tags change, so armed and live bots can be tagged too, and their trades get the new tags. A bot can have up to 20 tags; one that would go past that is left as it was and named. A bot always keeps at least one tag: removing its last one leaves it as it was. Removing a bot's main tag makes one of its other tags the main one.
 
 **In the journal**, a bot trade's chips (like "Target 25%") update by themselves when its stop or target changes, whether you changed it or a rule did; a chip that just changed is ringed for a few seconds.
 
@@ -952,13 +952,13 @@ Tags are labels you give your bots. The Automation list shows them under each bo
 You can only archive a bot when nothing of it is open. Otherwise the page tells you what's in the way, for example "1 open trade (run 14)", "1 exit still working (run 14)" or "1 entry in progress (run 16)". Wait for the trade to close or expire, then try again.
 
 ## Sharing a bot
-**Download bot file** on a bot's page saves the bot's settings as a small file (`spx-iron-condor.json`) you can send to a friend. It holds what the bot trades and when: legs, sides, stops and targets, entry times, the schedule, filters and chase settings. It **never** holds your account, your broker login, your contract sizes or limits, your journal tag or tags, or anything about your trades. Blackout days already past are left out. An archived bot can't be shared.
+**Download bot file** on a bot's page saves the bot's settings as a small file (`spx-iron-condor.json`) you can send to a friend. It holds what the bot trades and when: legs, sides, stops and targets, entry times, the schedule, filters and chase settings. It **never** holds your account, your broker login, your contract sizes or limits, your tags, or anything about your trades. Blackout days already past are left out. An archived bot can't be shared.
 
 To share it with a link instead, put the file somewhere online, like Google Drive, Dropbox or GitHub. Set it so **anyone with the link can view it**, then send the link. The **Download bot file** address itself only works on your own computer, so your friend can't use it.
 
 **Import a bot** on the Automation page brings one in. Paste a link to a bot file, choose the file, or paste what's in it, then press **Preview**: you see what the bot does, and nothing is saved yet. Then choose:
 - a name (if you already have a bot with that name, it suggests "… (imported)"),
-- the journal tag its trades get (**+ New tag** makes one here too),
+- its main tag (**+ New tag** makes one here too); add more tags on its page afterwards,
 - your TastyTrade account,
 - contracts per entry, most per trade and most per day (it suggests 1 contract, and a daily limit of one contract for each entry time that's on).
 
@@ -1006,6 +1006,13 @@ A bot's record is the trades it placed or that you matched to it, on its account
 - **Match selected** links the ticked trades to the bot and gives them its tag, just as adding the tag in the Journal does. The Journal then shows the bot's name on each one. A trade you haven't renamed also takes the bot's name (undo gives it its own name back; a name you gave it stays). Nothing changes until you press it.
 - **Split iron condors:** if the bot splits its condors and a ticked trade is a whole condor, it says "will be split into put and call spreads". Match selected splits it, just like **Split into put and call spreads** in the Journal, and links and tags both halves. Undo combines it again.
 - **Undo** puts the last batch back as it was: their old tags and bot. It lasts until the app restarts. After that, take a trade off its bot with **Unlink from** (the bot's name) in the trade's gear panel or on its page; taking the tag off in the Journal isn't enough, the trade stays linked.
+
+### Matched for you after each sync
+You don't have to press anything for most trades. Each time the journal syncs and brings in trades, it links the ones **Match all bots** would tick for you: on the bot's account and underlying, with the bot's legs, opened within 2 minutes of one of its entry times, and matching that bot and no other. They get the bot's tag and, if you haven't named them, the bot's name, just as Match selected does. This works for trades placed by bots in another app as well as by hand.
+
+- **Left for you:** a trade that two bots match equally, a trade that matches a bot with no entry times (the legs alone are a guess), and a trade carrying another bot's tag. Use **Match all bots** or the bot's **Match trades** for those.
+- **The first sync** after this was added also links older trades that fit.
+- **Wrong bot?** Use **Unlink from** (the bot's name) in the trade's gear panel or on its page. A trade you unlink, or whose match you undo, is never matched on its own again; Match trades and Match all bots still list it.
 
 ### Match all bots
 **Match all bots**, at the top of the Automation page, looks at every trade in your journal that no bot is linked to and lists it under the live bot it looks most like (Paper, archived and manual bots are left out). It's the quickest way to sort months of past trades when several bots share one tag.

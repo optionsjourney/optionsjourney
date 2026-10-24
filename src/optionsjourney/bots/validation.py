@@ -66,7 +66,7 @@ def validate(bot: BotDef, tag_ids: set[int]) -> dict[str, str]:
     if not bot.name.strip() or len(bot.name) > 100:
         problems["name"] = "Give the bot a name (up to 100 characters)."
     if bot.tag_id not in tag_ids:
-        problems["tag"] = "Pick the tag its trades are filed under, or make a new one."
+        problems["tag"] = "Give the bot at least one tag: its trades are filed under its tags."
     if bot.broker not in BROKER_NAMES:
         problems["broker"] = "Bots trade through TastyTrade or Schwab."
     elif not bot.account_number:

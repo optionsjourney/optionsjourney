@@ -1,0 +1,26 @@
+{#- The Pending drawer (#292): every order still waiting at the brokers, in every account. Opened by
+    any [data-pending-open] button; pending/drawer.js reads GET /api/pending and fills it, and
+    Change price / Cancel post to the Trade page's replace and cancel. -#}
+{% from "_tooltip.html" import info %}
+<div id="pending-drawer" class="drawer hidden" role="dialog" aria-modal="true" aria-labelledby="pending-title"
+     data-pending-url="{{ url_for('pending.pending') }}" data-markets-url="{{ url_for('pending.markets') }}"
+     data-replace-url="{{ url_for('trade.replace') }}" data-cancel-url="{{ url_for('trade.cancel') }}">
+    <div data-pending-backdrop class="drawer__backdrop opacity-0"></div>
+    <div data-pending-panel class="drawer__panel drawer__panel--side drawer__panel--wide drawer__panel--surface translate-x-full">
+        <div class="slim-drawer__head">
+            <h3 id="pending-title" class="slim-drawer__title">Pending orders {{ info('pending-orders', "Every order still waiting at your broker, in every account. You can change or cancel the orders you sent from the app; others are changed where they came from.", 'pending orders', more='/help/journal#pending-orders') }}</h3>
+            <span id="pending-status" class="slim-drawer__status" aria-live="polite"></span>
+            <button data-pending-refresh type="button" class="slim-drawer__refresh" title="Refresh" aria-label="Refresh">↻</button>
+            <button data-pending-close type="button" class="slim-drawer__close" title="Close" aria-label="Close">✕</button>
+        </div>
+        <div class="pending-filters">
+            <div id="pending-chips" class="pending-filters__chips" role="tablist" aria-label="Which orders"></div>
+            <label class="pending-filters__outside"><input id="pending-outside" type="checkbox"> Outside the app only</label>
+        </div>
+        <div id="pending-body" class="drawer__body slim-drawer__body" aria-live="polite"></div>
+    </div>
+</div>
+<script type="module">
+    import { installPendingDrawer } from "{{ url_for('static', filename='js/pending/drawer.js') }}";
+    installPendingDrawer(document, window);
+</script>

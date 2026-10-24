@@ -13,7 +13,6 @@ The short version: it reads your trades from your brokers, watches your open tra
 | 3:50 PM | The **expiry warning** for bots holding options that can be exercised early into expiration. At 12:50 PM on half days. |
 | 4:00 PM | The market closes (1:00 PM on half days). |
 | Shortly after 4:15 PM | The app saves each open trade's **P/L Day** figure (it looks every 10 minutes). If you've turned on **Settle expirations at 4:15 PM**, it syncs your trades, then settles that day's expiring options (it looks every 5 minutes). Shortly after 1:15 PM on half days. |
-| Shortly after 4:15 PM | The app also saves your **stock holdings** and their closing prices, for the chart on the Journal's Stocks tab (it looks every 10 minutes). Shortly after 1:15 PM on half days. It waits until every connected broker answers. |
 | 4:15 PM | **Keep awake** ends. |
 | Evening | If the 4:15 PM settling couldn't finish (the sync failed, or a closing price wasn't out yet), it tries again every few minutes until 8:00 PM. |
 | Later | When your broker or the exchange publishes the **official close**, settled expirations are corrected to it. |
@@ -25,13 +24,10 @@ The 4:15 PM figure is what **P/L Day** is measured from the next morning. If the
 
 The figure never uses an option quote whose market has been pulled after the close. It uses that option's last real price instead, which the app also saves so it still has it after a restart.
 
-### The stock save
-The save for the Stocks tab's chart happens once a day, and only on days the app is running. If a broker doesn't answer, it tries again every 10 minutes. If a closing price is missing, it keeps trying until 8:00 PM, then saves without it. The price is normally the official close, or else the regular session's last price that day. A day the app was off is never saved afterwards, and if a broker is still not answering at midnight New York time, that day is lost. See [Your trade journal](journal.md#stocks).
-
 ### Expiry settling
-The **Settle expirations at 4:15 PM** switch is on the Journal page, above the trade list, and it's **off unless you turn it on**. See [Your trade journal](journal.md).
+The **Settle expirations at 4:15 PM** setting is in **Settings → Syncing your trades**, and it's **off unless you turn it on**. See [Settings](settings.md#syncing-your-trades) and [Your trade journal](journal.md).
 
-Options that expire are settled at the closing price, so the trade closes that same evening. This is a first estimate. When your broker's own expiration, assignment or exercise record arrives, it replaces the estimate. If that changes the profit or loss, you get an unread alert. See [Alerts](alerts.md#unread-alerts).
+Options that expire are settled at the closing price, so the trade closes that same evening. This is a first estimate. When your broker's own expiration, assignment or exercise record arrives, it replaces the estimate. If that changes the profit or loss, you get an unread alert. See [Alerts](alerts.md#new-alerts).
 
 ## How trades get into the Journal
 Trades come in from your brokers in two ways.

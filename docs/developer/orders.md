@@ -81,6 +81,19 @@ The app never guesses whether an order reached the broker.
 - **`tick_sizes`:** a product key, its increments as JSON, and when they were fetched. TastyTrade's tables are fetched when missing or a week old. If a fetch fails, a stored table (even an old one) is still used, else the default tick, and a wrong one shows as the broker's rejection. A key whose fetch failed isn't asked for again for 5 minutes (`TICKS_RETRY_AFTER`, remembered in memory by `_tick_failed`), so a TastyTrade that's down doesn't slow every entry and chase step. Schwab has no tick-size endpoint, so there is no fallback to it; a stock with no stored table still refuses to enter. Only a `BrokerError` or `CredentialsUnavailable` is absorbed; any other error still refuses the order.
 - **Settings:** `_no_new_trades` and `_freeze` (`on` or `off`). The migration renamed `_bots_stopped` to `_freeze`, so anyone fully stopped stays fully stopped. If a switch can't be read, the app acts as if Freeze is on. `_schwab_tag:{account}` holds the Schwab app tag.
 
+## Who owns a working order
+`services/trade_orders.working()` is the one list behind both the Trade page's Working orders and the Pending drawer. Each order gets an owner (`Owner.kind`), and only **you** is changeable (`Owner.changeable`, decision [0115](../decisions/0115-outside-orders-read-only.md)):
+- **you:** a logged send or replace from the app (`order_log`, origin `you`), found by the order id or, on TastyTrade, by the tag of the attempt. Changeable.
+- **bot** / **managed:** a logged order with origin `bot` or `managed`, with the bot's name and run link when known. Never changeable here: `refusal` reads "Managed by …, use its controls."
+- **outside:** no log row and no sign the app sent it (placed at the broker or in another app). Never changeable here: `refusal` is `OUTSIDE`, "Placed outside the app. Change or cancel it at your broker."
+- **unknown:** the app probably sent it but can't match it to a row: a TastyTrade `external-identifier` of 20 lowercase hex characters with no log row, or a Schwab order carrying the app's tag. No actions.
+
+`cancel()` and `replace()` re-read the order and its owner fresh from the broker before acting. They answer `COULDNT_READ` (and do nothing) if it can't be read, `NOT_WORKING` if it has gone, `CHANGING` if the broker is already changing it, and the owner's refusal (outside, unknown or "Managed by …") if it isn't yours now.
+
+**No actions while:** the broker is already cancelling or replacing it (`CHANGING`), or it isn't yours. A partly filled order of yours can be cancelled but not replaced (`PART_FILLED`).
+
+**Replacing your order.** It is rebuilt from your logged `Order` with only the price changed, never from the broker's copy, and goes through `orders.replace` with origin `you`. The broker's copy only supplies the legs' fill state, `changing`, and `BrokerOrder.price` (signed, + a credit; None when the sign can't be told, such as a Schwab multi-leg `LIMIT` or a TastyTrade price with no price-effect), which the list shows for an order with no log row.
+
 ## Pages
 - **The nav menu** (the three dots in the top bar): No new trades, Freeze (opens the confirmation at `/orders/freeze`) and a link to the order log.
 - **The banners** (`_trading_banners.html`) show on every page while a switch is on, each with a link to the order log. Settings links to it too (in the Brokers section), and so does every order alert.

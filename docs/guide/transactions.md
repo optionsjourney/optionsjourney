@@ -12,6 +12,7 @@ Open **Transactions** in the top bar. The [Journal](journal.md) builds your trad
 Your history starts on the day of the app's first sync. Nothing from before that day is brought in, so a trade you already held then shows only its closing here.
 
 ## Picking what to see
+- **Search:** type in the box and the list narrows as you type, no Enter needed. It looks at the symbol (like SPX or AAPL), the option's date, strike and put or call, the action (like Sell to Open), the order and transaction IDs, and the account's name. Every word must match: `spx put` finds SPX puts. It searches within the account and period you picked.
 - **Account:** one account, or **All accounts**.
 - **Period:** the last **7 days**, **30 days** (where the page starts), **90 days** or **1 year**.
 - **Show:** **Orders** puts the fills that share a broker order number on one row, with the legs listed under the trade's name. **Individual fills** lists every fill your broker reported, one row each.

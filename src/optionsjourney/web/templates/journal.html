@@ -16,6 +16,8 @@
         <a class="link" href="{{ url_for('manual.new_entry') }}">＋ Add a trade</a>
         <a class="link" href="{{ url_for('journal.tags_page') }}">Tags</a>
         <button class="button button--quiet button--small" type="button" data-schedule-open title="Bot schedule: what fires today or another day">📅 Schedule</button>
+        <button class="toolbar-pill toolbar-pill--amber" type="button" data-pending-open title="Orders still waiting at your brokers" hidden></button>
+        <span class="tip"><button class="toolbar-pill toolbar-pill--violet" type="button" data-ideas-open aria-describedby="tip-journal-ideas">💡 Ideas</button>{{ tip_text('journal-ideas', "Trades you saved from the Trade page with Idea ☆, and how they would have done.", more='/help/ideas') }}</span>
     </div>
 </div>
 
@@ -46,46 +48,97 @@
 
 {% if stocks is not none %}
 {# The Stocks tab (#58): just the shares held, with live prices #}
-<p class="muted small" id="stocks-scope">{% if filters.account %}Every share position your broker reports in this account, including shares you didn't buy through this app.{% else %}Every share position your brokers report, across all your connected accounts, added up by ticker. That includes shares you didn't buy through this app. Pick an account above to see just one.{% endif %} <a class="link" href="/help/journal#stocks" target="_blank" rel="noopener">Learn more</a></p>
-<section class="card" aria-labelledby="stocks-pl-title">
-    <h2 class="card__title" id="stocks-pl-title">Your stocks against what you paid {{ info('stocks-pl-chart', "Your total profit or loss on shares, measured against what you paid for them. Saved shortly after each close (4:15 PM New York time, 1:15 PM on early-close days). If a closing price is missing it keeps trying until 8 PM, then saves without it. The line starts on the first save, and days the app was off are missing. It follows the account picker above.", 'Stocks against what you paid', more='/help/journal#stocks') }}</h2>
-    <nav class="segmented" aria-label="Range">
-        {% for key in stock_ranges %}
-        <a class="segmented__item {{ 'segmented__item--active' if key == stock_range }}" href="{{ url_for('journal.journal_page', **dict(filters.to_args(), range=key)) }}"{% if key == stock_range %} aria-current="true"{% endif %}>{{ key }}</a>
-        {% endfor %}
-    </nav>
-    {% set gap = namespace(day=none) %}
-    {% for d in stock_days %}{% if d.priced < d.total %}{% set gap.day = d %}{% endif %}{% endfor %}
-    {% if not stock_chart %}
-    {% if stock_has_saved %}<p class="muted">Nothing saved in this range yet.</p>
-    {% elif stocks %}<p class="muted">Your first point appears after the next close (4:15 PM New York time).</p>
-    {% else %}<p class="muted">The chart starts after the first close at which you hold shares.</p>{% endif %}
-    {% else %}
-    {% set last = stock_chart[-1] %}
-    <p><strong class="{{ 'positive' if last.pl > 0 else 'negative' if last.pl < 0 }}">{{ last.pl | money }}{% if last.pct is not none %} ({{ '%+.2f' % last.pct }}%){% endif %}</strong>
-        <span class="muted small">on {{ last.cost | money }} paid, {{ last.day.strftime('%b') }} {{ last.day.day }}, {{ last.day.year }}</span></p>
-    <figure class="chart" data-line-chart="stocks-pl-data"
-            data-tooltip='[["P/L", "pl", "signed"], ["of what you paid", "pct", "percent"]]'>
-        <svg class="chart__plot" data-series="pl" data-mark="end"
-             role="img" aria-label="Stocks profit or loss by day"></svg>
+<p class="muted small" id="stocks-scope">{% if filters.accounts %}Every share position your broker reports in {{ 'these accounts' if filters.accounts | length > 1 else 'this account' }}, including shares you didn't buy through this app.{% else %}Every share position your brokers report, across all your connected accounts, added up by ticker. That includes shares you didn't buy through this app. Pick an account above to see just one.{% endif %} <a class="link" href="/help/journal#stocks" target="_blank" rel="noopener">Learn more</a></p>
+{% set sm = stock_summary %}
+{% macro stock_card(id, label, value, line, tip, signed=True) %}
+<div class="overview__box" id="{{ id }}">
+    <div class="stat__label">{{ label }} {{ info(id, tip, label, more='/help/journal#stocks') }}</div>
+    <div class="overview__value {{ ('positive' if value > 0 else 'negative' if value < 0) if signed and value is not none }}" data-value>{{ value | money }}</div>
+    <div class="muted small" data-line>{{ line }}</div>
+</div>
+{% endmacro %}
+{% macro pct(value) %}{{ '%+.2f%%' % value if value is not none else '—' }}{% endmacro %}
+{# holdings.js refreshes the cards (and the Holdings table) while shares are held #}
+<section class="overview" id="stocks-summary" aria-label="Stocks summary"{% if stocks %} data-url="{{ url_for('journal.stocks_api', **filters.to_args()) }}"{% endif %}>
+    <div class="overview__rows">
+        <div class="overview__row">
+            {{ stock_card('stocks-total-pl', 'Total P&L', sm.total_pl, pct(sm.total_pl_percent), "What your shares are up or down against what you paid for the ones you still hold. Shares you've sold aren't counted.") }}
+            {{ stock_card('stocks-market-value', 'Total market value', sm.market_value, 'Current portfolio value', "What the shares shown are worth at live prices.", signed=False) }}
+            {{ stock_card('stocks-day-pl', 'Day P&L', sm.day_pl, pct(sm.day_pl_percent), "How much the shares shown have made or lost since the previous close.") }}
+        </div>
+    </div>
+</section>
+<section class="card" aria-labelledby="stocks-value-title">
+    <h2 class="card__title" id="stocks-value-title">Portfolio value {{ info('stocks-value-chart', "What your shares were worth at each day's close, from your first sync to today. It's worked out from what your brokers say you hold now and your synced buys and sells, so shares you owned before your first sync count too. It follows the account picker. A stock split after your first sync makes the line wrong before the split.", 'Portfolio value', more='/help/journal#stocks') }}</h2>
+    {# stock_value.js fills the points from /api/stocks/value, then draws it; with
+       nothing to draw and no note it hides this card (#286) #}
+    <figure class="chart" id="stocks-value" data-url="{{ url_for('journal.stock_value_api', **filters.to_args()) }}"
+            data-tooltip='[["Value", "value", "money"]]'>
+        <svg class="chart__plot" data-series="value" data-mark="end" data-signed="no" data-zero="no"
+             role="img" aria-label="Portfolio value by day"></svg>
         <div class="chart__tooltip" role="status" hidden></div>
     </figure>
-    <script type="application/json" id="stocks-pl-data">{{ stock_chart_data | tojson }}</script>
+    <script type="application/json" id="stocks-value-data"></script>
+    <p class="muted" data-note>Loading…</p>
     <script src="{{ url_for('static', filename='js/line_chart.js') }}" defer></script>
-    {% endif %}
-    {% if gap.day %}<p class="muted small">{{ gap.day.day.strftime('%b') }} {{ gap.day.day.day }}: {{ gap.day.priced }} of {{ gap.day.total }} priced. Shares without a closing price are left out.</p>{% endif %}
+    <script type="module" src="{{ url_for('static', filename='js/stock_value.js') }}"></script>
 </section>
+<nav class="tabs" aria-label="Stocks view">
+    <a class="tabs__tab {{ 'tabs__tab--active' if stocks_view == 'holdings' }}" href="{{ url_for('journal.journal_page', **dict(filters.to_args(), stocks_view='holdings')) }}"{% if stocks_view == 'holdings' %} aria-current="page"{% endif %}>Holdings</a>
+    <a class="tabs__tab {{ 'tabs__tab--active' if stocks_view == 'history' }}" href="{{ url_for('journal.journal_page', **dict(filters.to_args(), stocks_view='history')) }}"{% if stocks_view == 'history' %} aria-current="page"{% endif %}>Transaction History</a>
+</nav>
+{% if stocks_view == 'history' %}
+{% set held = stocks | map(attribute='ticker') | list %}
+<section class="card">
+    {% if not stock_rows %}
+    <p class="muted">No stock trades since your first sync.</p>
+    {% else %}
+    <div class="table-scroll"><table class="table" id="stock-transactions">
+        <thead>
+            <tr>
+                <th>Date</th>
+                <th>Account</th>
+                <th>Ticker</th>
+                <th>Action</th>
+                <th class="num">Qty</th>
+                <th class="num">Price</th>
+                <th class="num">Value</th>
+                <th class="num">Fees</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for t in stock_rows %}
+            {% set key = t.account.split(':', 1) %}
+            {% set account = view.accounts.get((key[0], key[1])) %}
+            <tr>
+                <td>{{ t.executed_at | market_date_label }}</td>
+                <td>{{ account.display_name ~ ' ' ~ account.masked_number if account else t.account }}</td>
+                <td>{% if t.ticker in held %}<button type="button" class="link-button" data-stock-chart="{{ t.ticker }}" title="Chart {{ t.ticker }}"><strong>{{ t.ticker }}</strong></button>{% else %}<strong>{{ t.ticker }}</strong>{% endif %}</td>
+                <td>{{ t.action }}</td>
+                <td class="num">{{ t.quantity | number }}</td>
+                <td class="num">{{ t.price | number if t.price is not none else '—' }}</td>
+                <td class="num {{ 'positive' if t.value > 0 else 'negative' if t.value < 0 }}">{{ t.value | money }}</td>
+                <td class="num">{{ t.fees | money }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table></div>
+    {% endif %}
+    <p class="muted small">Only trades since your first sync are listed. Shares transferred in, or bought before then, aren't.</p>
+</section>
+{% else %}
 <section class="card">
     {% if not stocks %}
-    <p class="muted">No shares held{{ ' in this account' if filters.account }}.</p>
+    <p class="muted">No shares held{{ ' in these accounts' if filters.accounts | length > 1 else ' in this account' if filters.accounts }}.</p>
     {% else %}
-    <div class="table-scroll"><table class="table" id="holdings" data-url="{{ url_for('journal.stocks_api', **filters.to_args()) }}">
+    <div class="table-scroll"><table class="table" id="holdings">
         <thead>
             <tr>
                 <th>Ticker</th>
                 <th class="num">Qty</th>
                 <th class="num">Cost basis {{ info('journal-cost-basis', "The average price per share, as your broker reports it. The line under it is the total paid for the shares you hold.", 'Cost basis', more='/help/journal#stocks') }}</th>
                 <th class="num">Current price</th>
+                <th class="num">Market value</th>
                 <th class="num">P/L</th>
                 <th class="num">Today's P/L</th>
             </tr>
@@ -97,6 +150,7 @@
                 <td class="num">{{ h.quantity | number }}</td>
                 <td class="num">{{ '%.2f' % h.cost_basis }}<div class="muted small">{{ h.cost | money }}</div></td>
                 <td class="num" data-cell="price">{{ h.price | number if h.price is not none else '—' }}</td>
+                <td class="num" data-cell="value">{{ h.market_value | money }}</td>
                 <td class="num {{ 'positive' if h.pl and h.pl > 0 else 'negative' if h.pl and h.pl < 0 }}" data-cell="pl">{% if h.pl is not none %}{{ h.pl | money }}<div class="small">{{ '%+.2f' % h.pl_percent }}%</div>{% else %}—{% endif %}</td>
                 <td class="num {{ 'positive' if h.today_pl and h.today_pl > 0 else 'negative' if h.today_pl and h.today_pl < 0 }}" data-cell="today">{{ h.today_pl | money if h.today_pl is not none else '—' }}</td>
             </tr>
@@ -106,15 +160,11 @@
     <p class="muted small">Prices are live from your broker. Today's P/L is from the previous close, or from the price paid for shares bought today.</p>
     {% endif %}
 </section>
+{% endif %}
 <script src="{{ url_for('static', filename='js/holdings.js') }}" defer></script>
 {% include "_stock_drawer.html" %}
 {% else %}
 {% set o = view.overview %}
-{% if filters.shown_status != 'all' %}
-{% set all_args = dict(filters.to_args(), status='all', **({'dashboard': dashboard.id} if dashboard else {})) %}
-<p class="muted small">Showing {{ statuses[filters.shown_status] | lower }} trades only, and the numbers below are for them.
-    <a class="link" href="{{ url_for('journal.journal_page', **all_args) }}">Show open and closed</a></p>
-{% endif %}
 <section class="overview" aria-label="Summary">
     <div class="overview__rows">
         <div class="overview__row">
@@ -158,23 +208,6 @@
 </p>
 {% endif %}
 
-{% if settle %}
-<form class="inline-form small" method="post" action="{{ url_for('journal.settle_switch', back=request.full_path) }}" id="settle-switch">
-    <input type="hidden" name="on" value="{{ '0' if settle.on else '1' }}">
-    <label class="check" title="At 4:15 PM New York time on trading days, trades whose options expired that day are settled at the last price from your broker, without waiting for the broker's expiration record. When the official close is out, they're corrected to it, and you get an alert if your P/L changes by $1 or more. The broker's own record replaces the settlement when it arrives.">
-        <input type="checkbox" {{ 'checked' if settle.on }} onchange="this.form.submit()"> Settle expirations at 4:15 PM
-    </label>
-    <noscript><button class="button button--small" type="submit">{{ 'Turn off' if settle.on else 'Turn on' }}</button></noscript>
-</form>
-{% if settle.on and settle.last and (settle.last.skipped or settle.last.note) %}
-<p class="notice" id="settle-skips">
-    {% if settle.last.note %}{{ settle.last.note }}{% endif %}
-    {% if settle.last.skipped %}Left open at the {{ settle.last.day }} close, for the broker to settle:
-    {% for s in settle.last.skipped %}{{ s.name }} ({{ s.reason }}){{ '; ' if not loop.last }}{% endfor %}.{% endif %}
-</p>
-{% endif %}
-{% endif %}
-
 {% if view.failed %}
 <p class="notice notice--warning">
     {{ view.failed }} broker record{{ 's' if view.failed != 1 }} couldn't be placed in a trade and
@@ -183,12 +216,12 @@
 {% endif %}
 
 <script>
-    // Cards, Table or Compact (#155, #156): picked before first paint so the list doesn't
-    // flash; the saved choice, else cards on phones and the table elsewhere.
+    // Compact, Cards or Table (#155, #156): picked before first paint so the list doesn't
+    // flash; the saved choice, else cards on phones and compact elsewhere (#281).
     (function () {
         var view = null;
         try { view = localStorage.getItem("journal_trade_view"); } catch (e) { /* storage blocked */ }
-        if (view !== "cards" && view !== "table" && view !== "compact") view = window.innerWidth < 768 ? "cards" : "table";
+        if (view !== "cards" && view !== "table" && view !== "compact") view = window.innerWidth < 768 ? "cards" : "compact";
         document.documentElement.dataset.tradeView = view;
     })();
 </script>
@@ -199,9 +232,9 @@
     {{ pager(page, 'trades') }}
     <div class="list-head">
         <div class="view-switch" role="group" aria-label="How to show the trades">
+            <button type="button" data-set-trade-view="compact" title="A tighter table: one line per trade; click a row for its legs, entry, exit, premium and fees">☰ Compact</button>
             <button type="button" data-set-trade-view="cards" title="Show trades as cards">▤ Cards</button>
             <button type="button" data-set-trade-view="table" title="Show trades as a table">▦ Table</button>
-            <button type="button" data-set-trade-view="compact" title="A tighter table: one line per trade; click a row for its legs, premium and fees">☰ Compact</button>
             <a href="{{ url_for('journal.grid_page', **filters.to_args()) }}" title="The open trades in a table, ticked ones in one risk graph together">⊞ Grid</a>
         </div>
         <span class="muted small">Tick trades to tag them or graph them together</span>
@@ -228,8 +261,8 @@
                 {{ sortable('account', 'Account') }}
                 <th class="col-legs">Legs {{ info('journal-legs', "What the trade still holds: quantity (negative means sold), strike, put or call, and expiration. @ is the leg's live price. Closing fills are listed underneath in grey.", 'Legs', more='/help/journal#reading-a-trade') }}</th>
                 {{ sortable('closed', 'Closing legs', cls='col-closing') }}
-                {{ sortable('entry', 'Entry', True) }}
-                {{ sortable('exit', 'Exit', True) }}
+                {{ sortable('entry', 'Entry', True, 'col-entry') }}
+                {{ sortable('exit', 'Exit', True, 'col-exit') }}
                 {{ sortable('premium', 'Premium', True, 'col-premium') }}
                 {{ sortable('fees', 'Fees', True, 'col-fees') }}
                 <th></th>
@@ -258,10 +291,9 @@
                 <td class="col-trade trade-cell">
                     <div class="trade-name">
                         {{ entry.name }}
-                        {% if p.is_0dte %}<span class="tag">0DTE</span>{% endif %}
+                        {% if p.one_right %}<span class="tag tag--{{ p.one_right | lower }}" title="Every option leg is a {{ p.one_right | lower }}">{{ p.one_right }}</span>{% endif %}
                         {% if p.roll_count %}<span class="tag">Rolled ×{{ p.roll_count }}</span>{% endif %}
-                        {% if p.split_from %}<span class="tag">Split</span>{% endif %}
-                        {% set look = needs_a_look.get(p.key) if needs_a_look is defined else none %}{% if entry.bot and look %}<a class="badge badge--bot badge--alert" href="/automation/runs/{{ entry.bot.run_id }}" title="{{ entry.bot.name }} · needs a look: {{ look | join('; ') }} · open the run"><svg class="bot-icon" viewBox="0 0 16 16" width="13" height="13" aria-label="needs a look" role="img"><path d="M8 1.8 15 14H1z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 6.2v3.6M8 11.6v.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>{% if entry.bot.name != entry.name %} {{ entry.bot.name }}{% endif %}</a>{% elif entry.bot %}<a class="badge badge--bot" href="{% if entry.bot.per_trade %}{{ url_for('journal.manage_page', key=p.split_from or p.key) }}{% elif entry.bot.matched %}{{ url_for('automation.record_page', bot_id=entry.bot.bot_id) }}{% else %}/automation/{{ entry.bot.bot_id }}/runs{% endif %}" title="{{ 'Matched to' if entry.bot.matched else 'Opened by' }} {{ entry.bot.name }}"><svg class="bot-icon" viewBox="0 0 16 16" width="13" height="13" aria-label="bot" role="img"><rect x="1.5" y="2" width="13" height="9" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 14h5M8 11v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>{% if entry.bot.name != entry.name %} {{ entry.bot.name }}{% endif %}</a>{% endif %}
+                        {% set look = needs_a_look.get(p.key) if needs_a_look is defined else none %}{% if entry.bot and look %}<a class="badge badge--bot badge--alert" href="/automation/runs/{{ entry.bot.run_id }}" title="{{ entry.bot.name }} · needs a look: {{ look | join('; ') }} · open the run"><svg class="bot-icon" viewBox="0 0 16 16" width="13" height="13" aria-label="needs a look" role="img"><path d="M8 1.8 15 14H1z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 6.2v3.6M8 11.6v.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>{% if entry.bot.name != entry.name %} {{ entry.bot.name }}{% endif %}</a>{% elif entry.bot %}<a class="badge badge--bot{% if entry.bot.matched %} badge--matched{% endif %}" href="{% if entry.bot.per_trade %}{{ url_for('journal.manage_page', key=p.split_from or p.key) }}{% elif entry.bot.matched %}{{ url_for('automation.record_page', bot_id=entry.bot.bot_id) }}{% else %}/automation/{{ entry.bot.bot_id }}/runs{% endif %}" title="{% if entry.bot.matched %}Matched to {{ entry.bot.name }}: placed outside this app, which doesn't manage it{% else %}Opened by {{ entry.bot.name }}{% endif %}">{% if entry.bot.matched %}matched{% else %}<svg class="bot-icon" viewBox="0 0 16 16" width="13" height="13" aria-label="bot" role="img"><rect x="1.5" y="2" width="13" height="9" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 14h5M8 11v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>{% endif %}{% if entry.bot.name != entry.name %} {{ entry.bot.name }}{% endif %}</a>{% endif %}
                     </div>
                     <div class="chips">
                         {% for tag in entry.tags %}<span class="chip">{{ tag.name }}</span>{% endfor %}
@@ -379,4 +411,6 @@
 <script type="module" src="{{ url_for('static', filename='js/manage_panel.js') }}"></script>
 {% endif %}
 {% include "_schedule_drawer.html" %}
+{% include "_pending_drawer.html" %}
+{% include "_ideas_drawer.html" %}
 {% endblock %}

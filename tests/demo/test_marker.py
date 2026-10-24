@@ -33,6 +33,22 @@ def test_the_mark(tmp_path):
     assert marker.is_demo_database(tmp_path / marker.DB_NAME)
 
 
+def test_the_mark_is_found_while_it_is_still_in_the_wal_file(tmp_path):
+    import sqlite3
+
+    path = tmp_path / marker.DB_NAME
+    app = sqlite3.connect(path)  # an app still running, as after a crash
+    app.execute("pragma journal_mode = wal")
+    app.execute("pragma wal_autocheckpoint = 0")  # keep every change in the -wal
+    app.execute("create table settings(key, value)")
+    app.execute("insert into settings values (?, '1')", (marker.DEMO_MARK,))
+    app.commit()
+    try:
+        assert marker.is_demo_database(path)
+    finally:
+        app.close()
+
+
 def _files(folder) -> list[str]:
     return sorted(str(p.relative_to(folder)) for p in folder.rglob("*"))
 

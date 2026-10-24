@@ -17,7 +17,11 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 
-from optionsjourney.brokers.credentials.base import AccessToken, CredentialsUnavailable
+from optionsjourney.brokers.credentials.base import (
+    AccessToken,
+    CredentialsUnavailable,
+    NotConnected,
+)
 from optionsjourney.brokers.credentials.store import SecretStore
 
 logger = logging.getLogger(__name__)
@@ -66,7 +70,7 @@ class LocalProvider:
                 return cached
             secrets = self.store.get("tastytrade")
             if not secrets:
-                raise CredentialsUnavailable(_NOT_CONNECTED.format(broker="TastyTrade"))
+                raise NotConnected(_NOT_CONNECTED.format(broker="TastyTrade"))
             self._raise_if_backing_off("tastytrade")
             try:
                 token = self._mint_tastytrade(secrets)
@@ -211,7 +215,7 @@ class LocalProvider:
                 return cached
             app = self.store.get("schwab") or {}
             if not app.get("refresh_token"):
-                raise CredentialsUnavailable(_NOT_CONNECTED.format(broker="Schwab"))
+                raise NotConnected(_NOT_CONNECTED.format(broker="Schwab"))
             if self._now() >= _logged_in_at(app) + SCHWAB_LOGIN_LASTS:
                 raise CredentialsUnavailable(
                     "It's been 7 days: log in to Schwab again in Settings → Brokers "

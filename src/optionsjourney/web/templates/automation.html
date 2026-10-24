@@ -139,7 +139,7 @@
         <button type="button" data-group="strategy" aria-pressed="true">Strategy</button>
         <button type="button" data-group="day" aria-pressed="false">Day</button>
     </div>
-    <span data-js-only>{{ info('automation-group', "Strategy is the journal tag a bot files its trades under. Day lists the bots by the weekday they enter instead. The page remembers your choice.", 'grouping', more='/help/automation#the-automation-page') }}</span>
+    <span data-js-only>{{ info('automation-group', "Strategy is a bot's main tag. Day lists the bots by the weekday they enter instead. The page remembers your choice.", 'grouping', more='/help/automation#the-automation-page') }}</span>
     <span class="st-count">{% if bots | length != total %}{{ bots | length }} of {{ total }} bots{% else %}{{ total }} bot{{ 's' if total != 1 }}{% endif %}</span>
 </div>
 <div class="chips st-tags" aria-label="Filter by tag">

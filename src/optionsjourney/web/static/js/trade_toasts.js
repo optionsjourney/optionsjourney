@@ -1,5 +1,6 @@
 // In-app trade alerts (#178; Tracker2's trade_alerts_client.js): when a sync stores a
-// fill, the server sends trade_event over Socket.IO, and every open page shows a popup at
+// fill, the server sends trade_event over Socket.IO (and alert_fired for an alert that
+// went off, #275), and every open page shows a popup at
 // the top right: newest on top, gone after 20 s (hovering pauses it), × closes it, at
 // most 5 at once with "+N more" linking to the Alerts page. One chime per burst. Each
 // event is also re-sent as a window 'trade-event' so the Alerts page can add it live.
@@ -25,6 +26,9 @@ function writeKept(win, kept) {
 
 // What a popup says, from the event the server sent.
 export function toastView(e) {
+  if (e.kind === 'alert') {
+    return { badge: e.label, tone: 'alert', title: e.name, detail: e.detail || '', amount: '', link: e.link, lines: [] };
+  }
   return {
     badge: e.label,
     tone: e.kind === 'open' ? 'open' : e.kind === 'roll' ? 'roll' : 'close',
@@ -34,6 +38,11 @@ export function toastView(e) {
     link: e.link,
     lines: (e.detail || '').split('\n').filter(Boolean), // a close's strikes and rolls (#212)
   };
+}
+
+// An alert from the server, as a popup event
+export function alertEvent(a) {
+  return { id: `alert:${a.id}`, kind: 'alert', label: 'Alert', name: a.title, detail: a.detail, link: a.link || '/alerts' };
 }
 
 export function createStack(doc, win) {
@@ -151,6 +160,10 @@ export function install(doc, win) {
   ['pointerdown', 'keydown', 'touchstart'].forEach(type => doc.addEventListener(type, stack.unlock));
   stack.restore();
   const socket = win.io({ transports: ['websocket', 'polling'] });
+  // #275: an alert that went off (a price, trade or bot alert, a P/L correction) pops up too
+  socket.on('alert_fired', a => {
+    if (a && a.id != null) stack.show(alertEvent(a));
+  });
   socket.on('trade_event', e => {
     win.dispatchEvent(new win.CustomEvent('trade-event', { detail: e }));
     if (e && e.popup) stack.show(e);

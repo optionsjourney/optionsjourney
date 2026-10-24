@@ -11,6 +11,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from optionsjourney.core import chain as core_chain
+from optionsjourney.core import date_ranges
 from optionsjourney.core.accounts import BrokerAccount
 from optionsjourney.core.calendar import (
     CurvePoint,
@@ -84,6 +85,8 @@ CLOSE_REASONS = (
 )
 PERIODS = {0: "All time", 7: "7 days", 30: "30 days", 90: "90 days", 365: "1 year"}
 STATUSES = {"today": "Open + closed today", "all": "Open and closed", "open": "Open", "closed": "Closed"}
+# What the date picker says for a status with no dates (#284, Tracker2's "Open + Today")
+DATE_STATUSES = {"today": "Open + Today", "all": "All Time", "open": "Open", "closed": "Closed"}
 # The trade list opens on open trades plus the ones closed today; P/L and metrics on all (#68)
 TRADES_STATUS = "today"
 DEMO_TRADES_STATUS = "all"  # the demo opens on its whole made-up history
@@ -104,7 +107,7 @@ class JournalError(Exception):
 @dataclass(frozen=True)
 class Filters:
     tags: tuple[str, ...] = ()  # tag ids, or UNCATEGORIZED (no tags)
-    account: str = ""  # "broker:number"
+    accounts: tuple[str, ...] = ()  # "broker:number" each; none: every account (#285)
     status: str = ""  # "" = not chosen: the page's default_status
     days: int = 0  # 0 = all time
     kind: str = ""  # "stocks": the Stocks tab
@@ -112,49 +115,94 @@ class Filters:
     start: date | None = None  # opened on or after (New York date)
     end: date | None = None  # opened on or before
     default_status: str = field(default="all", compare=False)
+    range: str = ""  # #284: a date preset (core.date_ranges.RANGES), rolling with the date
+
+    @property
+    def dated(self) -> bool:
+        """A date range is chosen: as in Tracker2, it shows open and closed trades."""
+        return bool(self.range or self.start or self.end)
 
     @property
     def shown_status(self) -> str:
-        """The status the trades are picked by: the one chosen, or the page's default."""
-        return self.status or self.default_status
+        """The status the trades are picked by: the one chosen, else every status for a
+        date range, else the page's default."""
+        return self.status or ("all" if self.dated else self.default_status)
+
+    def opened_window(self, today: date) -> tuple[date | None, date | None]:
+        """The first and last opening day shown (None: open-ended)."""
+        if self.range:
+            return date_ranges.window(self.range, today)
+        return self.start, self.end
+
+    @property
+    def date_label(self) -> str:
+        """What the date picker says (#284)."""
+        if self.range:
+            return date_ranges.RANGES[self.range]
+        if self.start or self.end:
+            return f"{self.start or '…'} – {self.end or '…'}"
+        if self.days:
+            return PERIODS[self.days]
+        return DATE_STATUSES[self.shown_status]
 
     @classmethod
     def from_args(cls, args, default_status: str = "all") -> Filters:
-        """From a request's query string (a werkzeug MultiDict)."""
+        """From a request's query string (a werkzeug MultiDict). A date picker preset
+        (`preset`, #284) replaces the status, period and dates it came with."""
         days = args.get("days", 0, type=int)
         status = args.get("status", "")
+        status = status if status in STATUSES else ""
+        chosen = args.get("range", "")
+        chosen = chosen if chosen in date_ranges.RANGES else ""
+        start, end = _day(args.get("start")), _day(args.get("end"))
+        preset = args.get("preset", "")
+        if preset:
+            days, chosen = 0, ""
+            if preset != "custom":
+                start = end = None
+            if preset in ("today", "all"):
+                status = "" if preset == default_status else preset
+            else:
+                status = ""
+                chosen = preset if preset in date_ranges.RANGES else ""
         return cls(
             tags=tuple(v for v in args.getlist("tag") if v),
-            account=args.get("account", ""),
-            status=status if status in STATUSES else "",
+            accounts=tuple(dict.fromkeys(a for a in args.getlist("account") if a)),
+            status=status,
             days=days if days in PERIODS else 0,
             kind="stocks" if args.get("kind") == "stocks" else "",
             q=" ".join((args.get("q") or "").split())[:100],
-            start=_day(args.get("start")),
-            end=_day(args.get("end")),
+            start=None if chosen else start,
+            end=None if chosen else end,
             default_status=default_status,
+            range=chosen,
         )
 
     @classmethod
     def from_saved(cls, saved: Mapping) -> Filters:
         return cls(
             tags=tuple(saved.get("tag", ())),
-            account=saved.get("account", ""),
+            accounts=_listed(saved.get("account")),
             status=saved.get("status", ""),
             days=int(saved.get("days", 0)),
             kind="stocks" if saved.get("kind") == "stocks" else "",
             q=saved.get("q", ""),
             start=_day(saved.get("start")),
             end=_day(saved.get("end")),
+            range=saved.get("range", "") if saved.get("range") in date_ranges.RANGES else "",
         )
+
+    def differs_from(self, saved) -> bool:
+        """#285: whether these filters aren't what a dashboard saved (its Save button)."""
+        return Filters.from_saved(self.to_args()) != Filters.from_saved(saved or {})
 
     def to_args(self) -> dict:
         """As query-string arguments, leaving defaults out."""
         args: dict = {}
         if self.tags:
             args["tag"] = list(self.tags)
-        if self.account:
-            args["account"] = self.account
+        if self.accounts:
+            args["account"] = list(self.accounts)
         if self.status:
             args["status"] = self.status
         if self.days:
@@ -167,6 +215,8 @@ class Filters:
             args["start"] = self.start.isoformat()
         if self.end:
             args["end"] = self.end.isoformat()
+        if self.range:
+            args["range"] = self.range
         return args
 
 
@@ -360,6 +410,7 @@ def load_journal(
         edits = {edit.position_key: edit for edit in session.scalars(select(TradeEdit))}
         tags_by_key: dict[str, list[Tag]] = {}
         tags_by_id = {tag.id: tag for tag in tags}
+        tags_by_name = {tag.name.lower(): tag for tag in tags}
         for link in session.scalars(select(TradeTag)):
             tags_by_key.setdefault(link.position_key, []).append(tags_by_id[link.tag_id])
         dashboards = list(session.scalars(select(Dashboard).order_by(Dashboard.sort_order)))
@@ -396,15 +447,14 @@ def load_journal(
             or (matched.get(position.split_from) if position.split_from else None)
         )
         # A bot's trades carry the tag it files under (decision 0072), as stock trades
-        # carry Stocks
-        # A deleted bot's tag is already on its trades as their own (0074)
-        bot_tag = (
-            tags_by_id.get(linked[1].tag_id)
-            if linked is not None and not linked[1].hidden
-            else None
-        )
-        if bot_tag is not None and bot_tag not in fixed:
-            fixed.append(bot_tag)
+        # carry Stocks, and its other tags (#278, decision 0110)
+        # A deleted bot's tags are already on its trades as their own (0074)
+        if linked is not None and not linked[1].hidden:
+            bot = linked[1]
+            for bot_tag in (tags_by_id.get(bot.tag_id),
+                            *(tags_by_name.get(n.lower()) for n in bot.tags or ())):  # fmt: skip
+                if bot_tag is not None and bot_tag not in fixed:
+                    fixed.append(bot_tag)
         own_tags = [*own_tags, *(t for t in fixed if t not in own_tags)]
         prelim = (
             [
@@ -443,7 +493,7 @@ def load_journal(
     unmatched = [
         order
         for order in book.unmatched
-        if not filters.account or f"{order.broker}:{order.account_number}" == filters.account
+        if not filters.accounts or f"{order.broker}:{order.account_number}" in filters.accounts
     ]
     return JournalView(
         entries=shown,
@@ -568,6 +618,13 @@ def sort_entries(entries: list[JournalEntry], column: str, descending: bool) -> 
     return sorted(known, key=value, reverse=descending) + missing
 
 
+def _listed(value) -> tuple[str, ...]:
+    """A saved filter that was one value before #285 (account), or a list."""
+    if not value:
+        return ()
+    return tuple(value) if isinstance(value, list | tuple) else (str(value),)
+
+
 def _day(text) -> date | None:
     try:
         return date.fromisoformat(text) if text else None
@@ -614,7 +671,7 @@ def is_stock(position) -> bool:
 
 def _matches(entry: JournalEntry, filters: Filters, now: datetime) -> bool:
     position = entry.position
-    if filters.account and f"{position.broker}:{position.account_number}" != filters.account:
+    if filters.accounts and f"{position.broker}:{position.account_number}" not in filters.accounts:
         return False
     is_closed = position.status is Status.CLOSED
     if filters.shown_status == "open" and is_closed:
@@ -635,9 +692,10 @@ def _matches(entry: JournalEntry, filters: Filters, now: datetime) -> bool:
     if filters.q and not _searched(entry, filters.q):
         return False
     opened = market_date(position.opened_at)
-    if filters.start and opened < filters.start:
+    start, end = filters.opened_window(market_date(now))
+    if start and opened < start:
         return False
-    if filters.end and opened > filters.end:
+    if end and opened > end:
         return False
     if filters.days:
         since = now - timedelta(days=filters.days)
@@ -939,6 +997,21 @@ def tag_for(session_factory: sessionmaker, name: str) -> Tag:
         return tag
 
 
+def tags_for(session: Session, names) -> list[Tag]:
+    """#278: a bot's tags as journal tags, in order, made if new (any case matches)."""
+    return _tags(session, ", ".join(names)) if names else []
+
+
+def _retag_bots(session: Session, old: str, new: str | None) -> None:
+    """#278: a bot holds its tags by name: a renamed tag is renamed on it, a deleted
+    one (None) taken off."""
+    for bot in session.scalars(select(Bot)):
+        names = list(bot.tags or ())
+        if any(n.lower() == old.lower() for n in names):
+            bot.tags = [new if n.lower() == old.lower() else n for n in names if new or
+                        n.lower() != old.lower()]  # fmt: skip
+
+
 def rename_tag(session_factory: sessionmaker, tag_id: int, name: str) -> None:
     name = _tag_name(name)
     with session_factory() as session:
@@ -948,6 +1021,7 @@ def rename_tag(session_factory: sessionmaker, tag_id: int, name: str) -> None:
         other = _tag_named(session, name)
         if other is not None and other.id != tag_id:
             raise JournalError(f"There's already a tag called {name}.")
+        _retag_bots(session, tag.name, name)
         tag.name = name
         session.commit()
 
@@ -956,17 +1030,24 @@ def _tag_named(session: Session, name: str) -> Tag | None:
     return session.scalars(select(Tag).where(func.lower(Tag.name) == name.lower())).first()
 
 
+find_tag = _tag_named  # the tag with this name, any case, or None
+
+
 def delete_tag(session_factory: sessionmaker, tag_id: int) -> None:
-    """Delete a tag; it comes off every trade. A tag a bot files under can't go while
-    the bot exists (decision 0072)."""
+    """Delete a tag; it comes off every trade and every bot. A bot's main tag can't go
+    while the bot exists (decision 0072, #278)."""
     with session_factory() as session:
         bots = list(session.scalars(select(Bot.name).where(Bot.tag_id == tag_id)))
         if bots:
             names = ", ".join(sorted(bots))
             raise JournalError(
-                f"This tag can't be deleted: {'a bot files' if len(bots) == 1 else 'bots file'} "
-                f"its trades under it ({names}). Give the bot another tag first."
+                f"This tag can't be deleted: it's the main tag of "
+                f"{'a bot' if len(bots) == 1 else 'bots'} ({names}). Give the bot another "
+                "main tag first."
             )
+        tag = session.get(Tag, tag_id)
+        if tag is not None:
+            _retag_bots(session, tag.name, None)
         session.execute(delete(Tag).where(Tag.id == tag_id))
         session.commit()
 
@@ -1001,6 +1082,9 @@ def keep_bot_tag(session_factory: sessionmaker, bot_id: int) -> None:
     with session_factory() as session:
         bot = session.get(Bot, bot_id)
         tag_id = bot.tag_id if bot is not None else None
+        # #278: all its tags, not just the main one
+        tag_ids = [tag_id, *(t.id for t in tags_for(session, bot.tags or ()))] if bot else []
+        session.commit()
     if tag_id is None:
         return
     keys = [
@@ -1009,7 +1093,7 @@ def keep_bot_tag(session_factory: sessionmaker, bot_id: int) -> None:
         for key, (link, _) in links.items()
         if link.bot_id == bot_id
     ]
-    edit_many(session_factory, keys, add_tag_ids=[tag_id])
+    edit_many(session_factory, keys, add_tag_ids=list(dict.fromkeys(tag_ids)))
 
 
 def _tag_name(name: str) -> str:

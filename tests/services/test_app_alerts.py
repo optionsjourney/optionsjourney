@@ -71,3 +71,41 @@ def test_mark_read_marks_only_the_alerts_given(factory, monkeypatch):
     assert app_alerts.unread_count(factory) == 1
     assert app_alerts.mark_read(factory, [first], NOW) == 0  # already read
     assert app_alerts.mark_read(factory, [], NOW) == 0
+
+
+def test_add_can_skip_sending_for_an_alert_already_sent(factory, monkeypatch):
+    sent = []
+    monkeypatch.setattr(notify, "send_soon", lambda sf, event: sent.append(event))
+    assert app_alerts.add(
+        factory, dedupe_key="k", kind="user_alert", title="SPX went below", detail="d",
+        link="/alerts", now=NOW, send=False,
+    )  # fmt: skip
+    assert sent == [] and app_alerts.unread_count(factory) == 1
+
+
+def test_a_new_alert_is_handed_on_for_the_popup_once(factory, monkeypatch):
+    """#275: every open page pops up a new alert."""
+    monkeypatch.setattr(notify, "send_soon", lambda *a, **k: None)
+    new = []
+    app_alerts.set_on_new(new.append)
+    try:
+        _add(factory, title="SPX went above 7,600.00")
+        _add(factory, title="SPX went above 7,600.00")  # the same key: not again
+    finally:
+        app_alerts.set_on_new(None)
+    [alert] = new
+    assert alert["title"] == "SPX went above 7,600.00" and alert["link"] == "/journal"
+    assert alert["id"] and alert["detail"] == "d"
+
+
+def test_a_failing_popup_never_fails_add(factory, monkeypatch):
+    monkeypatch.setattr(notify, "send_soon", lambda *a, **k: None)
+
+    def broken(alert):
+        raise RuntimeError("socket down")
+
+    app_alerts.set_on_new(broken)
+    try:
+        assert _add(factory) is True
+    finally:
+        app_alerts.set_on_new(None)

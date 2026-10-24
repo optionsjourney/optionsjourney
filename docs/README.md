@@ -16,6 +16,7 @@ Documentation is a first-class part of this project. A feature isn't done until 
   - [charts.md](developer/charts.md): Charts, the risk graph and the Trade page's chain, from Tracker2, and the server side they expect
   - [bots.md](developer/bots.md): bots, their tables, entries and exits
   - [orders.md](developer/orders.md): the one path every order takes to a broker, the check, and unclear outcomes
+  - [ideas.md](developer/ideas.md): Trade Ideas and the Pending drawer: tables, pricing and owners
   - [help-and-tooltips.md](developer/help-and-tooltips.md): the in-app Help pages, the ⓘ tips and the link tests
   - [releasing.md](developer/releasing.md): making a release and publishing it to the public repo
   - [site.md](developer/site.md): the website, optionsjourney.com: how it's built and deployed
@@ -102,7 +103,7 @@ Documentation is a first-class part of this project. A feature isn't done until 
 | [0075](decisions/0075-arm-and-switch-many-bots.md) | Arm, turn off and switch Live or Paper for many bots at once | Accepted |
 | [0076](decisions/0076-manage-panel-on-the-journal.md) | A Manage panel on every journal row, built from the full pages' own sections | Accepted |
 | [0077](decisions/0077-trade-popups.md) | Trade popups, recorded from the journal after each sync | Accepted |
-| [0078](decisions/0078-pl-at-the-close-from-either-broker.md) | P/L at the close from either broker, corrected to the official close (replaces part of 0062) | Accepted |
+| [0078](decisions/0078-pl-at-the-close-from-either-broker.md) | P/L at the close from either broker, corrected to the official close (replaces part of 0062) | Accepted, amended by 0106 |
 | [0079](decisions/0079-schedule-drawer.md) | Today's schedule as Tracker2's drawer, skipping any day shown (replaces part of the slice 20 spec) | Accepted |
 | [0080](decisions/0080-schwab-answers-when-tastytrade-is-down-or-stale.md) | Schwab answers when TastyTrade is down or stale (refines 0021) | Accepted |
 | [0081](decisions/0081-watch-rules-hold-30-seconds-and-quiet-quotes-stay-fresh.md) | Delta and ratio watch rules hold 30 seconds; a quiet quote on a live stream stays fresh (builds on 0034) | Accepted |
@@ -116,7 +117,7 @@ Documentation is a first-class part of this project. A feature isn't done until 
 | [0089](decisions/0089-chart-news-from-finnhub-and-plex-fonts-in-the-app.md) | Charts' News panel from Finnhub with an optional key; IBM Plex fonts stored in the app | Replaced by 0090 in part |
 | [0090](decisions/0090-chart-news-works-without-a-key.md) | Chart news works without a key (Yahoo Finance), Finnhub when a key is set | Accepted |
 | [0091](decisions/0091-after-hours-marks-from-the-last-real-quote.md) | After hours, an option with no market is priced at its last real mark | Accepted |
-| [0092](decisions/0092-stocks-performance-from-daily-saves.md) | Stocks performance comes from daily saves of holdings and closes, after each close | Accepted |
+| [0092](decisions/0092-stocks-performance-from-daily-saves.md) | Stocks performance comes from daily saves of holdings and closes, after each close | Superseded by 0113 (chart and daily save); the ticker drawer still stands |
 | [0093](decisions/0093-public-release-license-and-disclaimer.md) | Public releases: PolyForm Noncommercial, a trading disclaimer, and a separate public repo | Accepted |
 | [0094](decisions/0094-install-to-a-fixed-folder-with-logs.md) | The installer puts the app in a fixed folder; logs go to a file | Accepted |
 | [0095](decisions/0095-new-logo-vector-o-ring-check.md) | A new vector logo: an O-ring with a check-mark arrow | Accepted |
@@ -129,6 +130,17 @@ Documentation is a first-class part of this project. A feature isn't done until 
 | [0102](decisions/0102-demo-seats-a-manager-and-cookie-routing.md) | Demo seats: a seat manager, Caddy routing by cookie, and updates only when seats are empty | Accepted, amended by 0103 |
 | [0103](decisions/0103-demo-user-firewall.md) | The demo user is fenced off from the Mac's other services, and `oj-demo` lives where only root can change it | Accepted |
 | [0104](decisions/0104-open-from-other-devices-is-a-settings-switch.md) | Open from other devices is a switch in Settings | Accepted |
+| [0105](decisions/0105-the-bell-opens-recent-alerts.md) | The bell opens a list of recent alerts; its number counts new alerts and problems | Accepted |
+| [0106](decisions/0106-quieter-alerts.md) | Quieter alerts: no daily settled-P/L alert, and sync alerts only for brokers in use | Accepted |
+| [0107](decisions/0107-alerts-page-tabs.md) | The Alerts page has Price alerts and Trades tabs, as Tracker2 | Accepted |
+| [0108](decisions/0108-auto-match-after-sync.md) | A sync matches new trades to their bot on its own | Accepted |
+| [0109](decisions/0109-settle-switch-in-settings.md) | The Settle expirations switch moves to Settings | Accepted |
+| [0110](decisions/0110-one-set-of-tags.md) | One set of tags: a bot's tags are journal tags, all on its trades | Accepted |
+| [0111](decisions/0111-journal-date-picker.md) | The Journal's dates are one picker, as Tracker2 | Accepted |
+| [0112](decisions/0112-sqlite-wal-and-busy-timeout.md) | SQLite runs in WAL mode with a 10-second busy timeout | Accepted |
+| [0113](decisions/0113-stocks-value-from-holdings-and-fills.md) | The Stocks tab's value chart is worked back from today's holdings and the synced fills | Accepted |
+| [0114](decisions/0114-trade-ideas-and-pending-orders.md) | Trade Ideas, and a Pending drawer for every working order | Accepted (outside orders being changeable replaced by 0115) |
+| [0115](decisions/0115-outside-orders-read-only.md) | Only orders the app sent for you can be changed or cancelled | Accepted |
 
 ## Writing a new decision
 

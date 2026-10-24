@@ -72,6 +72,9 @@ def register(app: Flask) -> SocketIO:
         )
     )
 
+    # #275: every open page pops up a new alert
+    app_alerts.set_on_new(lambda alert: push("alert_fired", alert, None))
+
     live.watch_journal(services.session_factory, journal_changed)
     # #183: the Paper trades view reloads when a pretend fill is saved
     live.watch_paper(services.session_factory, lambda: push(live.PAPER_EVENT, {}, None))

@@ -2,7 +2,7 @@
 
 from decimal import Decimal
 
-from optionsjourney.core.holdings import StockPosition, holdings
+from optionsjourney.core.holdings import Holding, StockPosition, holdings, stock_summary
 
 
 def held(ticker, quantity, basis, account="tastytrade:A", close=None):
@@ -43,3 +43,34 @@ def test_short_shares_and_missing_prices():
 
 def test_zero_quantities_are_left_out():
     assert holdings([held("X", "0", "1")], {}, {}) == []
+
+
+def test_market_value_is_quantity_times_price():
+    held = Holding("AAPL", Decimal(10), Decimal(100), Decimal(110), None)
+    assert held.market_value == Decimal(1100)
+    assert Holding("AAPL", Decimal(10), Decimal(100), None, None).market_value is None
+
+
+def test_summary_adds_up_priced_holdings():
+    rows = [
+        Holding("A", Decimal(10), Decimal(100), Decimal(110), Decimal(20)),  # pl 100, mv 1100
+        Holding("B", Decimal(-5), Decimal(50), Decimal(40), Decimal(-10)),  # pl 50,  mv -200
+        Holding("C", Decimal(3), Decimal(10), None, None),  # unpriced: left out
+    ]
+    s = stock_summary(rows)
+    assert s.total_pl == Decimal(150)
+    assert s.total_pl_percent == Decimal(150) / Decimal(1250) * 100  # cost of priced rows only
+    assert s.market_value == Decimal(900)
+    assert s.day_pl == Decimal(10)
+    assert s.day_pl_percent == Decimal(10) / (Decimal(900) - Decimal(10)) * 100
+
+
+def test_summary_of_nothing():
+    s = stock_summary([])
+    assert (s.total_pl, s.total_pl_percent, s.market_value, s.day_pl, s.day_pl_percent) == (
+        0,
+        None,
+        0,
+        0,
+        None,
+    )

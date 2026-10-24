@@ -7,7 +7,8 @@ transfers in.
 
 - Cost basis is the broker's average price for the shares held. Short
   shares count as negative quantities.
-- Today's P/L is measured from the previous close."""
+- Today's P/L is measured from the previous close.
+- The summary cards add up the priced holdings only; unpriced rows are left out."""
 
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -40,6 +41,10 @@ class Holding:
         return abs(self.quantity) * self.cost_basis
 
     @property
+    def market_value(self) -> Decimal | None:
+        return None if self.price is None else self.quantity * self.price
+
+    @property
     def pl(self) -> Decimal | None:
         return None if self.price is None else self.quantity * (self.price - self.cost_basis)
 
@@ -70,3 +75,29 @@ def holdings(
         today_pl = None if price is None or prev is None else quantity * (price - prev)
         rows.append(Holding(ticker, quantity, basis, price, today_pl))
     return rows
+
+
+@dataclass(frozen=True)
+class StockSummary:
+    total_pl: Decimal
+    total_pl_percent: Decimal | None  # of the cost of the priced holdings
+    market_value: Decimal
+    day_pl: Decimal
+    day_pl_percent: Decimal | None  # of yesterday's value (market value less today's P/L)
+
+
+def stock_summary(rows: Iterable[Holding]) -> StockSummary:
+    """Totals over the priced holdings; a row with no price is left out."""
+    priced = [r for r in rows if r.price is not None]
+    total_pl = sum((r.pl for r in priced), ZERO)
+    cost = sum((r.cost for r in priced), ZERO)
+    market_value = sum((r.market_value for r in priced), ZERO)
+    day_pl = sum((r.today_pl for r in priced if r.today_pl is not None), ZERO)
+    before = market_value - day_pl
+    return StockSummary(
+        total_pl,
+        total_pl / cost * 100 if cost else None,
+        market_value,
+        day_pl,
+        day_pl / before * 100 if before else None,
+    )

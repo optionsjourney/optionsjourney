@@ -13,7 +13,23 @@
 <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
     <section id="trade-chain" class="lg:col-span-3 h-[70vh] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"></section>
     <div class="lg:col-span-2 flex flex-col gap-4">
-        <section id="trade-ticket" {% if demo_mode %}data-demo="1" {% endif %}{% if tour_tray %}data-tour-tray='{{ tour_tray | tojson }}' {% endif %}class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm"></section>
+        {# Trade Ideas (#292): the idea this ticket was opened from (js/trade/trade_page.js fills it). #}
+        <div id="idea-banner" hidden class="px-3 py-2 rounded-lg border border-amber-500/60 bg-amber-500/10 text-sm text-gray-800 dark:text-gray-100"></div>
+        <section id="trade-ticket" {% if demo_mode %}data-demo="1" {% endif %}{% if tour_tray %}data-tour-tray='{{ tour_tray | tojson }}' {% endif %}{% if idea %}data-idea='{{ idea | tojson }}' {% endif %}class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm"></section>
+        {# Idea ☆'s save dialog (js/ideas/save.js): its own container, so ticket renders never wipe what you type. #}
+        <section id="idea-save" hidden aria-label="Save as an idea" class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm">
+            <div class="font-semibold mb-2">Save this ticket as an idea</div>
+            <label class="flex flex-col text-xs text-gray-500">Name
+                <input data-idea-label maxlength="80" autocomplete="off" class="mt-0.5 px-1 py-1 rounded border border-gray-300 dark:border-gray-600 bg-transparent text-gray-900 dark:text-gray-100"></label>
+            <label class="flex flex-col text-xs text-gray-500 mt-2">Note (optional)
+                <textarea data-idea-note rows="2" class="mt-0.5 px-1 py-1 rounded border border-gray-300 dark:border-gray-600 bg-transparent text-gray-900 dark:text-gray-100"></textarea></label>
+            <div data-idea-summary class="mt-2 text-xs tabular-nums text-gray-600 dark:text-gray-300"></div>
+            <div data-idea-status class="mt-2 text-xs text-gray-500 dark:text-gray-400" role="status"></div>
+            <div class="flex gap-2 mt-2">
+                <button type="button" data-act="idea-submit" data-idea-submit class="px-3 py-1 rounded bg-blue-600 text-white disabled:opacity-40">Save</button>
+                <button type="button" data-act="idea-cancel" data-idea-cancel class="px-3 py-1 rounded border border-gray-300 dark:border-gray-600">Close</button>
+            </div>
+        </section>
         {# Its own container: ticket renders and quote pushes never touch it. #}
         <section id="trade-working" class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm"></section>
     </div>

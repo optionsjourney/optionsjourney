@@ -51,6 +51,8 @@ optionsjourney/
 │   │       │                 Tracker2's chart grid, copied as it is (developer/charts.md)
 │   │       ├── js/modeler/   The risk graph's pricing and chart drawing, copied from Tracker2
 │   │       ├── js/trade/     The Trade page: Tracker2's chain helpers and ticket logic (copied), the inline chain panel, and the page's own code (tour_tray.js: the demo tour's pre-filled put spread)
+│   │       ├── js/ideas/     Trade Ideas: the Idea ☆ dialog and Trade it banner (save.js), and the Journal's Ideas drawer (drawer.js, model.js)
+│   │       ├── js/pending/   The Journal's Pending orders drawer (drawer.js, model.js)
 │   │       ├── js/demo_tour.js  The demo's tour box (polls /demo/tour)
 │   │       └── vendor/       Their libraries: Lightweight Charts, Socket.IO client, Tailwind;
 │   │                         vendor/fonts/ holds the charts' IBM Plex fonts

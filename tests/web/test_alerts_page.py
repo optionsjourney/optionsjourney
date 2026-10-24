@@ -68,7 +68,8 @@ def test_setting_and_handling_a_price_alert(app):
         headers=ORIGIN,
     )
     page = client.get("/alerts").get_data(as_text=True)
-    assert "SPX goes below 7,700.00" in page and "hedge" in page
+    row = page.split('id="price-alerts"')[1].split("</table>")[0]
+    assert "SPX" in row and "goes below 7,700.00" in row and "hedge" in row
 
     class Hub:
         def subscribe(self, keys):
@@ -88,7 +89,9 @@ def test_setting_and_handling_a_price_alert(app):
     assert 'class="nav__badge"' in client.get("/journal").get_data(as_text=True)
     [alert] = user_alerts.triggered(services_factory(app))
     client.post(f"/alerts/{alert.id}/dismiss", headers=ORIGIN)
-    assert "SPX went below" not in client.get("/alerts").get_data(as_text=True)
+    page = client.get("/alerts").get_data(as_text=True)
+    assert "Set again" not in page  # off the list of things to handle
+    assert "SPX went below" in page.split('id="recent-alerts"')[1]  # still in the history (#272)
 
 
 def test_a_bad_alert_is_explained(app):
@@ -224,3 +227,142 @@ def test_set_again_and_dismiss_have_tips(app):
     html = client.get("/alerts").get_data(as_text=True)
     assert re.search(r'aria-describedby="tip-alerts-set-again-\d+"', html)
     assert re.search(r'id="tip-alerts-dismiss-\d+"', html)
+
+
+def _badge(client):
+    html = client.get("/journal").get_data(as_text=True)
+    return re.search(r"<span[^>]*data-alert-badge[^>]*>(.*?)</span>", html)
+
+
+def _fire_spx_alert(app, client):
+    from decimal import Decimal
+
+    from optionsjourney.core.quotes import Quote
+    from optionsjourney.services import user_alerts
+
+    client.post(
+        "/alerts/new",
+        data={"kind": "price", "symbol": "spx", "direction": "below", "level": "7,700"},
+        headers=ORIGIN,
+    )
+
+    class Hub:
+        def subscribe(self, keys):
+            pass
+
+        def latest(self, key):
+            return Quote(
+                key, Decimal("7600"), Decimal("7600"), Decimal("7600"), "schwab", datetime.now(UTC)
+            )
+
+    with app.app_context():
+        user_alerts.check(
+            services().session_factory, Hub(), open_pl=lambda k: None, notify=lambda e: None
+        )
+
+
+def test_a_stale_sync_is_listed_but_doesnt_hold_the_badge(app):
+    """#272: a note (worth a look) shows on the page and in the bell, but only
+    problems keep the badge up until they're fixed."""
+    with app.app_context(), services().session_factory() as session:
+        then = datetime.now(UTC) - timedelta(days=4)
+        session.add(
+            SyncState(broker="schwab", account_number="12349999", synced_through=then,
+                      last_attempt_at=then)
+        )  # fmt: skip
+        session.commit()
+    client = app.test_client()
+    assert "Schwab last synced 4 days ago" in client.get("/alerts").get_data(as_text=True)
+    assert "hidden" in _badge(client).group(0)
+    standing = client.get("/api/alerts/recent").get_json()["standing"]
+    assert [(a["level"], a["title"]) for a in standing] == [
+        ("warning", "Schwab last synced 4 days ago")
+    ]
+
+
+def test_a_fired_alert_counts_until_the_bell_shows_it(app):
+    """#272: an alert that went off is new until seen; it stays on the page to set again."""
+    client = app.test_client()
+    _fire_spx_alert(app, client)
+    assert _badge(client).group(1) == "1"
+    data = client.get("/api/alerts/recent").get_json()
+    [fired] = [a for a in data["recent"] if "SPX went below" in a["title"]]
+    assert data["standing"] == []  # #275: listed once, as the new alert
+    assert fired["unread"] is True and fired["link"]
+    assert data["unread"] == 0
+    assert "hidden" in _badge(client).group(0)
+    again = client.get("/api/alerts/recent").get_json()["recent"]
+    assert [a["unread"] for a in again] == [False]
+    assert "Set again" in client.get("/alerts").get_data(as_text=True)
+
+
+def test_the_bell_lists_problems_first_and_the_newest_alerts(app):
+    from optionsjourney.services import app_alerts
+
+    with app.app_context(), services().session_factory() as session:
+        now = datetime.now(UTC)
+        session.add(
+            SyncState(broker="schwab", account_number="12349999", synced_through=now,
+                      last_attempt_at=now, last_error="Log in.")
+        )  # fmt: skip
+        session.add(
+            SyncState(broker="tastytrade", account_number="5WX0001",
+                      synced_through=now - timedelta(days=5), last_attempt_at=now)
+        )  # fmt: skip
+        session.commit()
+        for n in range(20):
+            app_alerts.add(
+                services().session_factory, dedupe_key=f"k{n}", kind="settled",
+                title=f"Settled {n}", detail="d", link="/journal",
+                now=datetime(2026, 10, 1, tzinfo=UTC) + timedelta(minutes=n),
+            )  # fmt: skip
+    client = app.test_client()
+    data = client.get("/api/alerts/recent").get_json()
+    assert [a["level"] for a in data["standing"]] == ["problem", "warning"]
+    assert data["standing"][0]["link"] == "/transactions"
+    assert [a["title"] for a in data["recent"]][:2] == ["Settled 19", "Settled 18"]
+    assert len(data["recent"]) == 15
+    assert data["recent"][0]["created_at"].startswith("2026-10-01T")
+    # only the 15 shown are marked read; the problem still holds the badge
+    assert data["unread"] == 5
+    assert _badge(client).group(1) == "6"
+
+
+def test_the_page_calls_its_list_recent(app):
+    _add_two(app)
+    html = app.test_client().get("/alerts").get_data(as_text=True)
+    assert ">Recent</h2>" in html and ">Unread</h2>" not in html
+
+
+def test_the_page_has_price_alerts_and_trades_tabs(app):
+    """#274: as Tracker2's Alerts page, with the price alerts first."""
+    client = app.test_client()
+    client.post(
+        "/alerts/new",
+        data={"kind": "price", "symbol": "spx", "direction": "below", "level": "7,700"},
+        headers=ORIGIN,
+    )
+    html = client.get("/alerts").get_data(as_text=True)
+    assert html.index('id="price"') < html.index('id="trades"')
+    assert 'data-tab="price"' in html and 'data-tab="trades"' in html
+    row = html.split('id="price-alerts"')[1].split("</table>")[0]
+    assert "SPX" in row and "goes below 7,700.00" in row and "Armed" in row
+    assert "Turn off" in row
+    for show in ("active", "armed", "fired", "all"):
+        assert f"show={show}" in html
+
+
+def test_turning_an_alert_off_from_the_tab(app):
+    from optionsjourney.services import user_alerts
+
+    client = app.test_client()
+    client.post(
+        "/alerts/new",
+        data={"kind": "price", "symbol": "spx", "direction": "below", "level": "7,700"},
+        headers=ORIGIN,
+    )
+    [alert] = user_alerts.active(services_factory(app))
+    client.post(f"/alerts/{alert.id}/disable", headers=ORIGIN)
+    assert user_alerts.active(services_factory(app)) == []
+    html = client.get("/alerts?show=all").get_data(as_text=True)
+    assert "Off" in html.split('id="price-alerts"')[1].split("</table>")[0]

@@ -86,7 +86,6 @@ def _record_starts(monkeypatch):
     for module, name in (
         (background.backups, "start_scheduler"),
         (background.pl_day, "start"),
-        (background.stock_history, "start"),
         (background.expiry_settle, "start"),
         (background.bot_loops, "start"),
         (background.auto_sync, "start"),
@@ -106,7 +105,7 @@ def test_start_all_skips_backups_and_fill_sync_in_demo(monkeypatch, demo_app):
     monkeypatch.setattr(s.demo.engine, "start", lambda: started.append("demo.engine"))
     background.start_all(s.settings.database_path, s)
     assert sorted(started) == sorted([
-        "alert_checker", "pl_day.start", "stock_history.start", "expiry_settle.start",
+        "alert_checker", "pl_day.start", "expiry_settle.start",
         "bot_loops.start", "auto_sync.start", "demo.engine",
     ])  # fmt: skip
 

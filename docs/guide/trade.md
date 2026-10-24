@@ -72,6 +72,9 @@ The message under **Send** says what happened. Two kinds of message mean nothing
 
 Either way, fix the cause and review again. If a message says the outcome is **unclear**, or you aren't sure whether the order went out, look in **Working orders** below and at your broker before trying again, so you don't place it twice. The [order log](pausing-trading.md) shows every attempt.
 
+## Idea ☆
+**Idea ☆** next to Review order saves the ticket as an [idea](ideas.md): the legs, quantity and entry price, with a name and an optional note. Nothing is sent. Open your saved ideas from the **💡 Ideas** button on the [Journal](journal.md), where each one shows how it would have done. **Trade it** on an idea brings it back to this page.
+
 ## Manage with (a manual bot's rules)
 Under **Send** there's a **Manage with** choice. It starts on **Place only**: Send then sends your order and nothing else, as always.
 
@@ -90,12 +93,13 @@ After a good review, a box **Or manage it with a bot** appears under **Send**. I
 
 ## Working orders
 
-The list shows working orders on all your accounts. When more than one account has some, a menu next to the heading picks **All accounts** or one account (each with its count), and each order names its account. Ten orders show at a time; **Show more** adds the next ten. Each order shows its price, credit or debit, and its status, then each leg on its own line (for example "Sell 1 SPXW 23 Oct 7645C").
-The list under the ticket shows the account's orders still waiting at the broker.
-- **Orders you sent from this page** have **Replace** (type a new price and press it; the legs and quantity stay the same, and a credit stays a credit) and **Cancel**.
+The list shows the orders still waiting at the broker on all your accounts; the Journal's [Pending orders](journal.md#pending-orders) drawer shows the same orders, with the same rules. When more than one account has some, a menu next to the heading picks **All accounts** or one account (each with its count), and each order names its account. Ten orders show at a time; **Show more** adds the next ten. Each order shows its price, credit or debit, and its status, then each leg on its own line (for example "Sell 1 SPXW 23 Oct 7645C").
+- **Orders you sent from this page** have **Replace** (type a new price and press it; the legs and quantity stay the same, and a credit stays a credit) and **Cancel**. Each order says where it came from: **You**, **Outside the app**, or the bot's name.
 - **A partly filled order can only be cancelled.** Replacing it would send the full size again, so Replace isn't offered. Cancel it, then review a new order for the rest.
-- **If your broker didn't give back an order number when you sent it,** the order shows here without Replace or Cancel. Cancel it at your broker.
-- **Orders placed by a bot, or at your broker, are shown but can't be changed here.** That keeps a bot's exits from being broken by accident. Change those where they came from, or pause the bot (see [Pausing trading](pausing-trading.md)).
+- **Orders you placed at your broker or in another app are shown but can't be changed here.** The order says "Placed outside the app. Change or cancel it at your broker."
+- **Orders placed by a bot, or by a trade the app manages for you (its stop and target), are shown but can't be changed here.** That keeps a bot's exits from being broken by accident. The order says "Managed by …, use its controls.": change it from the bot's run page or the trade in the [Journal](journal.md), or pause the bot (see [Pausing trading](pausing-trading.md)).
+- **Some orders show no buttons for a while,** with the reason: when your broker is already changing the order, or when the app sent the order but can't tell which part of it owns it (change or cancel that one at your broker).
+- **Replace and Cancel go through the same checks as a new order:** Freeze stops them (see [Pausing trading](pausing-trading.md)), and Replace is held to **Largest order you can place** (below).
 
 ## Alerts
 **Add alert** sets an alert on the price of the spread you built, for example "tell me when it goes below 2.50". It shows on the [Alerts](alerts.md) page, where you can delete it, and goes to Discord or Telegram if you've set those up.

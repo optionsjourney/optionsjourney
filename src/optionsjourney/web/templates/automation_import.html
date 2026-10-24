@@ -99,7 +99,7 @@
         <div class="bot-form__grid">
             <label>Name <input type="text" name="name" value="{{ choices.name }}" maxlength="100"></label>
             {{ problem('name') }}
-            <label>Journal tag (the tag its trades get in your journal)
+            <label>Tag (its main tag, put on its trades in your journal; add more on its page later)
                 <select name="tag_id">
                     <option value="">Pick one</option>
                     {% for t in journal_tags %}<option value="{{ t.id }}" {{ 'selected' if t.id | string == choices.tag_id }}>{{ t.name }}</option>{% endfor %}

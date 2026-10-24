@@ -268,3 +268,112 @@ def test_unlink_keeps_a_name_you_gave_it(session_factory):  # noqa: F811
     bot_match.file(factory, bot, [PUT_KEY])
     bot_match.unlink(factory, PUT_KEY)
     assert journal.find_entry(journal.load_journal(factory), PUT_KEY).name == "My put"
+
+
+# --- #276: a sync matches new trades to their bot on its own ------------------------
+
+
+def _timed_bot(factory):
+    """A live bot whose entry time is when the put trade opened: a strong match."""
+    from optionsjourney.core.market import MARKET_TZ
+    from optionsjourney.db.models import Bot, BotEntryTime
+
+    opened = journal.find_entry(journal.load_journal(factory), PUT_KEY).position.opened_at
+    bot_id = make_shape(factory, "short_put", live=True)
+    with factory() as session:
+        session.query(BotEntryTime).filter_by(bot_id=bot_id).delete()
+        session.add(BotEntryTime(bot_id=bot_id, time=opened.astimezone(MARKET_TZ)
+                                 .strftime("%H:%M"), enabled=True))  # fmt: skip
+        session.get(Bot, bot_id).name = "Timed"
+        session.commit()
+    return bot_store.load(factory, bot_id)
+
+
+def test_auto_match_links_a_strong_match_and_names_it(session_factory):  # noqa: F811
+    factory = session_factory
+    bot = _timed_bot(factory)
+    assert bot_match.auto_match(factory) == {"Timed": 1}
+    entry = journal.find_entry(journal.load_journal(factory), PUT_KEY)
+    assert entry.bot.bot_id == bot.id and entry.name == "Timed"
+    assert bot_match.auto_match(factory) == {}  # linked already
+
+
+def test_auto_match_leaves_ties_and_guesses_alone(session_factory, monkeypatch):  # noqa: F811
+    factory = session_factory
+    bot = _timed_bot(factory)
+    twin = replace(bot, id=997, name="Twin")
+    monkeypatch.setattr(bot_store, "listing", lambda factory: [bot, twin])
+    assert bot_match.auto_match(factory) == {}  # a tie: yours to choose
+    monkeypatch.setattr(bot_store, "listing", lambda factory: [replace(bot, entry_times=())])
+    assert bot_match.auto_match(factory) == {}  # the legs alone are a guess
+
+
+def test_auto_match_never_relinks_a_trade_you_took_off(session_factory):  # noqa: F811
+    factory = session_factory
+    _timed_bot(factory)
+    bot_match.auto_match(factory)
+    bot_match.unlink(factory, PUT_KEY)
+    assert bot_match.auto_match(factory) == {}
+    assert len(bot_match.find_all(factory).groups) == 1  # Match all bots still offers it
+
+
+def test_auto_match_never_relinks_an_undone_match(session_factory):  # noqa: F811
+    factory = session_factory
+    bot = _timed_bot(factory)
+    bot_match.undo(factory, bot_match.file(factory, bot, [PUT_KEY]))
+    assert bot_match.auto_match(factory) == {}
+
+
+def test_auto_match_leaves_a_trade_with_another_bots_tag(session_factory):  # noqa: F811
+    factory = session_factory
+    _timed_bot(factory)
+    other = _other_bot(factory)
+    from optionsjourney.db.models import Bot
+
+    with factory() as session:
+        session.get(Bot, other.id).tag_id = journal.tag_for(factory, "Other").id
+        session.commit()
+    journal.edit_many(factory, [PUT_KEY], add_tags="Other")
+    assert bot_match.auto_match(factory) == {}
+
+
+# --- #278: one set of tags: all of a bot's tags are on its trades ---------------------
+
+
+def _tag_id(factory, name):
+    from optionsjourney.db.models import Tag
+
+    with factory() as session:
+        return session.query(Tag).filter_by(name=name).one().id
+
+
+def _tag_names(factory, key=PUT_KEY):
+    return sorted(t.name for t in journal.find_entry(journal.load_journal(factory), key).tags)
+
+
+def test_a_matched_trade_carries_all_the_bots_tags_as_they_change(session_factory):  # noqa: F811
+    factory = session_factory
+    bot = short_put_bot(factory)
+    bot_match.file(factory, bot, [PUT_KEY])
+    bot_store.tag_many(factory, [bot.id], add=["MEIC"], remove=[])
+    assert _tag_names(factory) == ["0DTE", "MEIC"]
+    meic = str(_tag_id(factory, "MEIC"))
+    view = journal.load_journal(factory, journal.Filters(tags=(meic,)))
+    assert [e.position.key for e in view.entries] == [PUT_KEY]  # a tag filter finds it
+    bot_store.tag_many(factory, [bot.id], add=[], remove=["MEIC"])
+    assert _tag_names(factory) == ["0DTE"]  # old trades follow the bot
+
+
+def test_renaming_or_deleting_a_tag_changes_it_on_bots(session_factory):  # noqa: F811
+    import pytest
+
+    factory = session_factory
+    bot = short_put_bot(factory)
+    bot_store.tag_many(factory, [bot.id], add=["MEIC"], remove=[])
+    meic = _tag_id(factory, "MEIC")
+    journal.rename_tag(factory, meic, "Multi entry")
+    assert bot_store.load(factory, bot.id).tags == ("0DTE", "Multi entry")
+    journal.delete_tag(factory, meic)
+    assert bot_store.load(factory, bot.id).tags == ("0DTE",)
+    with pytest.raises(journal.JournalError, match="main tag"):
+        journal.delete_tag(factory, bot.tag_id)

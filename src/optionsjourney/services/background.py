@@ -8,7 +8,6 @@ from optionsjourney.services import (
     expiry_settle,
     fill_sync,
     pl_day,
-    stock_history,
 )
 from optionsjourney.services.user_alerts import start_alert_checker
 
@@ -19,7 +18,6 @@ def start_all(database_path, services) -> None:
         backups.start_scheduler(database_path, services.session_factory)
     start_alert_checker(services)
     pl_day.start(services)
-    stock_history.start(services)
     expiry_settle.start(services)
     bot_loops.start(services)
     auto_sync.start(services)

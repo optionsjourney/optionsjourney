@@ -10,7 +10,7 @@ import { buildPayoffFns, curveStats, defaultIV, lnProbBelow, expiryMs } from './
 // Every entry below corresponds to one colour literal in ntflux's source painter.
 export const PALETTE = {
   dark: {
-    bg:            '#14141a',
+    bg:            '#111827',   // the app's --bg (gray-900), so the chart sits flush in the page
     gridLine:      'rgba(255,255,255,0.07)',
     zeroLine:      'rgba(255,255,255,0.22)',
     axisLine:      'rgba(255,255,255,0.2)',
@@ -29,7 +29,7 @@ export const PALETTE = {
     probText:      'rgba(255,179,0,0.85)',
     sdFill:        'rgba(255,255,255,0.05)',
     sdEdge:        'rgba(255,255,255,0.18)',
-    tooltipBg:     'rgba(12,12,20,0.88)',
+    tooltipBg:     'rgba(17,24,39,0.92)',
     tooltipEdge:   'rgba(255,255,255,0.12)',
     tooltipLabel:  'rgba(180,180,180,0.85)',
     pnlPos:        '#4ade80',
@@ -839,7 +839,10 @@ export function renderPayoffChart(canvasEl, opts) {
         e.preventDefault();
         // Zoom centered on the cursor: the price under the cursor stays under the cursor.
         const cursorPrice = Sminc + (cx - padc.l) / chartWc * (Smaxc - Sminc);
-        const zoomFactor = e.deltaY > 0 ? 1.1 : 0.9; // wheel down = zoom out, up = zoom in
+        // Wheel down = zoom out, up = zoom in, scaled by how far the wheel moved: a mouse notch
+        // (~100px) zooms 5%, and a trackpad's many small deltas zoom gently instead of 10% each.
+        const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY; // Firefox reports lines
+        const zoomFactor = Math.exp(Math.max(-100, Math.min(100, dy)) * 0.0005);
         // Floored against the position's own auto-fit range (see minRangeFor above) -- each
         // wheel tick multiplies the CURRENT range by 0.9 with no floor otherwise, so repeated
         // zoom-in ticks (an accidental trackpad scroll easily fires dozens in a row) compound

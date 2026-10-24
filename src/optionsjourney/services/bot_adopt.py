@@ -139,10 +139,12 @@ def _held_legs(position: Position) -> tuple[list[rules.HeldLeg], str | None]:
     return legs, problem
 
 
-def _owner(session_factory, order_id: str | None) -> str | None:
+def owner(session_factory, order_id: str | None) -> str | None:
     """The bot whose active run carries this order id (adopt.check_position's C1). A run
     whose rules were removed (manual bots, #158: HANDED_BACK) no longer owns the trade,
-    so it can take rules again. Called under _LOCK: the one guard against two owners."""
+    so it can take rules again. Called under _LOCK when adopting: the one guard against
+    two owners. services/trade_orders also reads it, so a bot's order is never changed
+    from the Trade page."""
     if order_id is None:
         return None
     with session_factory() as session:
@@ -172,8 +174,8 @@ def find(deps, key: str) -> Trade | None:
         problem = "Only a trade at TastyTrade or Schwab can be handed to a bot."
     elif order_id is None:
         problem = "It has no broker order id to link a bot to."
-    elif (owner := _owner(deps.session_factory, order_id)) is not None:
-        problem = f"It's already {owner}'s trade."
+    elif (holder := owner(deps.session_factory, order_id)) is not None:
+        problem = f"It's already {holder}'s trade."
     problem = problem or rules.trade_problem(
         legs, position.opened_at.astimezone(MARKET_TZ).date(), _today(deps)
     )

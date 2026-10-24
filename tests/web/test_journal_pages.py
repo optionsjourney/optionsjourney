@@ -1,4 +1,3 @@
-import json
 import re
 from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
@@ -98,6 +97,20 @@ def test_journal_page(client):
     assert "data-schedule-open" in html and 'id="schedule-drawer"' in html  # Tracker2's button
 
 
+def test_journal_has_the_pending_drawer(client):
+    html = client.get("/journal").get_data(as_text=True)
+    assert "data-pending-open" in html and 'id="pending-drawer"' in html
+    assert "/help/journal#pending-orders" in html  # the drawer's ⓘ tip
+    assert "pending/drawer.js" in html
+
+
+def test_journal_has_the_ideas_drawer(client):
+    html = client.get("/journal").get_data(as_text=True)
+    assert "data-ideas-open" in html and 'id="ideas-drawer"' in html
+    assert "/help/ideas" in html  # the button's and the drawer's ⓘ tip
+    assert "ideas/drawer.js" in html
+
+
 def test_edit_a_trade(client):
     html = client.get(_trade_url()).get_data(as_text=True)
     assert "Split into put and call spreads" in html
@@ -133,7 +146,7 @@ def test_a_trades_tags_are_ticks_and_its_bots_tag_stays(client):
     html = client.get(_trade_url()).get_data(as_text=True)
     assert 'data-tag-list="No tags"' in html and 'data-tag-fixed="[&#34;0DTE&#34;]"' in html
     assert 'name="tags" value=""' in html  # the bot's tag isn't in the box itself
-    assert "change the bot's Journal tag" in html
+    assert "change the bot's tags" in html
 
     client.post(_trade_url(), data={"name": "", "tags": "", "new_tags": "Wings", "notes": "",
                                     "close_reason": ""}, headers=ORIGIN)  # fmt: skip
@@ -325,12 +338,12 @@ def test_a_tag_a_bot_files_under_cant_be_deleted_from_the_tags_page(client):
                         max_per_day=1, created_at=datetime.now(UTC)))  # fmt: skip
         session.commit()
     html = client.get("/journal/tags").get_data(as_text=True)
-    assert "so it can't be deleted" in html and "pick another Journal tag" in html
+    assert "so it can't be deleted" in html and "take this tag off its Tags" in html
     link = r'bot: <a class="link" href="/automation/\d+#basics"[^>]*>Morning condor</a>'
     assert re.search(link, html)
     client.post(f"/journal/tags/{zero}/delete", headers=ORIGIN)
     html = client.get("/journal/tags").get_data(as_text=True)
-    assert "Give the bot another tag first." in html
+    assert "Give the bot another main tag first." in html
 
 
 def test_expired_trade_waiting_on_the_broker(settings, fake_credentials):
@@ -431,19 +444,45 @@ def test_journal_opens_on_open_trades(settings, fake_credentials):
     client = _closed_trade_client(settings, fake_credentials)
     html = client.get("/journal").get_data(as_text=True)
     assert "$150.00" not in html
-    assert '<option value="" selected>Open + closed today</option>' in html
+    assert '<summary aria-label="Dates">Open + Today</summary>' in html  # #284: the picker
+    assert ">Open + Today (Default)</button>" in html
     assert 'href="/journal/pl"' in html  # P/L keeps its own default
-    assert "Showing open + closed today trades only" in html and 'href="/journal?status=all"' in html
+    assert "trades only, and the numbers below" not in html  # #283: the status menu says it
 
     html = client.get("/journal?status=all").get_data(as_text=True)
     assert "$150.00" in html
-    assert '<option value="all" selected>Open and closed</option>' in html
+    assert '<summary aria-label="Dates">All Time</summary>' in html
     assert 'href="/journal/pl?status=all"' in html
     assert "Showing" not in html
 
     html = client.get("/journal/pl").get_data(as_text=True)
-    assert '<option value="" selected>Open and closed</option>' in html
-    assert '<option value="open" >Open</option>' in html
+    assert '<summary aria-label="Dates">All Time</summary>' in html
+    assert ">Open + Today</button>" in html  # not P/L's default
+
+
+def test_the_date_picker_presets(settings, fake_credentials):
+    """#284 (Tracker2's date range picker): a preset shows open and closed trades opened
+    in its days, rolling with the date; Open + Today and All Time are statuses; a custom
+    range keeps its two days. The closed trade opened 10 days ago."""
+    today = datetime.now(ZoneInfo("America/New_York")).date()
+    ten_ago = datetime.combine(today - timedelta(days=10), time(15), tzinfo=UTC)
+    client = _closed_trade_client(settings, fake_credentials, day=ten_ago)
+
+    def summary(url):
+        html = client.get(url).get_data(as_text=True)
+        return html, html.split('<summary aria-label="Dates">')[1].split("<")[0]
+
+    html, label = summary("/journal?preset=7d&status=open&start=2026-01-01")
+    assert label == "Last 7 Days" and "$150.00" not in html  # older than 7 days
+    html, label = summary("/journal?preset=30d")
+    assert label == "Last 30 Days" and "$150.00" in html  # closed ones too
+    assert 'name="range" value="30d"' in html  # carried when another filter applies
+    html, label = summary("/journal?range=30d&preset=all")
+    assert label == "All Time" and "$150.00" in html
+    html, label = summary("/journal?preset=today&range=30d")
+    assert label == "Open + Today" and "$150.00" not in html
+    html, label = summary("/journal?preset=custom&start=2026-01-01&end=2026-01-31")
+    assert label == "2026-01-01 – 2026-01-31" and "$150.00" not in html
 
 
 def test_journal_opens_with_trades_closed_today(settings, fake_credentials):
@@ -459,6 +498,18 @@ def test_a_dashboard_keeps_its_status(settings, fake_credentials):
     response = client.get("/journal?dashboard=1")
     assert "status=all" in response.location
     assert "$150.00" in client.get(response.location).get_data(as_text=True)
+
+
+def test_a_dashboards_save_shows_only_for_a_change(settings, fake_credentials):
+    """#285: Save to "…" appears once the filters differ from the dashboard's; Delete
+    is a small link; the filters apply on change (Apply only without scripts)."""
+    client = _closed_trade_client(settings, fake_credentials)
+    client.post("/journal/dashboards", data={"name": "All", "status": "all"}, headers=ORIGIN)
+    html = client.get("/journal?dashboard=1&status=all").get_data(as_text=True)
+    assert 'id="save-dashboard"' not in html and "filters__delete" in html
+    assert "<noscript><button" in html and "filters_auto.js" in html
+    html = client.get("/journal?dashboard=1&status=all&q=spx").get_data(as_text=True)
+    assert 'id="save-dashboard"' in html and "Save to “All”" in html
 
 
 def test_pl_view_follows_dashboards(settings, fake_credentials):
@@ -595,6 +646,13 @@ def test_stocks_tab(client):
     assert client.get("/journal/pl?kind=stocks").status_code == 200
 
 
+def test_stocks_tab_opens_the_holdings_from_any_view(client):
+    # The Stocks tab has no Trades / P/L / metrics switch, so it always opens the holdings
+    for page in ("/journal/pl", "/journal/metrics"):
+        html = client.get(page).get_data(as_text=True)
+        assert 'href="/journal?kind=stocks"' in html
+
+
 def test_all_trades_leaves_out_stock_trades(client, monkeypatch):
     assert "SPX Iron Condor" in client.get("/journal").get_data(as_text=True)
     monkeypatch.setattr(journal_service, "is_stock", lambda position: True)
@@ -606,7 +664,8 @@ def test_stocks_tab_shows_holdings_only(client):
     assert "No shares held" in html and "Open Premium" not in html
     # it says it gathers every share in every connected account, not just the app's trades
     assert "across all your connected accounts" in html
-    assert client.get("/api/stocks?kind=stocks").get_json() == {"rows": []}
+    data = client.get("/api/stocks?kind=stocks").get_json()
+    assert data["rows"] == [] and data["summary"]["market_value"] == 0.0
 
 
 def test_stocks_tab_keeps_only_the_account_filter(client):
@@ -659,7 +718,7 @@ def test_the_grid_ticks_trades_for_one_combined_graph_with_totals(client):
     assert 'id="grid-check-all"' in grid and 'id="grid-table-toggle"' in grid
     assert grid.count('class="grid-check"') == grid.count("data-grid-key=") >= 1
     assert 'class="grid-check" value="' + KEY + '" checked' in grid
-    assert grid.count("title=\"Risk graph of") == 1  # one graph, not one per trade
+    assert grid.count('title="Risk graph of') == 1  # one graph, not one per trade
     assert "trade=" + quote(KEY, safe="") + "&embed=1" in grid
     assert 'data-url="/api/open-pl?status=open"' in grid and "journal_grid.js" in grid
     assert "Total open P/L" in grid and "$200" in grid  # the condor's premium
@@ -957,30 +1016,18 @@ def test_automation_list_shows_paper_stats_with_a_tag(client):
     assert "$12.50" in html and ">paper<" in html
 
 
-def test_the_settle_expirations_switch(client):
+def test_the_settle_expirations_switch_is_a_setting(client):
+    """Decision 0109: on the Settings page (Syncing your trades), not above the journal."""
     from optionsjourney.services import expiry_settle  # noqa: PLC0415
     from optionsjourney.web import services  # noqa: PLC0415
 
-    html = client.get("/journal").get_data(as_text=True)
-    assert "Settle expirations at 4:15 PM" in html and 'id="settle-switch"' in html
-    response = client.post(
-        "/journal/settle-expirations",
-        data={"on": "1", "back": "/journal?status=open"},
-        headers=ORIGIN,
-    )
-    assert response.status_code == 302 and response.location.endswith("/journal?status=open")
+    assert "Settle expirations" not in client.get("/journal").get_data(as_text=True)
+    assert "Settle expirations at 4:15 PM" in client.get("/settings").get_data(as_text=True)
+    form = {"sync_market_hours": "1", "sync_other_times": "60", "sync_on_fill": "on"}
+    client.post("/settings/sync", data=form | {"expiry_settle_on": "1"}, headers=ORIGIN)
     with client.application.app_context():
-        sf = services().session_factory
-        assert expiry_settle.is_on(sf)
-        expiry_settle._save(
-            sf,
-            expiry_settle.LAST_RUN_KEY,
-            '{"day": "2026-10-09", "done": true, "settled": 0, "note": null,'
-            ' "skipped": [{"name": "AAPL Put", "reason": "it becomes shares"}]}',
-        )
-    html = client.get("/journal").get_data(as_text=True)
-    assert "AAPL Put (it becomes shares)" in html
-    client.post("/journal/settle-expirations", data={"on": "0"}, headers=ORIGIN)
+        assert expiry_settle.is_on(services().session_factory)
+    client.post("/settings/sync", data=form | {"expiry_settle_on": "0"}, headers=ORIGIN)
     with client.application.app_context():
         assert not expiry_settle.is_on(services().session_factory)
 
@@ -1101,6 +1148,7 @@ def test_the_prelim_tag_and_the_switch_say_how_settling_works(client):
     html = client.get("/journal").get_data(as_text=True)
     assert 'title="Settled at SPXW 5900 (tastytrade last) at 4:15 PM.' in html
     assert "closing price" not in html
+    html = client.get("/settings").get_data(as_text=True)  # the switch's tip (decision 0109)
     assert "at the last price from your broker" in html and "$1 or more" in html
 
 
@@ -1133,12 +1181,7 @@ def test_journal_summary_boxes_have_tips(client):
 
 
 def test_stocks_tab_has_a_cost_basis_tip(client, monkeypatch):
-    from types import SimpleNamespace
-
-    held = SimpleNamespace(
-        ticker="AAPL", quantity=10, cost_basis=150, cost=1500, price=None,
-        pl=None, pl_percent=None, today_pl=None,
-    )  # fmt: skip
+    held = _held(cost_basis="150", price=None, today_pl=None)
     monkeypatch.setattr(journal_routes.holdings, "stock_holdings", lambda *a, **k: [held])
     _has_tips(client.get("/journal?kind=stocks").get_data(as_text=True), "journal-cost-basis")
 
@@ -1180,120 +1223,179 @@ def test_the_trade_pages_hand_over_button_has_a_tip(adopting):
     _has_tips(html, "trade-hand-to-bot")
 
 
-def _save_stocks(client, rows):
-    from optionsjourney.db.models import StockSnapshot
+def _held(ticker="AAPL", quantity="10", cost_basis="100", price="110", today_pl="20"):
+    from optionsjourney.core.holdings import Holding
 
-    factory = client.application.extensions["optionsjourney"].session_factory
-    with factory() as session:
-        for day, account, ticker, qty, cost, close in rows:
-            session.add(
-                StockSnapshot(
-                    day=day, account=account, ticker=ticker, quantity=Decimal(qty),
-                    cost_basis=Decimal(cost), close=None if close is None else Decimal(close),
-                    taken_at=datetime(2026, 1, 1, tzinfo=UTC),
-                )
-            )  # fmt: skip
-        session.commit()
+    number = lambda v: None if v is None else Decimal(v)  # noqa: E731
+    return Holding(ticker, Decimal(quantity), Decimal(cost_basis), number(price), number(today_pl))
 
 
-def test_stocks_tab_draws_pl_against_cost(client):
-    _save_stocks(client, [
-        (date(2026, 9, 1), "tt:1", "AAA", "10", "100", "110"),
-        (date(2026, 9, 2), "tt:1", "AAA", "10", "100", "120"),
-    ])  # fmt: skip
+def test_stocks_tab_shows_three_cards(client, monkeypatch):
+    monkeypatch.setattr(journal_routes.holdings, "stock_holdings", lambda *a, **k: [_held()])
     html = client.get("/journal?kind=stocks").get_data(as_text=True)
-    assert "data-line-chart" in html
-    data = re.search(r'id="stocks-pl-data">(.*?)</script>', html).group(1)
-    assert {"day": "2026-09-02", "pl": 200.0, "pct": 20.0} in json.loads(data)
-    assert "$200" in html and "+20.00%" in html
-    assert 'id="tip-stocks-pl-chart"' in html
-    assert 'id="stocks-scope"' in html
+    for id_ in ("stocks-total-pl", "stocks-market-value", "stocks-day-pl"):
+        assert f'id="{id_}"' in html
+    _has_tips(html, "stocks-total-pl", "stocks-market-value", "stocks-day-pl", "stocks-value-chart")
+    assert "Your stocks against what you paid" not in html  # the old chart
+    # 10 shares bought at 100, now 110: +$100 (10%), worth $1,100, up $20 today
+    assert "Total P&amp;L" in html and "Total market value" in html and "Day P&amp;L" in html
+    assert "$100.00" in html and "+10.00%" in html and "$1,100.00" in html
+    assert "Current portfolio value" in html and "$20.00" in html
+    # the Market value column, after Current price
+    assert html.index(">Current price<") < html.index(">Market value<")
+    assert 'data-cell="value">$1,100.00<' in html
 
 
-def test_stocks_chart_follows_account_and_range(client):
+def test_stock_cards_wait_for_a_price(client, monkeypatch):
+    """Shares held but nothing priced yet: the cards say "—", not $0.00 (#286)."""
+    unpriced = _held(price=None, today_pl=None)
+    monkeypatch.setattr(journal_routes.holdings, "stock_holdings", lambda *a, **k: [unpriced])
+    html = client.get("/journal?kind=stocks").get_data(as_text=True)
+    assert html.count("data-value>—<") == 3 and "data-value>$0.00<" not in html
+    assert client.get("/api/stocks").get_json()["summary"] == {
+        "total_pl": None, "total_pl_percent": None, "market_value": None,
+        "day_pl": None, "day_pl_percent": None,
+    }  # fmt: skip
+
+
+def test_stocks_value_chart_card(client, monkeypatch):
+    monkeypatch.setattr(journal_routes.holdings, "stock_holdings", lambda *a, **k: [_held()])
+    html = client.get("/journal?kind=stocks&account=tastytrade:5WX01234").get_data(as_text=True)
+    assert "Portfolio value" in html and "Loading…" in html
+    assert 'data-url="/api/stocks/value?account=tastytrade:5WX01234&amp;kind=stocks"' in html
+    assert 'data-series="value" data-mark="end"' in html
+    assert "js/line_chart.js" in html and "js/stock_value.js" in html
+    assert html.index('id="stocks-scope"') < html.index('id="stocks-total-pl"')
+
+
+def test_stocks_api_has_summary_and_market_value(client, monkeypatch):
+    monkeypatch.setattr(journal_routes.holdings, "stock_holdings", lambda *a, **k: [_held()])
+    data = client.get("/api/stocks").get_json()
+    assert data["summary"]["market_value"] == 1100.0 and data["rows"][0]["market_value"] == 1100.0
+    assert data["summary"]["total_pl"] == 100.0 and data["summary"]["total_pl_percent"] == 10.0
+    assert data["summary"]["day_pl"] == 20.0
+
+
+def test_stock_value_api(client, monkeypatch):
+    from optionsjourney.core.stock_history import ValuePoint
+    from optionsjourney.services.stock_value import ValueChart
+
+    seen = {}
+
+    def value(session_factory, clients, hub, accounts, now):
+        seen["accounts"] = tuple(accounts)
+        return ValueChart([ValuePoint(date(2026, 3, 2), Decimal(1000), 1, 1)])
+
+    monkeypatch.setattr(journal_routes.stock_value, "portfolio_value", value)
+    assert client.get("/api/stocks/value?account=tt:1").get_json() == {
+        "points": [{"day": "2026-03-02", "value": 1000.0}], "note": ""}  # fmt: skip
+    assert seen["accounts"] == ("tt:1",)
+
+
+def test_stock_value_api_note(client, monkeypatch):
+    from optionsjourney.services.stock_value import NO_PRICES, ValueChart
+
+    monkeypatch.setattr(
+        journal_routes.stock_value, "portfolio_value", lambda *a, **k: ValueChart([], NO_PRICES)
+    )
+    assert client.get("/api/stocks/value").get_json() == {"points": [], "note": NO_PRICES}
+
+
+def _stock_trades(monkeypatch):
+    from optionsjourney.core.stock_history import StockTransaction
+
+    at = datetime(2026, 3, 2, 3, 30, tzinfo=UTC)  # Mar 1 in New York
+    rows = [
+        StockTransaction(at, "tastytrade:5WX01234", "AAPL", "Buy", Decimal(10), Decimal(150),
+                         Decimal(-1500), Decimal("0.5")),
+        StockTransaction(at, "tastytrade:5WX01234", "MSFT", "Sell", Decimal(2), None,
+                         Decimal(800), Decimal(0)),
+    ]  # fmt: skip
+    seen = {}
+
+    def transactions_for(fills, accounts=()):
+        seen["accounts"] = tuple(accounts)
+        return rows
+
+    monkeypatch.setattr(journal_routes, "stock_transactions", transactions_for)
+    monkeypatch.setattr(journal_routes.holdings, "stock_holdings", lambda *a, **k: [_held()])
+    return seen
+
+
+def test_transaction_history_tab(client, monkeypatch):
+    seen = _stock_trades(monkeypatch)
+    html = client.get(
+        "/journal?kind=stocks&stocks_view=history&account=tastytrade:5WX01234"
+    ).get_data(as_text=True)
+    assert 'id="stock-transactions"' in html and 'data-stock-chart="AAPL"' in html
+    assert 'data-stock-chart="MSFT"' not in html and "MSFT" in html
+    assert seen["accounts"] == ("tastytrade:5WX01234",)
+    assert 'id="holdings"' not in html
+    assert "Mar 1, 2026" in html and "Alpha" in html
+    assert "-$1,500.00" in html and "$0.50" in html
+    msft = re.search(r"<tr>(?:(?!</tr>).)*MSFT.*?</tr>", html, re.S).group(0)
+    assert re.findall(r'<td class="num[^"]*">([^<]*)</td>', msft)[1] == "—"  # Qty, Price, ...
+    assert "Only trades since your first sync are listed." in html
+    # the cards and chart stay above both tabs
+    assert 'id="stocks-total-pl"' in html and "Portfolio value" in html
+    # the tab links keep the account
+    assert re.search(r'href="/journal\?[^"]*stocks_view=holdings[^"]*"', html)
+    assert "account=tastytrade:5WX01234" in re.search(
+        r'href="(/journal\?[^"]*stocks_view=history[^"]*)"', html
+    ).group(1)
+
+
+def test_transaction_history_with_no_trades(client, monkeypatch):
+    monkeypatch.setattr(journal_routes, "stock_transactions", lambda fills, accounts=(): [])
+    html = client.get("/journal?kind=stocks&stocks_view=history").get_data(as_text=True)
+    assert "No stock trades since your first sync." in html
+
+
+def test_transaction_history_starts_at_the_first_sync(settings, fake_credentials):
+    """A fill stored from before the first day of history isn't listed (#286)."""
+    from optionsjourney.db.models import Setting
+
+    broker = FakeTastyTrade(
+        rows=[
+            _equity_trade(1, "5WX01234", "Buy to Open", "10", "150", 5),
+            _equity_trade(2, "5WX01234", "Sell to Close", "4", "170", 0),
+        ]
+    )
+    app = create_app(settings, credentials=fake_credentials, broker_clients=lambda: [broker])
+    app.config["TESTING"] = True
+    client = app.test_client()
+    factory = app.extensions["optionsjourney"].session_factory
     today = datetime.now(ZoneInfo("America/New_York")).date()
-    old, new = today - timedelta(days=60), today - timedelta(days=2)
-    _save_stocks(client, [
-        (old, "tt:1", "AAA", "10", "100", "110"),
-        (new, "tt:1", "AAA", "10", "100", "120"),
-        (new, "tt:2", "BBB", "1", "50", "60"),
-    ])  # fmt: skip
-    both = client.get("/journal?kind=stocks").get_data(as_text=True)
-    assert old.isoformat() in both and '"pl":210.0' in both.replace(" ", "")
-    one = client.get("/journal?kind=stocks&account=tt:1").get_data(as_text=True)
-    assert '"pl":200.0' in one.replace(" ", "") and '"pl":210.0' not in one.replace(" ", "")
-    month = client.get("/journal?kind=stocks&account=tt:1&range=1M").get_data(as_text=True)
-    assert old.isoformat() not in month and new.isoformat() in month
-    links = re.findall(r'href="(/journal\?[^"]*)"[^>]*>(?:1M|3M|1Y|All)</a>', month)
-    assert len(links) == 4
-    for link in links:
-        assert "kind=stocks" in link and "account=tt:1" in link and "range=" in link
+
+    def starts(day):
+        with factory() as session:
+            session.merge(Setting(key="history_starts", value=day.isoformat(), updated_at=NOW))
+            session.commit()
+
+    starts(today - timedelta(days=10))
+    client.post("/sync", headers=ORIGIN)
+    starts(today - timedelta(days=2))
+    html = client.get("/journal?kind=stocks&stocks_view=history").get_data(as_text=True)
+    table = re.search(r'id="stock-transactions".*?</table>', html, re.S).group(0)
+    assert ">Sell<" in table and ">Buy<" not in table
 
 
-def test_stocks_chart_empty_state_with_no_shares(client):
-    html = client.get("/journal?kind=stocks").get_data(as_text=True)
-    assert "The chart starts after the first close at which you hold shares." in html
-    assert "today's close" not in html and "data-line-chart" not in html
+def test_account_picker_keeps_the_transaction_history_tab(client, monkeypatch):
+    _stock_trades(monkeypatch)
+    hidden = '<input type="hidden" name="stocks_view" value="history">'
+    html = client.get("/journal?kind=stocks&stocks_view=history").get_data(as_text=True)
+    form = re.search(r'<form class="filters".*?</form>', html, re.S).group(0)
+    assert hidden in form
+    assert hidden not in client.get("/journal?kind=stocks").get_data(as_text=True)
 
 
-def test_stocks_chart_empty_state_with_shares(client, monkeypatch):
-    from types import SimpleNamespace
-
-    held = SimpleNamespace(
-        ticker="AAPL", quantity=10, cost_basis=150, cost=1500, price=None,
-        pl=None, pl_percent=None, today_pl=None,
-    )  # fmt: skip
-    monkeypatch.setattr(journal_routes.holdings, "stock_holdings", lambda *a, **k: [held])
-    html = client.get("/journal?kind=stocks").get_data(as_text=True)
-    assert "Your first point appears after the next close (4:15 PM New York time)." in html
-
-
-def test_stocks_scope_note_comes_before_the_chart(client):
-    html = client.get("/journal?kind=stocks").get_data(as_text=True)
-    assert html.index('id="stocks-scope"') < html.index('id="stocks-pl-title"')
-
-
-def test_stocks_chart_leaves_out_a_day_with_nothing_priced(client):
-    """#236: a day whose every close is missing has no P/L; it isn't drawn as $0."""
-    _save_stocks(client, [
-        (date(2026, 9, 1), "tt:1", "AAA", "10", "100", "110"),
-        (date(2026, 9, 2), "tt:1", "AAA", "10", "100", None),
-    ])  # fmt: skip
-    html = client.get("/journal?kind=stocks").get_data(as_text=True)
-    data = json.loads(re.search(r'id="stocks-pl-data">(.*?)</script>', html).group(1))
-    assert [d["day"] for d in data] == ["2026-09-01"]
-    assert "$100" in html and "Sep 1, 2026" in html
-    assert "Sep 2: 0 of 1 priced" in html
-
-
-def test_stocks_chart_with_only_unpriced_days_draws_nothing(client):
-    _save_stocks(client, [(date(2026, 9, 2), "tt:1", "AAA", "10", "100", None)])
-    html = client.get("/journal?kind=stocks").get_data(as_text=True)
-    assert "data-line-chart" not in html
-    assert "Nothing saved in this range yet." in html and "0 of 1 priced" in html
-
-
-def test_stocks_chart_notes_unpriced(client):
-    _save_stocks(client, [
-        (date(2026, 9, 1), "tt:1", "AAA", "10", "100", "110"),
-        (date(2026, 9, 1), "tt:1", "BBB", "1", "50", None),
-    ])  # fmt: skip
-    assert "1 of 2 priced" in client.get("/journal?kind=stocks").get_data(as_text=True)
-
-
-def test_stocks_chart_says_nothing_in_range_when_rows_exist_elsewhere(client):
-    _save_stocks(client, [(date(2026, 1, 5), "tt:1", "AAA", "10", "100", "110")])
-    html = client.get("/journal?kind=stocks&range=1M").get_data(as_text=True)
-    assert "Nothing saved in this range yet." in html
-    assert "Your first point appears" not in html
-    assert "range=3M" in html
-    other = client.get("/journal?kind=stocks&account=tt:9").get_data(as_text=True)
-    assert "Nothing saved in this range yet." in other
-
-
-def test_stocks_tip_mentions_early_close_and_retry(client):
-    html = client.get("/journal?kind=stocks").get_data(as_text=True)
-    assert "1:15 PM on early-close days" in html and "until 8 PM" in html
+def test_holdings_is_the_default_tab(client, monkeypatch):
+    seen = _stock_trades(monkeypatch)
+    html = client.get("/journal?kind=stocks&stocks_view=nonsense").get_data(as_text=True)
+    assert 'id="stock-transactions"' not in html and 'id="holdings"' in html
+    assert "accounts" not in seen  # the trades are only read for the history tab
+    active = 'tabs__tab tabs__tab--active" href="/journal?kind=stocks&amp;stocks_view=holdings"'
+    assert active in html
 
 
 def _stock_chart_setup(monkeypatch, candles=None, error=False):
@@ -1361,12 +1463,7 @@ def test_stock_chart_api_unknown_ticker_404(client, monkeypatch):
 
 
 def test_stocks_tab_ticker_opens_drawer(client, monkeypatch):
-    from types import SimpleNamespace
-
-    held = SimpleNamespace(
-        ticker="AAPL", quantity=10, cost_basis=150, cost=1500, price=None,
-        pl=None, pl_percent=None, today_pl=None,
-    )  # fmt: skip
+    held = _held(cost_basis="150", price=None, today_pl=None)
     monkeypatch.setattr(journal_routes.holdings, "stock_holdings", lambda *a, **k: [held])
     html = client.get("/journal?kind=stocks").get_data(as_text=True)
     assert 'data-stock-chart="AAPL"' in html

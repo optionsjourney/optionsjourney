@@ -14,7 +14,6 @@ syncs first itself, so it doesn't depend on the timed sync. If the sync
 fails or a close isn't out yet, it tries again on the next check that
 evening, until GIVE_UP_AT."""
 
-import hashlib
 import json
 import logging
 import threading
@@ -237,14 +236,7 @@ def run_if_due(
     }
     reads: dict = prices(wanted) if wanted else {}
     rows, skipped = settle_expiring(ready, today, reads, unmatched)
-    stored = _store(session_factory, rows, now)
-    skipped_keys = {s.position_key for s in skipped}
-    settled_keys = {p.key for p in ready if _expires(p, today) and p.key not in skipped_keys}
-    if stored:
-        try:
-            _say_the_pl(session_factory, build_book(), today, settled_keys, stored, now)
-        except Exception:  # noqa: BLE001 -- the settlements are stored; the run goes on
-            logger.exception("Saying the P/L of the settled trades failed")
+    _store(session_factory, rows, now)  # quiet: only a difference alerts (#273)
     retry = waiting or any(s.reason.startswith(NO_CLOSE) for s in skipped)
     record.update(
         settled=len(rows),
@@ -255,31 +247,6 @@ def run_if_due(
     _save(session_factory, LAST_RUN_KEY, json.dumps(record, default=_text))
     logger.info("Settled %d contracts at the close; skipped %d trades", len(rows), len(skipped))
     return record
-
-
-def _say_the_pl(session_factory, book, day: date, keys: set[str], stored, now) -> None:
-    """One unread alert with the P/L of the trades this run settled (#186)."""
-    settled = [p for p in book.positions if p.key in keys]
-    if not settled:
-        return
-    pl = sum((p.realized_pl for p in settled), Decimal(0))
-    prelim = any(s.status == "prelim" for s in stored)
-    count = len(settled)
-    digest = hashlib.sha1("|".join(sorted(keys)).encode()).hexdigest()[:16]  # noqa: S324
-    detail = f"{count} trade{'s' if count != 1 else ''} settled at the close."
-    if prelim:
-        detail += (
-            " The prices are preliminary and are corrected to the official close when it's out."
-        )
-    app_alerts.add(
-        session_factory,
-        dedupe_key=f"settled:{day.isoformat()}:{digest}",
-        kind="settled",
-        title=f"Today's expirations settled: P/L {_money(pl)}" + (" (prelim)" if prelim else ""),
-        detail=detail,
-        link="/journal",
-        now=now,
-    )
 
 
 # --- the correction pass ---------------------------------------------------------------

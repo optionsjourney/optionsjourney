@@ -411,9 +411,9 @@ def test_two_attaches_at_once_make_one_run(factory):
 def test_owner_still_blocks_a_scheduled_bots_trade(factory):
     deps, done = _stopped(factory)
     order_id = the_run(factory, done.run_id).broker_order_id
-    assert bot_adopt._owner(factory, order_id) == "SL"
+    assert bot_adopt.owner(factory, order_id) == "SL"
     manual_attach.remove(deps, done.run_id)
-    assert bot_adopt._owner(factory, order_id) is None
+    assert bot_adopt.owner(factory, order_id) is None
 
 
 def _firing_close(factory, run_id):

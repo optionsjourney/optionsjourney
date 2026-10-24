@@ -11,7 +11,7 @@
 <div class="page-header">
     <div>
         <h1>{{ entry.name }}</h1>
-        {% if entry.bot %}<a class="badge badge--bot" href="{% if entry.bot.per_trade %}{{ url_for('journal.manage_page', key=p.split_from or p.key) }}{% elif entry.bot.matched %}{{ url_for('automation.record_page', bot_id=entry.bot.bot_id) }}{% else %}/automation/{{ entry.bot.bot_id }}/runs{% endif %}" title="{{ 'Matched to' if entry.bot.matched else 'Opened by' }} {{ entry.bot.name }}"><svg class="bot-icon" viewBox="0 0 16 16" width="13" height="13" aria-label="bot" role="img"><rect x="1.5" y="2" width="13" height="9" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 14h5M8 11v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>{% if entry.bot.name != entry.name %} {{ entry.bot.name }}{% endif %}</a>{% endif %}
+        {% if entry.bot %}<a class="badge badge--bot{% if entry.bot.matched %} badge--matched{% endif %}" href="{% if entry.bot.per_trade %}{{ url_for('journal.manage_page', key=p.split_from or p.key) }}{% elif entry.bot.matched %}{{ url_for('automation.record_page', bot_id=entry.bot.bot_id) }}{% else %}/automation/{{ entry.bot.bot_id }}/runs{% endif %}" title="{% if entry.bot.matched %}Matched to {{ entry.bot.name }}: placed outside this app, which doesn't manage it{% else %}Opened by {{ entry.bot.name }}{% endif %}">{% if entry.bot.matched %}matched{% else %}<svg class="bot-icon" viewBox="0 0 16 16" width="13" height="13" aria-label="bot" role="img"><rect x="1.5" y="2" width="13" height="9" rx="1.2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M5.5 14h5M8 11v3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>{% endif %}{% if entry.bot.name != entry.name %} {{ entry.bot.name }}{% endif %}</a>{% endif %}
         {% if entry.renamed %}<div class="muted small">Default name: {{ p.name }}</div>{% endif %}
     </div>
     <div class="stat">
@@ -113,7 +113,7 @@
                 <datalist id="trade-tag-names">{% for t in tags %}<option value="{{ t.name }}">{% endfor %}</datalist>
                 <input type="text" name="new_tags" maxlength="60" placeholder="New tag" aria-label="New tags, separated by commas">
             </div>
-            <span class="muted small">{% if entry.bot and entry.bot.name and fixed %}{{ entry.bot.name }} files its trades under {{ (entry.fixed_tags | last).name }}, so it stays ticked: <a class="link" href="{{ url_for('automation.bot_page', bot_id=entry.bot.bot_id) }}#basics">change the bot's Journal tag</a>. {% endif %}<a class="link" href="{{ url_for('journal.tags_page') }}">Manage tags</a></span>
+            <span class="muted small">{% if entry.bot and entry.bot.name and fixed %}{{ entry.bot.name }} puts its tags on its trades ({{ entry.fixed_tags | map(attribute='name') | join(', ') }}), so they stay ticked: <a class="link" href="{{ url_for('automation.bot_page', bot_id=entry.bot.bot_id) }}#basics">change the bot's tags</a>. {% endif %}<a class="link" href="{{ url_for('journal.tags_page') }}">Manage tags</a></span>
         </div>
         <div class="field">
             <span>Close reason {{ info('trade-close-reason', "The note shown under the trade's status, such as Profit target or Stop loss. Automatic uses what your broker's records say, like Expired or Assigned. Choosing one here changes only that note, not the trade's P/L.", 'Close reason', more='/help/journal#the-trades-own-page') }}</span>

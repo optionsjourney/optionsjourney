@@ -1,6 +1,6 @@
 # 0092. Stocks performance comes from daily saves
 
-- **Status:** Accepted
+- **Status:** Superseded by 0113 (chart and daily save); the ticker drawer still stands
 - **Date:** 2026-10-21
 
 ## Context

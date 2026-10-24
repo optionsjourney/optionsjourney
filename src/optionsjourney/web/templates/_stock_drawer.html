@@ -3,7 +3,7 @@
     GET /api/stocks/<ticker>/chart and draws it. -#}
 <div id="stock-drawer" class="drawer hidden" role="dialog" aria-modal="true" aria-labelledby="stock-title"
      data-chart-url="{{ url_for('journal.stock_chart_api', ticker='TICKER') }}"
-     data-account="{{ filters.account }}">
+     data-account="{{ filters.accounts | join(',') }}">
     <div data-stock-backdrop class="drawer__backdrop opacity-0"></div>
     <div data-stock-panel class="drawer__panel drawer__panel--side translate-x-full">
         <div class="drawer__header">

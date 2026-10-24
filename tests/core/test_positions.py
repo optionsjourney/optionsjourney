@@ -468,3 +468,17 @@ def test_a_close_its_trade_sent_closes_that_trade_not_an_older_one_with_the_same
     assert [p.status for p in oldest_first.positions] == [Status.CLOSED, Status.OPEN]
     owned = build_positions(group_fills(fills), owners={"3": "tastytrade:5WX01234:2"})
     assert [p.status for p in owned.positions] == [Status.OPEN, Status.CLOSED]
+
+
+def test_one_right_names_a_puts_only_or_calls_only_trade():
+    """#280 (Tracker2's put_call_chip)."""
+    spread = book_of(
+        opt(S, OPEN, "PUT", 5800, order="1"), opt(B, OPEN, "PUT", 5780, order="1")
+    ).positions[0]
+    assert spread.one_right == "Put"
+    calls = book_of(opt(S, OPEN, "CALL", 6000, order="1")).positions[0]
+    assert calls.one_right == "Call"
+    condor = book_of(
+        opt(S, OPEN, "PUT", 5800, order="1"), opt(S, OPEN, "CALL", 6000, order="1")
+    ).positions[0]
+    assert condor.one_right is None

@@ -10,7 +10,7 @@ The numbers below are made up and round. They show where things go, not what to 
 1. Open **Automation** in the top bar and press **New bot**. A new bot already starts as an iron condor, with its numbers blank.
 2. **Basics:**
    - **Name:** for example `SPX IC example`.
-   - **Journal tag:** pick one, or press **+ New tag**, type a name and press **Create**.
+   - **Tags:** pick one or more under **Pick tags**, or type a new one and press **Add**. Every one goes on the bot's trades in your journal; the first is its main tag.
    - **Account:** the account it trades in.
    - **Underlying:** `SPX` (already filled in).
    - **Contracts per entry:** `1`. Leave the four limits below it blank: **Max contracts per trade** and **Max contracts per day** then show "Auto", and **Max entries per day** and **Max open trades** show "No limit".

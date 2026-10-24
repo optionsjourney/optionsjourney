@@ -4,8 +4,11 @@
 // (POST /api/trade/confirm). Your working orders sit under the ticket, with Cancel and Replace.
 // Bots slice 15: beside Send, Manage with a bot sends the reviewed ticket as a live bot's entry
 // instead (POST /api/trade/bot-entry), claimed on a one-time token so a second press sends nothing.
+// Trade Ideas (#292): Idea ☆ saves the ticket as an idea (ideas/save.js); /trade?idea=<id> opens
+// one in the ticket, and Send or the bot's Send then carries its id so the server retires it.
 import { installChainPanel } from './chain_panel.js';
 import { tourTray, tourTrayFor } from './tour_tray.js';
+import { installIdeaSave, pageIdea, ideaBanner, ideaTray } from '../ideas/save.js';
 import * as T from './chain_tray.js';
 import { trayStats, stripItems } from './chain_stats.js';
 import { tipHtml, tipEngaged } from '../tip.js';
@@ -58,6 +61,15 @@ let workingFilter = 'all', workingShown = WORKING_PAGE;
 const accountName = a => `${a.label} (${a.broker === 'SCHWAB' ? 'Schwab' : 'TT'})`;
 const busy = new Set();   // working order ids with a Cancel or Replace out
 let stats = { sig: '', spot: null, at: 0, value: null };
+// The idea the ticket was opened from: {id, sig}, until its legs change (then it's your own ticket).
+let idea = null;
+const ideaBannerEl = document.getElementById('idea-banner');
+const ideaId = () => (idea ? idea.id : null);
+function dropIdea() {
+  idea = null;
+  if (ideaBannerEl) ideaBannerEl.hidden = true;
+}
+const futuresTicket = () => String(ctx.ticker || '').startsWith('/');
 
 const brokerOf = id => ({ SCHWAB: 'schwab', TASTYTRADE: 'tastytrade' })[(accounts.find(a => a.id === id) || {}).broker] || null;
 const panel = installChainPanel(document.getElementById('trade-chain'), {
@@ -66,6 +78,7 @@ const panel = installChainPanel(document.getElementById('trade-chain'), {
   onChange(next) {
     const structural = legSig(next.tray) !== legSig(ctx.tray) || next.ticker !== ctx.ticker || next.message !== ctx.message;
     if (structural) { result = null; ticketChanged(); autoEffect = null; }
+    if (idea && legSig(next.tray) !== idea.sig) dropIdea();
     if (!next.tray.legs.length) { price = null; effect = null; }
     ctx = next;
     if (structural) render(); else refresh();
@@ -226,6 +239,7 @@ function render() {
       <button type="button" data-act="review" class="px-3 py-1 rounded bg-blue-600 text-white disabled:opacity-40" ${legs.length && !inFlight ? '' : 'disabled'}>Review order</button>
       <button type="button" data-act="graph" class="px-3 py-1 rounded border border-gray-600 ${graphOn ? 'bg-gray-700' : ''}" ${legs.length ? '' : 'disabled'}>Risk graph</button>
       <button type="button" data-act="clear" class="px-3 py-1 rounded border border-gray-600" ${legs.length ? '' : 'disabled'}>Clear</button>
+      ${futuresTicket() ? '' : `<button type="button" data-act="idea-open" title="Save this ticket to Ideas, to follow it without trading" class="px-3 py-1 rounded border border-gray-600 disabled:opacity-40" ${legs.length ? '' : 'disabled'}>Idea ☆</button>`}
     </div>
     <details class="mt-3 text-xs" ${legs.length ? '' : 'hidden'}>
       <summary class="cursor-pointer text-gray-400">Alert me on this spread</summary>
@@ -401,7 +415,7 @@ async function sendAsBot() {
   const { offered } = botLists(botBox.bots);
   const chosen = offered.find(b => b.id === botBox.chosen) || offered[0];
   if (!chosen) return;
-  const body = botRequest(ctx.tray, { accountId, botId: chosen.id, token: botBox.token, code: reviewed.code, ticker: ctx.ticker });
+  const body = botRequest(ctx.tray, { accountId, botId: chosen.id, token: botBox.token, code: reviewed.code, ticker: ctx.ticker, ideaId: ideaId() });
   if (body.error) { result = { tone: 'error', text: body.error }; render(); return; }
   const ask = reviewed.futures
     ? `Let ${chosen.name} rest this limit at TastyTrade as its entry? It stays there until it fills or you cancel it from the run page; when it fills the bot rests its profit target. Futures: profit target only, no stop.`
@@ -414,7 +428,8 @@ async function sendAsBot() {
     const r = await fetch('/api/trade/bot-entry', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const d = await r.json();
     if (d.status !== 'success') throw new Error(d.message || `HTTP ${r.status}`);
-    result = { tone: d.ok ? 'ok' : 'error', text: d.message, link: d.run_url };
+    result = { tone: d.ok ? 'ok' : 'error', text: d.message + (d.idea_removed ? ' Removed from Ideas.' : ''), link: d.run_url };
+    if (d.idea_removed) dropIdea();
   } catch (err) {
     result = { tone: 'error', text: `Couldn't send it: ${err.message}. Check the bot's runs before trying again.` };
   }
@@ -434,11 +449,13 @@ async function confirmOrder() {
   render();
   try {
     const r = await fetch('/api/trade/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(confirmRequest(accountId, code, manageWith)) });
+      body: JSON.stringify(confirmRequest(accountId, code, manageWith, ideaId())) });
     const d = await r.json();
     if (d.status !== 'success') throw new Error(d.message || `HTTP ${r.status}`);
     if (d.ok && d.action === 'send') {
-      result = { tone: 'ok', text: (d.order_id ? `Sent: order #${d.order_id}.` : 'Sent.') + (d.manage_note ? ` ${d.manage_note}` : '') };
+      result = { tone: 'ok', text: (d.order_id ? `Sent: order #${d.order_id}.` : 'Sent.') + (d.manage_note ? ` ${d.manage_note}` : '')
+        + (d.idea_removed ? ' Removed from Ideas.' : '') };
+      if (d.idea_removed) dropIdea();
       manageWith = '';   // back to Place only after a send
     }
     else result = { tone: d.ok ? 'muted' : 'error', text: d.message };
@@ -497,18 +514,20 @@ function renderWorking() {
   const rows = matching.slice(0, workingShown).map(w => {
     const id = esc(w.key);
     const off = busy.has(w.key) ? 'disabled' : '';
-    const controls = w.yours
-      ? `<div class="flex items-center gap-2 mt-1">
-          ${w.canReplace ? `<input type="number" min="0" step="0.05" data-act="w-price" data-id="${id}" value="${w.price ?? ''}" aria-label="New limit" class="w-20 px-1 py-0.5 rounded border border-gray-600 bg-transparent text-right">
+    const change = w.canChange
+      ? `<input type="number" min="0" step="0.05" data-act="w-price" data-id="${id}" value="${w.price ?? ''}" aria-label="New limit" class="w-20 px-1 py-0.5 rounded border border-gray-600 bg-transparent text-right">
           <span class="text-xs text-gray-500">${esc(w.effect || '')}</span>
           <button type="button" data-act="w-replace" data-id="${id}" class="px-2 py-0.5 rounded border border-gray-600 disabled:opacity-40" ${off}>Replace</button>`
-            : '<span class="text-xs text-gray-500">Partly filled: cancel it to change it.</span>'}
-          <button type="button" data-act="w-cancel" data-id="${id}" class="px-2 py-0.5 rounded border border-gray-600 text-red-400 disabled:opacity-40" ${off}>Cancel</button>
+      : `<span class="text-xs text-gray-500">${esc(w.reason || '')}</span>`;
+    const controls = w.canChange || w.canCancel
+      ? `<div class="flex items-center gap-2 mt-1">
+          ${change}
+          ${w.canCancel ? `<button type="button" data-act="w-cancel" data-id="${id}" class="px-2 py-0.5 rounded border border-gray-600 text-red-400 disabled:opacity-40" ${off}>Cancel</button>` : ''}
         </div>`
-      : '<div class="text-xs text-gray-500 mt-1">Managed by a bot or placed at your broker.</div>';
+      : `<div class="text-xs text-gray-500 mt-1">${esc(w.reason || '')}</div>`;
     return `<div class="py-1.5 border-b border-gray-700 last:border-0">
       <div class="flex gap-2"><span class="font-semibold">${w.price != null ? `$${w.price.toFixed(2)} ${esc(w.effect)}` : ''}</span><span class="ml-auto text-xs text-gray-500">${esc(w.status)}</span></div>
-      ${counts.size > 1 && workingFilter === 'all' ? `<div class="text-xs text-gray-500">${esc(w.account)}</div>` : ''}
+      <div class="text-xs text-gray-500">${esc(w.from)}${counts.size > 1 && workingFilter === 'all' ? ` · ${esc(w.account)}` : ''}</div>
       ${w.lines.map(l => `<div class="text-xs tabular-nums text-gray-300">${esc(l)}</div>`).join('')}
       ${controls}</div>`;
   }).join('');
@@ -598,6 +617,21 @@ document.getElementById('trade-symbol').addEventListener('submit', e => {
   panel.setTicker(t);
 });
 
+// Idea ☆: the ticket as it stands. A limit you typed is the idea's entry; one Review froze from
+// the mids isn't (the idea takes the mid then).
+installIdeaSave(doc, window, () => ({ tray: ctx.tray, ticker: ctx.ticker, price: autoPrice ? null : price,
+  effect: side(), mult: ctx.mult, structureLabel: null }));
+
+// Trade it: the idea's legs go in the way the tour's do, its entry in the limit, and the banner says so.
+function openIdea(saved) {
+  panel.setTray(ideaTray(saved));
+  idea = { id: saved.id, sig: legSig(ctx.tray) };
+  price = saved.price;
+  effect = saved.effect;
+  if (ideaBannerEl) { ideaBannerEl.textContent = ideaBanner(saved); ideaBannerEl.hidden = false; }
+  render();
+}
+
 render();
 renderWorking();
 loadWorking();
@@ -605,7 +639,9 @@ setInterval(() => { if (!doc.hidden) loadWorking(); }, 30000);
 {
   const first = document.querySelector('#trade-symbol [name=ticker]').value.trim().toUpperCase();
   const tour = tourTray(document.getElementById('trade-ticket'));   // demo tour, step 4 only
+  const saved = pageIdea(ticketEl);   // Trade it from the Journal's Ideas
   const opened = panel.setTicker(first);
   // setTicker clears the tray and resolves once the expirations are in, so the spread goes in after.
   if (tour && first === tour.ticker) opened.then(() => panel.setTray(tourTrayFor(tour)));
+  else if (saved && first === saved.ticker) opened.then(() => openIdea(saved));
 }

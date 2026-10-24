@@ -265,6 +265,29 @@ def test_dashboards(session_factory):
     assert journal.get_dashboard(session_factory, dashboard_id) is None
 
 
+def test_several_accounts_and_a_dashboard_saved_with_one(session_factory):
+    """#285: the account filter takes several; a dashboard saved before kept one."""
+    from werkzeug.datastructures import MultiDict
+
+    other = "schwab:1234"
+    picked = Filters.from_args(MultiDict([("account", "tastytrade:5WX01234"), ("account", other)]))
+    assert picked.accounts == ("tastytrade:5WX01234", other)
+    assert picked.to_args() == {"account": ["tastytrade:5WX01234", other]}
+    assert Filters.from_saved({"account": "tastytrade:5WX01234"}).accounts == ("tastytrade:5WX01234",)
+    keys = {e.position.key for e in journal.load_journal(session_factory, picked).entries}
+    assert PUT_KEY in keys
+    only_other = Filters.from_args(MultiDict([("account", other)]))
+    assert journal.load_journal(session_factory, only_other).entries == []
+
+
+def test_filters_differ_from_a_dashboard_only_when_changed():
+    """#285: the dashboard's Save button shows only for a change."""
+    saved = Filters(status="open", tags=("3",)).to_args()
+    assert not Filters(status="open", tags=("3",)).differs_from(saved)
+    assert Filters(status="open", tags=("3", "4")).differs_from(saved)
+    assert not Filters().differs_from({})
+
+
 def test_positions_cache_rebuilds_only_when_data_changes(session_factory, monkeypatch):
     builds = []
     real_build = journal._build

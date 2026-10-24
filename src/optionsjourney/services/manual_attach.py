@@ -103,7 +103,7 @@ def read_trade(deps, key: str, managed_ok: bool = False
         problem = "Only a trade at TastyTrade or Schwab can be managed by the app."
     elif order_id is None:
         problem = "It has no broker order id to link its rules to."
-    elif not managed_ok and bot_adopt._owner(deps.session_factory, order_id) is not None:
+    elif not managed_ok and bot_adopt.owner(deps.session_factory, order_id) is not None:
         problem = MANAGED
     underlying, resolved = normalize_underlying(position.underlying), None
     if bot_adopt._is_futures(underlying, legs):

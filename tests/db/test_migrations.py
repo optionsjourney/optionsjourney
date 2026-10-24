@@ -504,7 +504,8 @@ def test_0021_leaves_existing_bots_untagged_unarchived_and_not_imported(tmp_path
     migrate(engine)
     factory = make_session_factory(engine)
     bot = bot_store.load(factory, 1)
-    assert (bot.tags, bot.archived, bot.enabled, bot.live) == ((), False, True, True)
+    # 0053 (#278): a bot holds its main tag among its tags
+    assert (bot.tags, bot.archived, bot.enabled, bot.live) == ((bot.tags[0],), False, True, True)
     assert bot_store.imported(factory, 1) == (None, None)
     assert [b.id for b in bot_store.armed(factory)] == [1]
     with engine.connect() as connection:
@@ -1600,6 +1601,37 @@ def test_0046_gives_existing_bots_no_before_expiration_lists(tmp_path):
     assert "blackout_dte_sets" not in columns and "blackout_date_sets" in columns
 
 
+def test_0053_makes_bot_labels_journal_tags_with_the_main_tag_first(tmp_path):
+    """#278 (decision 0110): one set of tags. A label becomes a journal tag (an existing
+    one's spelling wins), the main tag is held first, a state word is dropped."""
+    from alembic import command
+    from sqlalchemy import text
+
+    from optionsjourney.db import alembic_config
+
+    engine = make_engine(tmp_path / "test.db")
+    config = alembic_config()
+    with engine.begin() as connection:
+        config.attributes["connection"] = connection
+        command.upgrade(config, "0052")
+        connection.execute(
+            text("INSERT OR IGNORE INTO tags (name) VALUES ('Iron Condors'), ('0DTE')")
+        )
+        connection.execute(
+            text(
+                "INSERT INTO bots (name, tag_id, broker, account_number, live, enabled, "
+                "max_per_trade, max_per_day, created_at, tags) SELECT 'b', id, 'tastytrade', "
+                "'5WX01234', 0, 1, 3, 4, '2026-10-12 00:00:00', "
+                "'[\"0dte\", \"FOMC\", \"iron condors\", \"Live\"]' FROM tags "
+                "WHERE name = 'Iron Condors'"
+            )
+        )
+        command.upgrade(config, "0053")
+        held = connection.execute(text("SELECT tags FROM bots")).scalar_one()
+        names = {r[0] for r in connection.execute(text("SELECT name FROM tags"))}
+    assert held == '["Iron Condors", "0DTE", "FOMC"]' and "FOMC" in names
+
+
 def test_migrations_have_exactly_one_head():
     """Two branches that each add a migration must not leave two heads (#236)."""
     from alembic.script import ScriptDirectory
@@ -1607,3 +1639,23 @@ def test_migrations_have_exactly_one_head():
     from optionsjourney.db import alembic_config
 
     assert len(ScriptDirectory.from_config(alembic_config()).get_heads()) == 1
+
+
+def test_0055_never_reuses_a_deleted_ideas_id(tmp_path):
+    """A new idea never takes the id of one just deleted, so an old link or a ticket
+    still naming it can't land on a different idea (#292)."""
+    from sqlalchemy import text
+
+    engine = make_engine(tmp_path / "test.db")
+    migrate(engine)
+    insert = text(
+        "INSERT INTO ideas (ticker, label, cards, created_at) "
+        "VALUES ('SPX', 'x', '[]', '2026-10-23 14:00:00')"
+    )
+    with engine.begin() as connection:
+        connection.execute(insert)
+        connection.execute(insert)
+        connection.execute(text("DELETE FROM ideas WHERE id = 2"))
+        connection.execute(insert)
+        ids = [r[0] for r in connection.execute(text("SELECT id FROM ideas ORDER BY id"))]
+    assert ids == [1, 3]

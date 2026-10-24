@@ -13,11 +13,14 @@
 // point may then carry a "label" for its tooltip (the $0 "Start" has no day), and a
 // key that is null (the start has no trade P/L) is left out of the tooltip.
 // The same numbers are always in a table on the page too, so nothing here is
-// the only way to read them.
+// the only way to read them (the Stocks tab's portfolio value, #286, aside).
+// A figure filled in later is drawn with window.LineChart.setUp(figure).
 (function () {
     "use strict";
 
     document.querySelectorAll("figure[data-line-chart]").forEach(setUp);
+    // For a chart whose points arrive after the page loads (stock_value.js)
+    window.LineChart = { setUp };
 
     function setUp(figure) {
     const source = document.getElementById(figure.dataset.lineChart);

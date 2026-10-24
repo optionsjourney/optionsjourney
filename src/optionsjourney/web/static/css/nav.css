@@ -44,6 +44,25 @@
 .nav__icon .nav__badge { position: absolute; top: -0.15rem; right: -0.25rem; margin-left: 0; }
 .nav__badge { display: inline-block; min-width: 1.2rem; padding: 0 0.35rem; border-radius: 999px; background: var(--nav-badge); color: #fff; font-size: 0.75rem; font-weight: 700; text-align: center; line-height: 1.2rem; margin-left: 0.25rem; }
 
+/* The bell's list (#272): opened by alert_bell.js, placed under the bell */
+.bell { position: fixed; z-index: 120; width: 22rem; max-width: calc(100vw - 1rem); border-radius: 0.6rem; background: #1f2937; color: #f3f4f6; box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35); overflow: hidden; }
+.bell[hidden] { display: none; }
+.bell__heading { padding: 0.6rem 0.9rem; font-size: 0.9rem; font-weight: 600; border-bottom: 1px solid #374151; }
+.bell__list { max-height: 60vh; overflow-y: auto; }
+.bell__row { display: block; padding: 0.55rem 0.9rem; border-bottom: 1px solid #374151; border-left: 3px solid transparent; color: inherit; text-decoration: none; }
+.bell__row:last-child { border-bottom: 0; }
+.bell__row:hover { background: rgba(255, 255, 255, 0.06); }
+.bell__row--problem { border-left-color: #f87171; /* red-400 */ }
+.bell__row--note { border-left-color: #f59e0b; /* amber-500 */ }
+.bell__row--new { border-left-color: #60a5fa; /* blue-400 */ background: rgba(37, 99, 235, 0.14); }
+.bell__head { display: flex; align-items: baseline; gap: 0.5rem; }
+.bell__title { flex: 1; min-width: 0; font-size: 0.9rem; font-weight: 500; }
+.bell__when { flex-shrink: 0; font-size: 0.75rem; color: #9ca3af; /* gray-400 */ }
+.bell__detail { margin-top: 0.15rem; font-size: 0.8rem; color: #d1d5db; /* gray-300 */ overflow-wrap: anywhere; }
+.bell__empty { margin: 0; padding: 1.2rem 0.9rem; font-size: 0.85rem; color: #9ca3af; text-align: center; }
+.bell__all { display: block; padding: 0.55rem 0.9rem; border-top: 1px solid #374151; color: #93c5fd; /* blue-300 */ font-size: 0.85rem; text-align: center; text-decoration: none; }
+.bell__all:hover { background: rgba(255, 255, 255, 0.06); }
+
 .footer { max-width: 1200px; margin: 0 auto; padding: 1.5rem 1rem 2rem; text-align: center; font-size: 0.8rem; color: #9ca3af; /* gray-400 */ }
 .footer__risk { margin: 0 0 0.5rem; }
 .footer__link { color: #93c5fd; /* blue-300 */ text-decoration: none; }
@@ -71,6 +90,7 @@
 .trade-toast--open { border-left-color: #22c55e; }
 .trade-toast--roll { border-left-color: #60a5fa; }
 .trade-toast--close { border-left-color: #f59e0b; }
+.trade-toast--alert { border-left-color: #f87171; /* red-400: an alert you set went off */ }
 .trade-toast__head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.2rem; }
 .trade-toast__badge { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: #d1d5db; }
 .trade-toast__close { background: none; border: 0; color: #9ca3af; font-size: 1.1rem; line-height: 1; cursor: pointer; padding: 0 0.25rem; }

@@ -165,3 +165,45 @@ def test_executions_with_no_price_are_skipped():
     priced = [{"legId": 1, "price": 2.9, "quantity": 1}, {"legId": 1, "quantity": 1}]
     assert broker_order(order(priced)).legs[0].fill_price == D("2.9")
     assert broker_order(order([{"legId": 1, "quantity": 2}])).legs[0].fill_price is None
+
+
+def _raw(kind, instruction="SELL_TO_OPEN", **extra):
+    return {
+        "orderId": 9, "status": "WORKING", "orderType": kind,
+        "orderLegCollection": [
+            {"legId": 1, "instruction": instruction, "quantity": 1,
+             "instrument": {"symbol": P5800, "assetType": "OPTION"}},
+        ],
+        **extra,
+    }  # fmt: skip
+
+
+def test_broker_order_reads_net_credit_debit_zero():
+    assert broker_order(_raw("NET_CREDIT", price=1.1)).price == D("1.1")
+    assert broker_order(_raw("NET_DEBIT", price=1.1)).price == D("-1.1")
+    assert broker_order(_raw("NET_ZERO")).price == D(0)
+
+
+def test_broker_order_single_leg_sign_from_the_leg():
+    assert broker_order(_raw("LIMIT", price=2.0)).price == D("2.0")
+    assert broker_order(_raw("LIMIT", "BUY_TO_OPEN", price=2.0)).price == D("-2.0")
+    assert broker_order(_raw("MARKET")).price is None
+    assert broker_order(_raw("STOP_LIMIT", "BUY_TO_CLOSE", price=1.0)).price == D("-1.0")
+
+
+def test_broker_order_multi_leg_limit_has_no_price():
+    """A multi-leg LIMIT or STOP_LIMIT carries no credit or debit in its type, so its
+    sign can't be told from one leg: no price."""
+    for kind in ("LIMIT", "STOP_LIMIT"):
+        raw = _raw(kind, price=1.0, stopPrice=1.5)
+        raw["orderLegCollection"].append(
+            {"legId": 2, "instruction": "BUY_TO_OPEN", "quantity": 1,
+             "instrument": {"symbol": P5790, "assetType": "OPTION"}}
+        )  # fmt: skip
+        assert broker_order(raw).price is None
+
+
+def test_broker_order_flags_a_change_already_under_way():
+    assert broker_order(_raw("LIMIT")).changing is False
+    assert broker_order(_raw("LIMIT", status="PENDING_CANCEL")).changing is True
+    assert broker_order(_raw("LIMIT", status="PENDING_REPLACE")).changing is True

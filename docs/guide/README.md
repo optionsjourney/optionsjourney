@@ -19,6 +19,7 @@ How to…
 - [FAQ and fixing problems](faq.md): using it from your other computers or phone, keeping it running; and a missing trade, a bot that didn't enter, "Needs a look", Schwab's login, P/L Day's ≈, an exit that didn't fill, nothing syncing, "Something went wrong"
 
 Ready:
+- [Features](features.md): everything the app does, in one list
 - [Installing OptionsJourney](installing.md)
 - [Getting your broker API keys](broker-api-keys.md): TastyTrade and Schwab, step by step
 - [Setting up](setup.md), including what's different between TastyTrade and Schwab
@@ -29,6 +30,7 @@ Ready:
 - [Settings](settings.md)
 - [Charts](charts.md)
 - [Trade](trade.md): the option chain, order ticket and risk graph
+- [Ideas](ideas.md): save a trade you built, and follow how it would have done
 - [Alerts](alerts.md)
 - [The menu bar icon](menubar.md)
 - [Pausing trading](pausing-trading.md): No new trades, Freeze all orders and the order log

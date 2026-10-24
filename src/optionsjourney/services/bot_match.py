@@ -10,8 +10,12 @@ undo gives it back its own. #169 (decision 0071): Match selected also links the 
 the bot (bot_trade_matches, by the key ticked; a condor split on match is linked whole and
 its halves resolve through split_from), so the journal shows the bot and only its record
 counts it; undo puts the links back too. Match all bots offers every unlinked trade to
-its best-scoring live bot at once."""
+its best-scoring live bot at once. #276: after a sync, auto_match links the trades Match all
+bots would tick (a strong match to one bot), the way Tracker2 files a trade as it's
+imported; a trade you unlinked, or whose match you undid, is never linked on its own
+again (bot_auto_skips)."""
 
+import logging
 from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 
@@ -21,8 +25,10 @@ from sqlalchemy.orm import sessionmaker
 from optionsjourney.bots.definition import BotDef, is_iron_condor_shape, sides_of
 from optionsjourney.core import bot_match
 from optionsjourney.core.bot_match import Match, Pattern, shape_of
-from optionsjourney.db.models import BotTradeMatch, TradeEdit, TradeTag
+from optionsjourney.db.models import BotAutoSkip, BotTradeMatch, TradeEdit, TradeTag
 from optionsjourney.services import bot_store, journal
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -212,10 +218,19 @@ def file(session_factory: sessionmaker, bot: BotDef, keys) -> Batch:
     return Batch(bot.id, before, split_before, named, links_before)
 
 
+def _skip(session, keys) -> None:
+    """#276: a sync never links these trades to a bot on its own again."""
+    now = datetime.now(UTC)
+    for key in keys:
+        if session.get(BotAutoSkip, key) is None:
+            session.add(BotAutoSkip(position_key=key, skipped_at=now))
+
+
 def undo(session_factory: sessionmaker, batch: Batch) -> int:
     """Put each trade's tags back as they were, and combine a condor filing
-    split again. Returns how many."""
+    split again. Returns how many. A trade it unlinks is never matched on its own again."""
     with session_factory() as session:
+        _skip(session, [k for k, bot_id in batch.links_before.items() if bot_id is None])
         for key, tag_ids in batch.before.items():
             edit = session.get(TradeEdit, key)
             if edit is not None and key in batch.named:
@@ -274,5 +289,29 @@ def unlink(session_factory: sessionmaker, key: str) -> str | None:
             if edit.name == bot.name:
                 edit.name = None
         session.delete(link)
+        _skip(session, [key])
         session.commit()
     return bot.name
+
+
+def auto_match(session_factory: sessionmaker, cache=None) -> dict[str, int]:
+    """#276: link the trades Match all bots would tick for you (a strong match to one bot
+    only), leaving out trades you took off a bot (bot_auto_skips) and trades carrying
+    another bot's tag. Returns {bot name: trades linked}."""
+    found = find_all(session_factory, cache)
+    with session_factory() as session:
+        skipped = set(session.scalars(select(BotAutoSkip.position_key)))
+    bot_tags = {b.tag_id for b in bot_store.listing(session_factory)}
+    ticked: dict[int, list[str]] = {}
+    for group in found.groups:
+        for c in group.candidates:
+            key = c.entry.position.key
+            theirs = ({t.id for t in c.entry.tags} & bot_tags) - {group.bot.tag_id}
+            if c.ticked and key not in skipped and not theirs:
+                ticked.setdefault(group.bot.id, []).append(key)
+    bots = [g.bot for g in found.groups]
+    file_all(session_factory, ticked, bots)
+    linked = {b.name: len(ticked[b.id]) for b in bots if b.id in ticked}
+    for name, count in linked.items():
+        logger.info("auto-match: %d trade(s) to %s", count, name)
+    return linked

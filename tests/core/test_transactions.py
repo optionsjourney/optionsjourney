@@ -8,6 +8,7 @@ from optionsjourney.core.transactions import (
     Kind,
     OptionDetails,
     Side,
+    matches_search,
 )
 
 
@@ -53,3 +54,9 @@ def test_action_labels():
         "Expiration"
     )
     assert _fill(side=None, effect=None).action_label == "Trade"
+
+
+def test_matches_search_needs_every_word_in_any_case():
+    assert matches_search("SPX 10/09/26 5800 Put Sell to Open", "spx PUT")
+    assert not matches_search("SPX 10/09/26 5800 Put", "spx call")
+    assert matches_search("anything", "   ")

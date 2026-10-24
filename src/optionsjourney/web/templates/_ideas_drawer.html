@@ -1,0 +1,21 @@
+{#- The Ideas drawer (#292): the trades saved from the Trade page with Idea ☆, and how they would
+    have done. Opened by any [data-ideas-open] button; ideas/drawer.js reads GET /api/ideas and
+    fills it, and the note edit, Delete and Trade it use /api/ideas/<id> and the Trade page. -#}
+{% from "_tooltip.html" import info %}
+<div id="ideas-drawer" class="drawer hidden" role="dialog" aria-modal="true" aria-labelledby="ideas-title"
+     data-ideas-url="{{ url_for('ideas.listing') }}" data-markets-url="{{ url_for('ideas.markets') }}">
+    <div data-ideas-backdrop class="drawer__backdrop opacity-0"></div>
+    <div data-ideas-panel class="drawer__panel drawer__panel--side drawer__panel--medium drawer__panel--surface translate-x-full">
+        <div class="slim-drawer__head">
+            <h3 id="ideas-title" class="slim-drawer__title">Ideas {{ info('ideas', "Trades you saved from the Trade page with Idea ☆, and how they would have done.", 'ideas', more='/help/ideas') }}</h3>
+            <span id="ideas-status" class="slim-drawer__status" aria-live="polite"></span>
+            <button data-ideas-refresh type="button" class="slim-drawer__refresh" title="Refresh" aria-label="Refresh">↻</button>
+            <button data-ideas-close type="button" class="slim-drawer__close" title="Close" aria-label="Close">✕</button>
+        </div>
+        <div id="ideas-body" class="drawer__body slim-drawer__body" aria-live="polite"></div>
+    </div>
+</div>
+<script type="module">
+    import { installIdeasDrawer } from "{{ url_for('static', filename='js/ideas/drawer.js') }}";
+    installIdeasDrawer(document, window);
+</script>

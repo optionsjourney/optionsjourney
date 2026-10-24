@@ -287,6 +287,15 @@ function _removePlSlice(id) {
     _drawPlChart();
 }
 
+// The slice menu's and strip's "Remove all slices": clears every slice, break-evens
+// included, and stops re-adding the automatic break-even ones (like removing them one by one).
+function _removeAllPlSlices() {
+    _plSlices = [];
+    _plAutoBreakevens = false;
+    _syncPlToolButtons();
+    _drawPlChart();
+}
+
 function _onPlSliceDrag(id, price) {
     const s = _plSlices.find(x => x.id === id);
     if (!s) return;
@@ -313,7 +322,8 @@ function _openPlSliceMenu(btn) {
     const item = 'block w-full text-left text-xs px-2.5 py-1.5 rounded text-gray-900 dark:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-700 cursor-pointer';
     pop.innerHTML =
         `<button class="${item}" onclick="_addPlSlice();document.getElementById('pl-slice-pop')?.remove()">Add price slice</button>` +
-        `<button class="${item}" onclick="_addPlBreakevenSlices();document.getElementById('pl-slice-pop')?.remove()">Add break-even slices</button>`;
+        `<button class="${item}" onclick="_addPlBreakevenSlices();document.getElementById('pl-slice-pop')?.remove()">Add break-even slices</button>` +
+        (_plSlices.length ? `<button class="${item}" onclick="_removeAllPlSlices();document.getElementById('pl-slice-pop')?.remove()">Remove all slices</button>` : '');
     document.body.appendChild(pop);
     setTimeout(() => {
         const close = e => {
@@ -338,7 +348,9 @@ function _renderPlSlicesStrip(modelerLegs, entryNet) {
     el.classList.remove('hidden');
     const toggle = `<button onclick="_togglePlSlicesTable()" title="${_plSlicesTableOpen ? 'Hide' : 'Show'} the price slice table"`
         + ` class="text-[9px] uppercase tracking-wide text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 cursor-pointer ${_plSlicesTableOpen ? 'mb-1' : ''}">`
-        + `${_plSlicesTableOpen ? '▾' : '▸'} Price slices (${_plSlices.length})</button>`;
+        + `${_plSlicesTableOpen ? '▾' : '▸'} Price slices (${_plSlices.length})</button>`
+        + `<button onclick="_removeAllPlSlices()" title="Remove every price slice"`
+        + ` class="ml-3 text-[9px] uppercase tracking-wide text-gray-500 dark:text-gray-400 hover:text-red-500 dark:hover:text-red-400 cursor-pointer">Remove all</button>`;
     if (!_plSlicesTableOpen) { el.innerHTML = toggle; return; }
     const gs = window.__modeler.buildPayoffFns({ ticker: _plTicker, legs: modelerLegs, net: entryNet }, _plUnderlyingPrice, null, _plAsOfMin, _plFlatIV);
     const fmt$ = v => isFinite(v) ? (v >= 0 ? '+$' : '-$') + Math.abs(Math.round(v)).toLocaleString() : '—';

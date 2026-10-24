@@ -1,13 +1,13 @@
 """The Trade page (#90): Tracker2's option chain, an order ticket and the risk
 graph. Review order previews through the one order path; nothing is sent from
 here until Confirm (slice 3). Bots slice 15: a reviewed ticket can instead be sent
-as a live bot's entry (Manage with a bot)."""
+as a live bot's entry (Manage with a bot). Trade Ideas (#292): ?idea= opens a saved
+idea in the ticket, and a send that carried its idea_id retires it."""
 
 import logging
 from datetime import UTC, datetime
 
 from flask import Blueprint, jsonify, render_template, request, url_for
-from sqlalchemy import select
 
 from optionsjourney.bots import underlyings
 from optionsjourney.brokers.credentials.base import CredentialsUnavailable
@@ -18,6 +18,7 @@ from optionsjourney.services import (
     bot_futures,
     bot_loops,
     bot_ticket,
+    ideas,
     manual_attach,
     manual_bots,
     trade_orders,
@@ -28,7 +29,6 @@ from optionsjourney.web import services
 logger = logging.getLogger(__name__)
 bp = Blueprint("trade", __name__)
 
-BROKERS = {"tastytrade": "TASTYTRADE", "schwab": "SCHWAB"}
 NO_MANUAL_BOT = "That manual bot isn't there any more. Nothing was sent; pick again."
 REMEMBERED = "Its manual bot's rules are attached once it fills."
 NOT_REMEMBERED = (
@@ -37,25 +37,48 @@ NOT_REMEMBERED = (
 
 
 def _accounts() -> list[dict]:
-    with services().session_factory() as session:
-        rows = session.scalars(select(Account).order_by(Account.broker, Account.id)).all()
     return [
         {
             "id": a.id,
-            "broker": BROKERS.get(a.broker, a.broker.upper()),
-            "label": a.nickname or f"…{a.number[-4:]}",
+            "broker": trade_orders.BROKERS[a.broker],
+            "label": trade_orders.label(a),
         }
-        for a in rows
-        if a.broker in BROKERS
+        for a in trade_orders.trading_accounts(services().session_factory)
     ]
 
 
 @bp.get("/trade")
 def trade_page():
     ticker = core_chain.clean_ticker(request.args.get("ticker")) or "SPX"
-    return render_template(
-        "trade_ticket.html", ticker=ticker, accounts=_accounts(), tour_tray=_tour_tray()
-    )
+    idea = _idea()
+    if idea is not None:
+        ticker = idea["ticker"]  # the chain opens on the idea's own symbol
+    return render_template("trade_ticket.html", ticker=ticker, accounts=_accounts(),
+                           tour_tray=_tour_tray(), idea=idea)  # fmt: skip
+
+
+def _idea() -> dict | None:
+    """The idea ?idea= names, as the ticket loads it; None when missing or expired."""
+    raw = request.args.get("idea", "")
+    if not raw.isdecimal():
+        return None
+    s = services()
+    return ideas.for_ticket(s.session_factory, s.quote_hub, int(raw))
+
+
+def _retire(body, answer: dict, done: bool) -> dict:
+    """Retire the idea the send carried (idea_id), once the order is out. A failure to
+    remove it never fails the trade: the idea just stays in the list."""
+    idea_id = body.get("idea_id")
+    if type(idea_id) is not int:
+        return answer
+    removed = False
+    if done:
+        try:
+            removed = ideas.retire(services().session_factory, idea_id)
+        except Exception:  # noqa: BLE001 -- the order is out either way
+            logger.exception("couldn't retire idea %s after its trade", idea_id)
+    return {**answer, "idea_removed": removed}
 
 
 def _tour_tray() -> dict | None:
@@ -131,8 +154,9 @@ def confirm():
     if manual_bot_id is not None and (
         type(manual_bot_id) is not int or manual_bots.load(s.session_factory, manual_bot_id) is None
     ):
-        return jsonify({"status": "success", "action": "refuse", "ok": False,
-                        "message": NO_MANUAL_BOT, "order_id": None})  # fmt: skip
+        refused = {"status": "success", "action": "refuse", "ok": False,
+                   "message": NO_MANUAL_BOT, "order_id": None}  # fmt: skip
+        return jsonify(_retire(body, refused, False))
     result = trade_ticket.confirm(
         s.session_factory,
         s.broker_clients(),
@@ -140,9 +164,9 @@ def confirm():
         found[1],
         code if isinstance(code, str) else "",
     )
+    answer = _retire(body, _result(result).get_json(), result.ok and result.action == "send")
     if manual_bot_id is None or not result.ok or not result.broker_order_id:
-        return _result(result)
-    answer = _result(result).get_json()
+        return jsonify(answer)
     try:
         manual_attach.remember(bot_loops.deps_for(s), found[0], found[1],
                                result.broker_order_id, manual_bot_id)  # fmt: skip
@@ -245,5 +269,6 @@ def send_as_bot():
         return _unknown_account()
     sent = bot_ticket.enter(bot_loops.deps_for(services()), found[0], found[1], body)
     run_url = url_for("automation.run_page", run_id=sent.run_id) if sent.run_id else None
-    return jsonify({"status": "success", "ok": sent.ok, "message": sent.message,
-                    "run_id": sent.run_id, "run_url": run_url})  # fmt: skip
+    answer = {"status": "success", "ok": sent.ok, "message": sent.message,
+              "run_id": sent.run_id, "run_url": run_url}  # fmt: skip
+    return jsonify(_retire(body, answer, sent.ok))

@@ -4,10 +4,17 @@ from optionsjourney.brokers.credentials.base import (
     AccessToken,
     CredentialProvider,
     CredentialsUnavailable,
+    NotConnected,
 )
 from optionsjourney.config import Settings
 
-__all__ = ["AccessToken", "CredentialProvider", "CredentialsUnavailable", "provider_for"]
+__all__ = [
+    "AccessToken",
+    "CredentialProvider",
+    "CredentialsUnavailable",
+    "NotConnected",
+    "provider_for",
+]
 
 
 def provider_for(settings: Settings) -> CredentialProvider:

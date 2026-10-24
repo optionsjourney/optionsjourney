@@ -219,6 +219,13 @@ class Position:
         return len(expirations) == 1 and expirations.pop() == market_date(self.opened_at)
 
     @property
+    def one_right(self) -> str | None:
+        """"Put" or "Call" when every option leg is that type, as a MEIC half (Tracker2's
+        put_call_chip); share legs don't count. None for a mix, or no options."""
+        rights = {leg.option.put_call for leg in self.legs if leg.option is not None}
+        return rights.pop().title() if len(rights) == 1 else None
+
+    @property
     def close_reason(self) -> str | None:
         if self.status is not Status.CLOSED or not self.events:
             return None

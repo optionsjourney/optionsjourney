@@ -16,8 +16,13 @@ def is_demo_database(path: Path) -> bool:
     real database is never touched; anything unreadable is not a demo database."""
     if not path.exists():
         return False
+    # A read-only open of a WAL database leaves -wal and -shm files behind (decision
+    # 0112). With no -wal file everything is in the main file, so read it as
+    # immutable, which creates nothing; otherwise the -wal must be read too.
+    wal = path.with_name(path.name + "-wal")
+    flags = "mode=ro" if wal.exists() else "mode=ro&immutable=1"
     try:
-        connection = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        connection = sqlite3.connect(f"file:{path}?{flags}", uri=True)
     except sqlite3.Error:
         return False
     try:

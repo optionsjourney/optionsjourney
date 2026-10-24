@@ -241,6 +241,96 @@ def describe(alert: UserAlert, value: Decimal | None = None) -> Fired:
     return Fired(alert.id, title, detail, link)
 
 
+def _value(alert: UserAlert, hub, open_pl: Callable[[str], Decimal | None]) -> Decimal | None:
+    """What the alert watches, now: a price, a spread's or bot trade's value, or a P/L."""
+    if alert.kind == "price":
+        quote = hub.latest(alert.target)
+        return quote.mark if quote is not None else None
+    if alert.kind in SPREADS:
+        return spread_value(hub, alert.legs or [])
+    return open_pl(alert.target)
+
+
+def _shown(alert: UserAlert, value: Decimal) -> str:
+    return _money(value) if alert.kind == "trade_pl" else f"{value:,.2f}"
+
+
+def condition(alert: UserAlert) -> str:
+    """What it waits for: "goes below 7,700.00", "open P/L goes above $250"."""
+    what = {"trade_pl": "open P/L ", "bot_pl": "close price "}.get(alert.kind, "")
+    if alert.bot_run_id is not None and alert.kind == "price":
+        what = f"{alert.target} "
+    return f"{what}goes {alert.direction} {_shown(alert, alert.level)}"
+
+
+TABLE_SHOWS = ("active", "armed", "fired", "all")  # Tracker2's filters; active: armed + fired today
+
+
+def table(session_factory, show: str, hub, open_pl, now: datetime | None = None) -> list[dict]:
+    """The Alerts page's Price alerts tab (#274): every alert, the user's and the bots',
+    with what it watches now and its state, newest first."""
+    from optionsjourney.core.market import MARKET_TZ  # noqa: PLC0415
+    from optionsjourney.services import bot_alerts  # noqa: PLC0415 -- it imports this module
+
+    now = now or datetime.now(UTC)
+    show = show if show in TABLE_SHOWS else "active"
+    today = now.astimezone(MARKET_TZ).date()
+    with session_factory() as session:
+        alerts = list(session.scalars(select(UserAlert).order_by(UserAlert.created_at.desc())))
+    rows, bots = [], {}
+    for alert in alerts:
+        if alert.active:
+            row_state = "armed"
+        elif alert.triggered_at is not None and not alert.dismissed:
+            row_state = "fired"
+        else:
+            row_state = "off"
+        fired_today = (
+            alert.triggered_at is not None
+            and alert.triggered_at.astimezone(MARKET_TZ).date() == today
+        )
+        wanted = {
+            "active": row_state == "armed" or (row_state == "fired" and fired_today),
+            "armed": row_state == "armed",
+            "fired": row_state == "fired",
+            "all": True,
+        }[show]
+        if not wanted:
+            continue
+        try:
+            value = _value(alert, hub, open_pl)
+        except Exception:  # noqa: BLE001 -- the row shows without it
+            logger.warning("alert %s: live value unavailable", alert.id, exc_info=True)
+            value = None
+        bot = None
+        if alert.bot_run_id is not None:
+            if alert.bot_run_id not in bots:
+                view = bot_alerts.bot_view(
+                    session_factory, bot_alerts.bot_of_run(session_factory, alert.bot_run_id)
+                )
+                bots[alert.bot_run_id] = view.name if view else None
+            bot = bots[alert.bot_run_id]
+        rows.append(
+            {
+                "id": alert.id,
+                "name": alert.label,
+                "bot": bot,
+                "condition": condition(alert),
+                "live": _shown(alert, value) if value is not None else "—",
+                "state": row_state,
+                "fired_at": alert.triggered_at,
+                "fired_value": (
+                    _shown(alert, alert.triggered_value)
+                    if alert.triggered_value is not None
+                    else None
+                ),
+                "note": alert.note or "",
+                "link": describe(alert).link,
+            }
+        )
+    return rows
+
+
 def check(
     session_factory,
     hub,
@@ -262,13 +352,7 @@ def check(
     )
     fired = []
     for alert in alerts:
-        if alert.kind == "price":
-            quote = hub.latest(alert.target)
-            value = quote.mark if quote is not None else None
-        elif alert.kind in SPREADS:
-            value = spread_value(hub, alert.legs or [])
-        else:
-            value = open_pl(alert.target)
+        value = _value(alert, hub, open_pl)
         if value is None:
             continue
         crossed = value > alert.level if alert.direction == "above" else value < alert.level
@@ -284,6 +368,7 @@ def check(
         alert.triggered_value = value
         event = describe(alert, value)
         fired.append(event)
+        _count_as_new(session_factory, alert, event, now or datetime.now(UTC))
         if alert.quiet:
             continue  # in the app only: shown, never sent
         try:
@@ -296,6 +381,20 @@ def check(
         except Exception:  # noqa: BLE001 -- a failed send must not stop the checks
             logger.exception("couldn't send alert %s", alert.id)
     return fired
+
+
+def _count_as_new(session_factory, alert, event: Fired, now: datetime) -> None:
+    """A firing is new on the bell until seen (#272); it's sent by `check`, not here."""
+    from optionsjourney.services import app_alerts  # noqa: PLC0415 -- it imports this module
+
+    try:
+        app_alerts.add(
+            session_factory, dedupe_key=f"user_alert:{alert.id}:{now.isoformat()}",
+            kind="user_alert", title=event.title, detail=event.detail, link=event.link,
+            now=now, send=False,
+        )  # fmt: skip
+    except Exception:  # noqa: BLE001 -- the checks go on
+        logger.exception("couldn't list alert %s as new", alert.id)
 
 
 def start_checker(session_factory, hub, open_pl, notify) -> threading.Thread:

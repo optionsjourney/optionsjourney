@@ -47,5 +47,7 @@ The app is installed in `Applications/OptionsJourney` inside your home folder, s
 ## Where things are
 - **The app:** the folder above. **Show app in Finder / Explorer** in the OJ menu opens it.
 - **Your data** (trades, bots, settings, backups) is kept separately, so updating or reinstalling the app never touches it: `AppData\Local\OptionsJourney` on Windows, `Library/Application Support/OptionsJourney` on a Mac.
+  - **Moving it to another computer:** quit OptionsJourney first, then copy the whole folder. While the app is open, recent changes sit in files next to `optionsjourney.db` (ending `-wal` and `-shm`), so copying only that one file can lose them. A backup (Settings → Backups) is always a complete copy on its own.
+  - **Keep it on this computer's own disk,** not in Dropbox, iCloud Drive, OneDrive or a network folder. Those can damage the database while the app is using it.
 - **Logs:** a `logs` folder inside your data. **Open logs** in the OJ menu opens it.
 - **Broker logins** are kept in the computer's own password store (Credential Manager on Windows, Keychain on a Mac).

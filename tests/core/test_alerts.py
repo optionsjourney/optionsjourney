@@ -36,6 +36,31 @@ def test_one_stale_alert_per_broker_not_per_account():
     assert len(sync_alerts(states, NOW)) == 1
 
 
+def test_a_broker_that_isnt_connected_raises_nothing():
+    """#273: a broker the user never connected, or disconnected, isn't stale or failing."""
+    old = NOW - timedelta(days=4)
+    states = [
+        State("schwab", "12349999", old),
+        State("schwab", "12348888", old, "Schwab needs you to log in again."),
+    ]
+    assert sync_alerts(states, NOW, connected=lambda broker: broker != "schwab") == []
+    assert len(sync_alerts(states, NOW, connected=lambda broker: True)) == 2
+
+
+def test_an_account_the_broker_stopped_returning_raises_nothing():
+    """#273: a closed account drops out of the broker's syncs while the others go on."""
+    closed = State("tastytrade", "5WX01234", NOW - timedelta(days=30), "Account not found.")
+    closed.last_attempt_at = NOW - timedelta(days=30)
+    assert sync_alerts([closed, State("tastytrade", "5WY05678", NOW)], NOW) == []
+
+
+def test_a_broker_that_stopped_syncing_altogether_is_still_a_note():
+    old = NOW - timedelta(days=5)
+    states = [State("tastytrade", "5WX01234", old), State("tastytrade", "5WY05678", old)]
+    [alert] = sync_alerts(states, NOW, connected=lambda broker: True)
+    assert alert.level == "warning" and "5 days" in alert.title
+
+
 def test_backup_problem():
     alert = backup_alert((NOW, "The backup folder /Volumes/USB can't be used: not found"))
     assert alert.level == "problem" and "USB" in alert.detail and alert.link == "/settings#backups"

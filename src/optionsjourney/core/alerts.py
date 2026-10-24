@@ -2,11 +2,12 @@
 fix, worked out from the app's state each time, so an alert goes away by
 itself once its cause is fixed. Price and trade alerts come later (#27)."""
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 STALE_AFTER = timedelta(days=3)
+LEFT_BEHIND = timedelta(days=1)  # an account this far behind its broker's latest sync is gone
 BROKER_NAMES = {"tastytrade": "TastyTrade", "schwab": "Schwab"}
 
 
@@ -20,10 +21,20 @@ class Alert:
     user_alert_id: int | None = None  # set for alerts the user created (#27)
 
 
-def sync_alerts(states: Iterable, now: datetime) -> list[Alert]:
-    """From each account's sync state: failures, and syncs gone stale."""
-    alerts, stale = [], {}
+def sync_alerts(
+    states: Iterable, now: datetime, connected: Callable[[str], bool] = lambda broker: True
+) -> list[Alert]:
+    """From each account's sync state: failures, and a broker gone stale. Only
+    brokers that are `connected`, and only accounts in the broker's latest sync:
+    one it stopped returning (a closed account) is left out (#273)."""
+    states = [s for s in states if connected(s.broker)]
+    latest: dict[str, datetime] = {}
     for state in states:
+        latest[state.broker] = max(latest.get(state.broker, state.last_attempt_at),
+                                   state.last_attempt_at)  # fmt: skip
+    current = [s for s in states if s.last_attempt_at >= latest[s.broker] - LEFT_BEHIND]
+    alerts, newest = [], {}
+    for state in current:
         name = BROKER_NAMES.get(state.broker, state.broker)
         if state.last_error:
             alerts.append(
@@ -35,18 +46,19 @@ def sync_alerts(states: Iterable, now: datetime) -> list[Alert]:
                     "Try Sync now",
                 )
             )
-        elif state.synced_through and now - state.synced_through > STALE_AFTER:
-            stale[name] = max(stale.get(name, STALE_AFTER), now - state.synced_through)
-    for name, age in stale.items():
-        alerts.append(
-            Alert(
-                "warning",
-                f"{name} last synced {age.days} days ago",
-                "Trades since then aren't in the journal yet.",
-                "/transactions",
-                "Sync now",
+        if state.synced_through:
+            newest[name] = max(newest.get(name, state.synced_through), state.synced_through)
+    for name, synced in newest.items():
+        if now - synced > STALE_AFTER:
+            alerts.append(
+                Alert(
+                    "warning",
+                    f"{name} last synced {(now - synced).days} days ago",
+                    "Trades since then aren't in the journal yet.",
+                    "/transactions",
+                    "Sync now",
+                )
             )
-        )
     return alerts
 
 

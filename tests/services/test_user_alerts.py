@@ -144,3 +144,51 @@ def test_states_for_the_analyzer(factory):
     states = {a["id"]: a["state"] for a in user_alerts.listing(factory)}
     assert states == {armed: "armed", off: "off"}
     assert [a["id"] for a in user_alerts.listing(factory, {"armed"})] == [armed]
+
+
+def test_the_price_alerts_table_shows_state_condition_and_live_value(factory):
+    """#274: Tracker2's Price alerts tab: every alert with its live value and state."""
+    armed = user_alerts.create_price(factory, "SPX", "below", "7,700")
+    fired = user_alerts.create_price(factory, "QQQ", "above", "500")
+    off = user_alerts.create_trade(factory, "tt:1#x", "SPX Iron Condor", "above", "250")
+    user_alerts.check(factory, Hub({"QQQ": "510"}), open_pl=lambda k: None,
+                      notify=lambda e: None, now=NOW)  # fmt: skip
+    user_alerts.disable(factory, off)
+    hub = Hub({"SPX": "7812.5", "QQQ": "505"})
+    rows = user_alerts.table(factory, "all", hub, open_pl=lambda k: Decimal("120"), now=NOW)
+    by_id = {r["id"]: r for r in rows}
+    assert by_id[armed]["state"] == "armed" and by_id[armed]["live"] == "7,812.50"
+    assert by_id[armed]["name"] == "SPX" and by_id[armed]["condition"] == "goes below 7,700.00"
+    assert by_id[fired]["state"] == "fired" and by_id[fired]["fired_at"] == NOW
+    assert by_id[off]["state"] == "off" and by_id[off]["live"] == "$120"
+    assert by_id[off]["condition"] == "open P/L goes above $250"
+
+
+def test_the_table_filters_like_tracker2(factory):
+    armed = user_alerts.create_price(factory, "SPX", "below", "7,700")
+    fired = user_alerts.create_price(factory, "QQQ", "above", "500")
+    old = user_alerts.create_price(factory, "IWM", "above", "200")
+    hub = Hub({"QQQ": "510"})
+    user_alerts.check(factory, hub, open_pl=lambda k: None, notify=lambda e: None, now=NOW)
+    yesterday = NOW.replace(day=NOW.day - 1)
+    user_alerts.check(factory, Hub({"IWM": "210"}), open_pl=lambda k: None,
+                      notify=lambda e: None, now=yesterday)  # fmt: skip
+
+    def ids(show):
+        return {r["id"] for r in user_alerts.table(factory, show, hub, lambda k: None, now=NOW)}
+
+    assert ids("active") == {armed, fired}  # armed, and fired today
+    assert ids("armed") == {armed}
+    assert ids("fired") == {fired, old}
+    assert ids("all") == {armed, fired, old}
+    assert ids("nonsense") == ids("active")
+
+
+def test_a_live_value_that_cant_be_read_is_a_dash(factory):
+    user_alerts.create_trade(factory, "tt:1#x", "Condor", "above", "250")
+
+    def broken(key):
+        raise RuntimeError("no book")
+
+    [row] = user_alerts.table(factory, "all", Hub({}), broken, now=NOW)
+    assert row["live"] == "—"

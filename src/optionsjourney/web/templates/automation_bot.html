@@ -152,18 +152,8 @@
             {# #140: short fields side by side, each box as wide as what it holds #}
             <div class="bot-form__fields bot-form__fields--top">
             <label class="field--wide">{{ named('Name', 'name', "What the bot is called on the Automation list, in its alerts and on its runs. Up to 100 characters.") }} <input type="text" name="name" value="{{ bot.name }}" maxlength="100"></label>
-            <div>
-            <label>{{ named('Journal tag', 'journal-tag', "The tag the bot puts on its trades in your journal. Its Record counts the trades it placed, the ones matched to it, and every other trade with this tag in the bot's account that no bot is linked to, including ones you opened by hand. + New tag makes one without leaving this page.") }}
-                <select name="tag_id">
-                    <option value="">Pick one</option>
-                    {% for t in journal_tags %}<option value="{{ t.id }}" {{ 'selected' if t.id == bot.tag_id }}>{{ t.name }}</option>{% endfor %}
-                </select>
-            </label>
-            {% include '_new_tag.html' %}
-            </div>
             </div>
             {{ problem('name') }}
-            {{ problem('tag') }}
             <div class="bot-form__fields">
             <label class="field--wide">{{ named('Account', 'account', "The account the bot trades in. Its orders, its previews and the buying power it's sized by all go through this account's broker. Changing the broker switches the bot off and back to Paper.") }}
                 {% if accounts %}
@@ -209,9 +199,12 @@
                form sends tags the same way with or without it. #}
             <div class="tag-picker" data-known="{{ all_tags | list | tojson | forceescape }}"
                  data-reserved="{{ reserved_tags | list | tojson | forceescape }}" data-max="{{ max_tags }}">
-            {{ named('Tags', 'tags', "Your own labels for finding bots: the Automation list filters by them. They never change how a bot trades and are never in a shared bot file. Pick tags lists the ones your bots and your journal already use.") }}
-            <label>Separate them with commas <input type="text" name="tags" value="{{ bot.tags | join(', ') }}" placeholder="for example: 0DTE, mornings"></label>
+            {{ named('Tags', 'tags', "Your journal tags for this bot. Every one goes on the trades it places or is matched to, and the Automation list filters by them. Its main tag also brings into its Record the trades with that tag in its account that no bot is linked to, such as ones you opened by hand. Remove the main tag and another of its tags takes over. A new tag is added to Journal → Tags. Tags never change how a bot trades and are never in a shared bot file.") }}
+            <label>Separate them with commas <input type="text" name="tags" value="{{ bot.tags | join(', ') }}" placeholder="for example: 0DTE, MEIC"></label>
             </div>
+            {% set main = journal_tags | selectattr('id', 'equalto', bot.tag_id) | first if bot.tag_id else none %}
+            {% if main %}<p class="muted small" id="main-tag">Main tag: <strong>{{ main.name }}</strong></p>{% endif %}
+            {{ problem('tag') }}
             {{ problem('tags') }}
         </div>
     </section>

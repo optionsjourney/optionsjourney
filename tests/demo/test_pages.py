@@ -350,7 +350,7 @@ def test_demo_journal_opens_on_all_trades(demo_app):
     today's trades (outside demo: tests/web/test_journal_pages.py
     test_journal_opens_on_open_trades)."""
     html = demo_app.test_client().get("/journal").get_data(as_text=True)
-    assert '<option value="" selected>Open and closed</option>' in html
+    assert '<summary aria-label="Dates">All Time</summary>' in html
     assert "Showing open + closed today trades only" not in html
     assert html.count('<tr class="trade-row" data-group="closed"') > 50
 

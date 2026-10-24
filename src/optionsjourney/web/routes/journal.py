@@ -11,10 +11,13 @@ from flask import Blueprint, abort, flash, jsonify, redirect, render_template, r
 from optionsjourney.bots import adopt as adopt_rules
 from optionsjourney.bots import manual as manual_rules
 from optionsjourney.bots import stops
+from optionsjourney.bots.validation import BROKER_NAMES
 from optionsjourney.brokers.credentials.local import LocalProvider
+from optionsjourney.core import date_ranges
+from optionsjourney.core.holdings import stock_summary
 from optionsjourney.core.market import MARKET_TZ, market_date
 from optionsjourney.core.positions import Status
-from optionsjourney.core.stock_history import RANGES, portfolio_series, range_start, trade_marks
+from optionsjourney.core.stock_history import RANGES, range_start, stock_transactions, trade_marks
 from optionsjourney.core.symbols import parse_occ
 from optionsjourney.core.trade_rows import row_details
 from optionsjourney.services import (
@@ -25,7 +28,6 @@ from optionsjourney.services import (
     bot_match,
     bot_store,
     chart_market,
-    expiry_settle,
     holdings,
     journal,
     manual,
@@ -34,7 +36,7 @@ from optionsjourney.services import (
     paper_journal,
     pl_day,
     setup,
-    stock_history,
+    stock_value,
     transactions,
 )
 from optionsjourney.services.journal import Filters, JournalError
@@ -115,24 +117,20 @@ def journal_page():
         view.entries = journal.open_then_closed(view.entries)
     else:
         view.entries = journal.sort_entries(view.entries, sort, direction != "asc")
-    stocks = None
+    stocks, summary, stocks_view, stock_rows = None, None, "holdings", []
     if filters.kind == "stocks":
         stocks = holdings.stock_holdings(
-            services().broker_clients(), services().quote_hub, filters.account
+            services().broker_clients(), services().quote_hub, filters.accounts
         )
-    stock_days, stock_chart, stock_range, stock_has_saved = [], [], "All", False
-    if filters.kind == "stocks":
-        stock_range = request.args.get("range", "All")
-        if stock_range not in RANGES:
-            stock_range = "All"
-        since = range_start(stock_range, market_date(_now()))
-        saved = stock_history.load_rows(services().session_factory, since=since)
-        stock_days = portfolio_series(saved, account=filters.account)
-        # A day with nothing priced has no P/L to draw (it isn't $0); it still
-        # shows in the "N of M priced" note.
-        stock_chart = [d for d in stock_days if d.priced]
-        # Rows saved, but none in this range or account: not the first-run message
-        stock_has_saved = bool(stock_days) or stock_history.has_any(services().session_factory)
+        summary = _stock_summary(stocks)
+        # #286: Holdings or Transaction History; anything else is Holdings
+        if request.args.get("stocks_view") == "history":
+            stocks_view = "history"
+            # since the first day of history, as the Portfolio value chart
+            factory = services().session_factory
+            since = stock_value.fills_since(stock_value.first_day(factory, datetime.now(UTC)))
+            fills = transactions.load_fills(factory, since=since).fills
+            stock_rows = stock_transactions(fills, filters.accounts)
     page = paginate(view.entries, TRADES_PER_PAGE)
     rows = journal.with_headers(view.entries, page.items) if grouped else page.items
     return render_template(
@@ -142,18 +140,9 @@ def journal_page():
         bot_chips=_bot_chips(page.items),
         needs_a_look=_needs_a_look(page.items),
         stocks=stocks,
-        stock_days=stock_days,
-        stock_chart=stock_chart,
-        stock_chart_data=[
-            {
-                "day": d.day.isoformat(),
-                "pl": float(d.pl),
-                "pct": None if d.pct is None else float(d.pct),
-            }
-            for d in stock_chart
-        ],
-        stock_range=stock_range,
-        stock_has_saved=stock_has_saved,
+        stock_summary=summary,
+        stocks_view=stocks_view,
+        stock_rows=stock_rows,
         stock_ranges=list(RANGES),
         row_details=row_details,
         analyzable=journal.analyzable,
@@ -165,29 +154,12 @@ def journal_page():
         filters=filters,
         dashboard=dashboard,
         periods=journal.PERIODS,
+        date_ranges=date_ranges.RANGES,
+        broker_names=BROKER_NAMES,
+        today=market_date(_now()),
         statuses=journal.STATUSES,
         uncategorized=journal.UNCATEGORIZED,
-        settle=_settle_state() if dashboard is None and filters.kind != "stocks" else None,
     )
-
-
-def _settle_state() -> dict:
-    """The "Settle expirations at 4:15 PM" switch and its last run (#147)."""
-    sf = services().session_factory
-    return {"on": expiry_settle.is_on(sf), "last": expiry_settle.last_run(sf)}
-
-
-@bp.post("/journal/settle-expirations")
-def settle_switch():
-    on = request.form.get("on") == "1"
-    expiry_settle.set_on(services().session_factory, on)
-    flash(
-        "Expiring trades will be settled at the close, at 4:15 PM."
-        if on
-        else "Expiring trades will wait for the broker's record.",
-        "success",
-    )
-    return redirect(_back())
 
 
 def _date_arg(name: str) -> date | None:
@@ -312,12 +284,26 @@ def grid_page():
     )
 
 
+def _accounts_arg() -> tuple[str, ...]:
+    """The accounts asked for (#285): `account` repeated, or commas in one."""
+    return tuple(a for v in request.args.getlist("account") for a in v.split(",") if a)
+
+
+def _stock_summary(rows):
+    """The cards' totals; shares held with no price yet show "—", not $0 (#286)."""
+    summary = stock_summary(rows)
+    if rows and all(r.price is None for r in rows):
+        return replace(summary, total_pl=None, market_value=None, day_pl=None)
+    return summary
+
+
 @bp.get("/api/stocks")
 def stocks_api():
     """The Stocks tab's rows, refreshed every few seconds (#58)."""
     rows = holdings.stock_holdings(
-        services().broker_clients(), services().quote_hub, request.args.get("account", "")
+        services().broker_clients(), services().quote_hub, _accounts_arg()
     )
+    summary = _stock_summary(rows)
     number = lambda value: None if value is None else float(value)  # noqa: E731
     return jsonify(
         rows=[
@@ -330,9 +316,31 @@ def stocks_api():
                 "pl": number(h.pl),
                 "pl_percent": number(h.pl_percent),
                 "today_pl": number(h.today_pl),
+                "market_value": number(h.market_value),
             }
             for h in rows
-        ]
+        ],
+        summary={
+            "total_pl": number(summary.total_pl),
+            "total_pl_percent": number(summary.total_pl_percent),
+            "market_value": number(summary.market_value),
+            "day_pl": number(summary.day_pl),
+            "day_pl_percent": number(summary.day_pl_percent),
+        },
+    )
+
+
+@bp.get("/api/stocks/value")
+def stock_value_api():
+    """The Stocks tab's portfolio value by day (#286), loaded after the page: it
+    reads every broker's positions and each ticker's closes."""
+    s = services()
+    chart = stock_value.portfolio_value(
+        s.session_factory, s.broker_clients(), s.quote_hub, _accounts_arg(), _now()
+    )
+    return jsonify(
+        points=[{"day": p.day.isoformat(), "value": float(p.value)} for p in chart.points],
+        note=chart.note,
     )
 
 
@@ -341,7 +349,7 @@ def stock_chart_api(ticker):
     """One stock's daily closes, your cost per share and your buys and sells (#236).
     `path:` so a ticker with a slash (BRK/B) reaches it."""
     ticker = ticker.strip().upper()
-    account = request.args.get("account", "")
+    account = _accounts_arg()
     key = request.args.get("range", "1Y")
     if key not in RANGES:
         key = "1Y"
@@ -379,7 +387,8 @@ def stock_chart_api(ticker):
     except Exception:  # noqa: BLE001 -- the drawer still shows cost and trades
         logger.exception("Stock chart prices failed for %s", ticker)
         closes, note = [], "Prices aren't available right now."
-    pair = tuple(account.partition(":")[::2]) if account else None
+    # One account is read alone; several are read together and picked by trade_marks
+    pair = tuple(account[0].partition(":")[::2]) if len(account) == 1 else None
     fills = transactions.load_fills(services().session_factory, account=pair).fills
     marks = [
         {
@@ -447,6 +456,9 @@ def pl_page():
         filters=filters,
         dashboard=dashboard,
         periods=journal.PERIODS,
+        date_ranges=date_ranges.RANGES,
+        broker_names=BROKER_NAMES,
+        today=market_date(_now()),
         statuses=journal.STATUSES,
         uncategorized=journal.UNCATEGORIZED,
     )
@@ -474,6 +486,9 @@ def metrics_page():
         filters=filters,
         dashboard=dashboard,
         periods=journal.PERIODS,
+        date_ranges=date_ranges.RANGES,
+        broker_names=BROKER_NAMES,
+        today=market_date(_now()),
         statuses=journal.STATUSES,
         uncategorized=journal.UNCATEGORIZED,
     )

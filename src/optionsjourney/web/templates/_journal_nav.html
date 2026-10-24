@@ -11,7 +11,7 @@
 
 <nav class="tabs" aria-label="Dashboards">
     <a class="tabs__tab {{ 'tabs__tab--active' if not dashboard and filters.kind != 'stocks' }}" href="{{ url_for(page_endpoint) }}">All trades</a>
-    <a class="tabs__tab {{ 'tabs__tab--active' if not dashboard and filters.kind == 'stocks' }}" href="{{ url_for(page_endpoint, kind='stocks') }}">Stocks</a>
+    <a class="tabs__tab {{ 'tabs__tab--active' if not dashboard and filters.kind == 'stocks' }}" href="{{ url_for('journal.journal_page', kind='stocks') }}">Stocks</a>
     {% for d in view.dashboards %}
     <a class="tabs__tab {{ 'tabs__tab--active' if dashboard and dashboard.id == d.id }}"
        href="{{ url_for(page_endpoint, dashboard=d.id) }}">{{ d.name }}</a>
@@ -30,9 +30,12 @@
 </nav>
 
 {% set holdings_only = filters.kind == 'stocks' and not dashboard %}
-<form class="filters" method="get">
+{# #285: every change applies at once (filters_auto.js); Apply is only there without it #}
+<form class="filters" method="get" data-auto-apply>
     {% if dashboard %}<input type="hidden" name="dashboard" value="{{ dashboard.id }}">{% endif %}
     {% if filters.kind %}<input type="hidden" name="kind" value="{{ filters.kind }}">{% endif %}
+    {# #286: changing accounts stays on Transaction History #}
+    {% if holdings_only and stocks_view is defined and stocks_view == 'history' %}<input type="hidden" name="stocks_view" value="history">{% endif %}
     {# The Stocks tab is holdings only: just the account filter applies (#58) #}
     {% if not holdings_only %}
     <input type="search" name="q" value="{{ filters.q }}" placeholder="Search (or #order)" aria-label="Search trades" class="filters__search">
@@ -46,45 +49,73 @@
         </div>
     </details>
     {% endif %}
-    <select name="account" aria-label="Account">
-        <option value="">All accounts</option>
-        {% for key, account in view.accounts.items() %}
-        {% set value = key[0] ~ ':' ~ key[1] %}
-        <option value="{{ value }}" {{ 'selected' if value == filters.account }}>{{ account.display_name }} {{ account.masked_number }}</option>
-        {% endfor %}
-    </select>
+    {# #285: several accounts at once; none ticked is every account #}
+    <details class="dropdown" data-accounts>
+        <summary aria-label="Accounts">{% if not filters.accounts %}All accounts{% elif filters.accounts | length == 1 %}{% for key, account in view.accounts.items() if key[0] ~ ':' ~ key[1] == filters.accounts[0] %}{{ account.display_name }} {{ account.masked_number }}{% else %}1 account{% endfor %}{% else %}{{ filters.accounts | length }} accounts{% endif %}</summary>
+        <div class="dropdown__menu">
+            {% for key, account in view.accounts.items() %}
+            {% set value = key[0] ~ ':' ~ key[1] %}
+            <label class="check"><input type="checkbox" name="account" value="{{ value }}" {{ 'checked' if value in filters.accounts }}> {{ account.display_name }} {{ account.masked_number }} <span class="muted small">{{ broker_names.get(key[0], key[0]) if broker_names is defined else key[0] }}</span></label>
+            {% endfor %}
+        </div>
+    </details>
     {% if not holdings_only %}
-    <select name="status" aria-label="Status">
-        {# The page's default status goes out empty, so it isn't carried to the other views (#68) #}
-        {% for value, label in statuses.items() %}
-        <option value="{{ '' if value == filters.default_status else value }}" {{ 'selected' if value == filters.shown_status }}>{{ label }}</option>
-        {% endfor %}
-    </select>
-    <select name="days" aria-label="Period">
-        {% for value, label in periods.items() %}
-        <option value="{{ value }}" {{ 'selected' if value == filters.days }}>{{ label }}</option>
-        {% endfor %}
-    </select>
-    <label class="filters__dates">Opened
-        <input type="date" name="start" value="{{ filters.start.isoformat() if filters.start }}" aria-label="Opened on or after">
-        to <input type="date" name="end" value="{{ filters.end.isoformat() if filters.end }}" aria-label="Opened on or before">
-    </label>
+    {# #284 (Tracker2's date range picker): presets on the left, a custom range on the
+       right. Each preset is a submit button (no script needed); date_range.js adds the
+       two-month calendar that fills the custom range's boxes. The hidden fields carry
+       the current choice when another filter is applied. #}
+    {% if filters.status %}<input type="hidden" name="status" value="{{ filters.status }}">{% endif %}
+    {% if filters.range %}<input type="hidden" name="range" value="{{ filters.range }}">{% endif %}
+    {% if filters.days %}<input type="hidden" name="days" value="{{ filters.days }}">{% endif %}
+    {% set shown = filters.opened_window(today) if today is defined else (filters.start, filters.end) %}
+    <details class="dropdown date-range" data-date-range
+             data-from="{{ shown[0].isoformat() if shown[0] }}" data-to="{{ shown[1].isoformat() if shown[1] }}"
+             data-today="{{ today.isoformat() if today is defined }}">
+        <summary aria-label="Dates">{{ filters.date_label }}</summary>
+        <div class="dropdown__menu date-range__menu">
+            <div class="date-range__presets" role="group" aria-label="Date presets">
+                {% set default_on = not filters.dated and not filters.days and filters.shown_status == 'today' %}
+                <button type="submit" name="preset" value="today" class="{{ 'is-active' if default_on }}">Open + Today{% if filters.default_status == 'today' %} (Default){% endif %}</button>
+                {% for key, label in date_ranges.items() %}
+                <button type="submit" name="preset" value="{{ key }}" class="{{ 'is-active' if filters.range == key }}">{{ label }}</button>
+                {% endfor %}
+                <button type="submit" name="preset" value="all" class="{{ 'is-active' if not filters.dated and not filters.days and filters.shown_status == 'all' }}">All Time</button>
+                <button type="button" data-custom class="{{ 'is-active' if filters.start or filters.end }}">Custom Range</button>
+            </div>
+            <div class="date-range__custom">
+                <div class="date-range__calendars" data-calendars hidden></div>
+                <div class="date-range__foot">
+                    <label class="filters__dates">Opened
+                        <input type="date" name="start" value="{{ filters.start.isoformat() if filters.start }}" aria-label="Opened on or after">
+                        to <input type="date" name="end" value="{{ filters.end.isoformat() if filters.end }}" aria-label="Opened on or before">
+                    </label>
+                    <button type="button" class="button button--quiet" data-cancel>Cancel</button>
+                    <button type="submit" name="preset" value="custom" class="button">Apply</button>
+                </div>
+            </div>
+        </div>
+    </details>
+    <script type="module" src="{{ url_for('static', filename='js/date_range.js') }}"></script>
     {% endif %}
-    <button class="button button--quiet" type="submit">Apply</button>
+    <noscript><button class="button button--quiet" type="submit">Apply</button></noscript>
     {% if dashboard %}
-    <button class="button button--quiet" type="submit" formmethod="post"
+    {# #285: Save only when the filters differ from the dashboard's; Delete kept small #}
+    {% if filters.differs_from(dashboard.filters) %}
+    <button class="button" type="submit" formmethod="post" id="save-dashboard"
             formaction="{{ url_for('journal.update_dashboard', dashboard_id=dashboard.id) }}">Save to “{{ dashboard.name }}”</button>
-    <button class="button button--danger" type="submit" formmethod="post"
+    {% endif %}
+    <button class="link-button filters__delete" type="submit" formmethod="post"
             formaction="{{ url_for('journal.delete_dashboard', dashboard_id=dashboard.id) }}"
             onclick='return confirm({{ ("Delete the " ~ dashboard.name ~ " dashboard? Your trades are not affected.") | tojson }})'>Delete dashboard</button>
     {% endif %}
+    <script type="module" src="{{ url_for('static', filename='js/filters_auto.js') }}"></script>
 </form>
 
 {% set view_args = dict(filters.to_args(), **({'dashboard': dashboard.id} if dashboard else {})) %}
 {% if not holdings_only %}
 <nav class="view-switch" aria-label="View">
     <a class="view-switch__link {{ 'view-switch__link--active' if page_endpoint == 'journal.journal_page' }}" href="{{ url_for('journal.journal_page', **view_args) }}">Trades</a>
-    <a class="view-switch__link {{ 'view-switch__link--active' if page_endpoint == 'journal.pl_page' }}" href="{{ url_for('journal.pl_page', **view_args) }}">P/L</a>
+    <a class="view-switch__link {{ 'view-switch__link--active' if page_endpoint == 'journal.pl_page' }}" href="{{ url_for('journal.pl_page', **view_args) }}">P/L Calendar</a>
     <a class="view-switch__link {{ 'view-switch__link--active' if page_endpoint == 'journal.metrics_page' }}" href="{{ url_for('journal.metrics_page', **view_args) }}">Trading metrics</a>
     <a class="view-switch__link" href="{{ url_for('journal.paper_page') }}">Paper trades</a>
 </nav>

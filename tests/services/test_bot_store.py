@@ -1158,15 +1158,25 @@ def test_slice_19_settings_round_trip_through_the_store(factory):
     assert (loaded.sizing, loaded.max_per_entry_usd) == ("dollars", D("300"))
 
 
-def test_all_tags_offers_every_bot_tag_but_a_deleted_bots(factory):
-    bot_store.save(factory, replace(good(factory), tags=("mornings", "Fridays")), NOW)
-    old, _ = bot_store.save(factory, replace(good(factory), name="Old", tags=("Late",)), NOW)
-    gone, _ = bot_store.save(factory, replace(good(factory), name="Gone", tags=("Secret",)), NOW)
-    bot_store.save(factory, replace(good(factory), name="Twin", tags=("Mornings",)), NOW)
-    bot_store.archive(factory, old, NOW)
-    bot_store.hide(factory, gone, NOW)
-    offered = set(bot_store.all_tags(factory)) - _journal_tags(factory)
-    assert offered == {"Fridays", "mornings", "Late"}
+def test_a_bots_tags_are_journal_tags_its_main_one_first(factory):
+    """#278 (decision 0110): one set of tags. Saving makes any new one a journal tag; the
+    main tag (tag_id) stays while it's listed, else the first typed takes over."""
+    bot_id, _ = bot_store.save(factory, replace(good(factory), tags=("mornings", "Fridays")), NOW)
+    bot = bot_store.load(factory, bot_id)
+    assert bot.tags == ("0DTE", "Fridays", "mornings") and bot.tag_id == tag_id(factory)
+    offered = set(bot_store.all_tags(factory))
+    assert {"Fridays", "mornings"} <= _journal_tags(factory) <= offered | {"Live"}
+    edited = replace(bot, tag_id=None, tags=("Fridays", "Wings"))  # the form: 0DTE taken off
+    bot_store.save(factory, edited, NOW)
+    bot = bot_store.load(factory, bot_id)
+    assert bot.tags == ("Fridays", "Wings") and _tag_named(factory, "Fridays") == bot.tag_id
+    _, problems = bot_store.save(factory, replace(bot, tag_id=None, tags=()), NOW)
+    assert "tag" in problems  # a bot needs a tag
+
+
+def _tag_named(factory, name):
+    with factory() as session:
+        return session.scalar(select(Tag.id).where(Tag.name == name))
 
 
 def _journal_tags(factory):
@@ -1192,21 +1202,27 @@ def test_all_tags_offers_the_journals_tags_too(factory):
 
 def test_tag_many_changes_only_the_tags_and_names_a_bot_that_would_pass_the_limit(factory):
     first, _ = bot_store.save(factory, replace(good(factory), tags=("Beta",)), NOW)
-    many = tuple(f"t{i}" for i in range(20))
+    many = tuple(f"t{i}" for i in range(19))  # with its main tag, the 20 a bot may have
     full, _ = bot_store.save(factory, replace(good(factory), name="Full", tags=many), NOW)
     with factory() as session:
         row = session.get(Bot, first)
         row.live, row.enabled = True, True  # armed and live: tags still change
         session.commit()
-    changed, too_many = bot_store.tag_many(factory, [first, full, 999], add=["Wings"], remove=[])
+    changed, too_many, _ = bot_store.tag_many(factory, [first, full, 999], add=["Wings"], remove=[])
     assert changed == [first] and too_many == ["Full"]
     bot = bot_store.load(factory, first)
-    assert bot.tags == ("Beta", "Wings") and bot.live and bot.enabled  # nothing else moved
+    assert bot.tags == ("0DTE", "Beta", "Wings") and bot.live and bot.enabled  # nothing else moved
     assert len(bot_store.load(factory, full).tags) == 20
-    changed, _ = bot_store.tag_many(factory, [first], add=[], remove=["beta"])
-    assert changed == [first] and bot_store.load(factory, first).tags == ("Wings",)
-    unchanged, _ = bot_store.tag_many(factory, [first], add=["wings"], remove=[])
+    changed, _, _ = bot_store.tag_many(factory, [first], add=[], remove=["beta"])
+    assert changed == [first] and bot_store.load(factory, first).tags == ("0DTE", "Wings")
+    unchanged, _, _ = bot_store.tag_many(factory, [first], add=["wings"], remove=[])
     assert unchanged == []  # already tagged: nothing to change
+    # #278: taking off the main tag hands it on; taking off the last tag is refused
+    bot_store.tag_many(factory, [first], add=[], remove=["0dte"])
+    bot = bot_store.load(factory, first)
+    assert bot.tags == ("Wings",) and bot.tag_id == _tag_named(factory, "Wings")
+    _, _, emptied = bot_store.tag_many(factory, [first], add=[], remove=["Wings"])
+    assert emptied == ["IC"] and bot_store.load(factory, first).tags == ("Wings",)
 
 
 def test_a_groups_pairing_is_read_from_the_form():

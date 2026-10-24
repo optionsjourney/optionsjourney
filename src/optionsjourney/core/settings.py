@@ -393,6 +393,22 @@ SECTIONS = SECTIONS + (
                 default="on",
                 choices=(("on", "Sync"), ("off", "Off")),
             ),
+            Setting(
+                key="expiry_settle_on",  # services/expiry_settle.SWITCH_KEY (#147, decision 0109)
+                label="Settle expirations at 4:15 PM",
+                help="Close expiring trades the same day, at the close.",
+                tip=(
+                    "At 4:15 PM New York time on trading days the app syncs, then settles "
+                    "trades whose options expired that day at the last price from your broker, "
+                    "so 0DTE trades count in your P/L straight away. When the official close is "
+                    "out, they're corrected to it, and you get an alert if your P/L changes by "
+                    "$1 or more. The broker's own record replaces the settlement when it "
+                    "arrives. Off: expiring trades wait for the broker's record, usually the "
+                    "next day."
+                ),
+                default="0",
+                choices=(("1", "On"), ("0", "Off")),
+            ),
         ),
     ),
 )

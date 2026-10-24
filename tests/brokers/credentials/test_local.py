@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 import pytest
 
-from optionsjourney.brokers.credentials.base import CredentialsUnavailable
+from optionsjourney.brokers.credentials.base import CredentialsUnavailable, NotConnected
 from optionsjourney.brokers.credentials.local import LocalProvider
 from optionsjourney.brokers.credentials.store import MemoryStore
 
@@ -26,6 +26,15 @@ def test_not_connected_says_where_to_connect():
     p, _ = provider(lambda r: httpx.Response(500))
     with pytest.raises(CredentialsUnavailable, match="Settings"):
         p.tastytrade_token()
+
+
+def test_never_connected_is_its_own_kind():
+    # The Stocks chart skips a broker that was never connected, but not one that fails
+    p, _ = provider(lambda r: httpx.Response(500))
+    with pytest.raises(NotConnected):
+        p.tastytrade_token()
+    with pytest.raises(NotConnected):
+        p.schwab_token()
 
 
 def test_tastytrade_token_from_the_refresh_token():

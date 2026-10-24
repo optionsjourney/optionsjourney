@@ -161,6 +161,27 @@ def _average_fill(executions: list[tuple[Decimal | None, Decimal]]) -> Decimal |
     return (total / count).quantize(Decimal("0.0001")).normalize()
 
 
+def _signed_price(raw: dict, legs: tuple[BrokerLeg, ...]) -> Decimal | None:
+    """The signed price from Schwab's orderType and unsigned price. NET_CREDIT /
+    NET_DEBIT carry the sign in the name, and NET_ZERO is 0; a single-leg LIMIT or
+    STOP_LIMIT takes its sign from the leg (a sell is +). A multi-leg one has no
+    price: its sign can't be told."""
+    kind = raw.get("orderType")
+    price = None if raw.get("price") is None else Decimal(str(raw["price"]))
+    if kind == "NET_ZERO":
+        return Decimal(0)
+    if kind in ("NET_CREDIT", "NET_DEBIT"):
+        return -price if price is not None and kind == "NET_DEBIT" else price
+    if len(legs) > 1:
+        return None
+    if price is not None and legs and legs[0].side is Side.BUY:
+        return -price
+    return price
+
+
+_CHANGING = {"PENDING_CANCEL", "PENDING_REPLACE"}
+
+
 def broker_order(raw: dict) -> BrokerOrder:
     units = Decimal(str(raw.get("quantity") or 0))
     filled = Decimal(str(raw.get("filledQuantity") or 0))
@@ -201,4 +222,6 @@ def broker_order(raw: dict) -> BrokerOrder:
         legs=tuple(legs),
         tag=raw.get("tag") or None,
         entered_at=_time(raw.get("enteredTime")),
+        price=_signed_price(raw, tuple(legs)),
+        changing=text in _CHANGING,
     )

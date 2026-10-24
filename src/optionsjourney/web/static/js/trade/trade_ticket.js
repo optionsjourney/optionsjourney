@@ -74,14 +74,13 @@ export const defaultExitTif = bot => (bot && bot.exit_time_in_force === 'GTC_OVE
 
 // effect: 'credit' or 'debit' -- the Limit's direction, sent with it (a Chase prices off mids).
 // entryTif (Limit only) / exitTif (not Place only): 'GTC' | 'GTC_OVERNIGHT'.
-export function tradeRequest({ tray, accountId, ticker, botId, mode, price, effect, token, live, entryTif, exitTif, ideaId }) {
+export function tradeRequest({ tray, accountId, ticker, botId, mode, price, effect, token, live, entryTif, exitTif }) {
   const placeOnly = botId === PLACE_ONLY;
   const body = { ...(placeOnly ? { place_only: true } : { bot_id: botId }),
     account_id: accountId, ticker, legs: wireLegs(tray),
     entry: mode === 'limit' ? { mode, price, ...(effect ? { effect } : {}), ...(entryTif ? { tif: entryTif } : {}) } : { mode }, token };
   if (!placeOnly && exitTif) body.exit_tif = exitTif;
   if (live) body.confirm = 'TRADE';
-  if (Number.isInteger(ideaId)) body.idea_id = ideaId;   // the server retires that idea once placed
   return body;
 }
 

@@ -260,6 +260,10 @@ class BrokerOrder:
     # Bots slice 21: the order that replaced this one at the broker (TastyTrade's
     # replacing-order-id), if any
     replaced_by: str | None = None
+    # The broker's limit price, shown for an order the app has no log row for.
+    # Signed like Order.price (+ is a credit); None when the sign can't be told.
+    price: Decimal | None = None
+    changing: bool = False  # a cancel or replace is already under way at the broker
 
     @property
     def working(self) -> bool:

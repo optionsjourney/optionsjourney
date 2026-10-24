@@ -786,13 +786,16 @@ def tag_many():
     elif not add and not remove:
         flash("Type a tag to add or remove first.", "warning")
     else:
-        changed, too_many = bot_store.tag_many(s.session_factory, ids, add, remove)
+        changed, too_many, emptied = bot_store.tag_many(s.session_factory, ids, add, remove)
         n = len(changed)
         flash(f"Tagged {n} bot{'s' if n != 1 else ''}." if n else "No tags changed.",
               "success" if n else "warning")  # fmt: skip
         if too_many:
             flash(f"Left as they were (more than {definition.MAX_TAGS} tags): "
                   f"{', '.join(too_many)}.", "warning")  # fmt: skip
+        if emptied:
+            flash(f"Left as they were (a bot needs at least one tag): {', '.join(emptied)}.",
+                  "warning")  # fmt: skip
     return redirect(url_for("automation.automation_page"))
 
 

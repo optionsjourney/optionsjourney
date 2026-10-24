@@ -11,7 +11,8 @@
     </form>
 </div>
 
-<form class="filters" method="get">
+<form class="filters" method="get" data-tx-search>
+    <input type="search" name="q" value="{{ query }}" placeholder="Search symbol, action, ID" aria-label="Search transactions" class="filters__search">
     <label>
         Account
         <select name="account" onchange="this.form.submit()">
@@ -50,12 +51,14 @@
 </p>
 {% endif %}
 
-<section class="card">
+<section class="card" id="tx-results">
     {% if not view.fills %}
     <p class="muted">
         {% if not view.sync_states %}Nothing synced yet. Press <strong>Sync now</strong> to bring in
         your transactions. History starts on the day of the app's first sync: trades from before it aren't brought in.{% else %}No trades in this period.{% endif %}
     </p>
+    {% elif not page.total %}
+    <p class="muted">Nothing matches “{{ query }}” in this period.</p>
     {% elif view_mode == 'orders' %}
     <div class="table-scroll"><table class="table">
         <thead>
@@ -157,4 +160,5 @@
     </table></div>
 </section>
 {% endif %}
+<script type="module" src="{{ url_for('static', filename='js/transactions_search.js') }}"></script>
 {% endblock %}

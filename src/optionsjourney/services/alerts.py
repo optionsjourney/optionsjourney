@@ -43,7 +43,9 @@ def system_alerts(
                 .order_by(OrderLog.id.desc())
             )
         )
-    alerts = sync_alerts(states, now)
+    # #273: only brokers that are connected (a provider that can't tell counts them all)
+    connected = getattr(credentials, "connected", None) or (lambda broker: True)
+    alerts = sync_alerts(states, now, connected)
     alerts.extend(order_alerts(unclear, refused))
     expires_at = getattr(credentials, "schwab_login_expires_at", lambda: None)()
     if schwab := schwab_login_alert(expires_at, now):

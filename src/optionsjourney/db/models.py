@@ -574,6 +574,16 @@ class BotTradeMatch(Base):
     matched_at: Mapped[datetime] = mapped_column(UTCDateTime())
 
 
+class BotAutoSkip(Base):
+    """A trade a sync never matches to a bot on its own again (#276): you unlinked it,
+    or undid its match. Match trades and Match all bots still offer it."""
+
+    __tablename__ = "bot_auto_skips"
+
+    position_key: Mapped[str] = mapped_column(String(160), primary_key=True)
+    skipped_at: Mapped[datetime] = mapped_column(UTCDateTime())
+
+
 class PaperFill(Base):
     """One pretend fill of a Paper run: its entry, an exit, or an expiry (decision 0061)."""
 
@@ -804,21 +814,6 @@ class CloseMark(Base):
     saved_at: Mapped[datetime] = mapped_column(UTCDateTime())
 
 
-class StockSnapshot(Base):
-    """One stock holding as it stood at a day's close (#236): the data behind
-    the Stocks performance charts. `close` is None when no quote was found."""
-
-    __tablename__ = "stock_snapshots"
-
-    day: Mapped[date] = mapped_column(Date, primary_key=True)  # New York date
-    account: Mapped[str] = mapped_column(String(64), primary_key=True)  # "broker:number"
-    ticker: Mapped[str] = mapped_column(String(32), primary_key=True)
-    quantity: Mapped[Decimal] = mapped_column(Money())  # negative for a short
-    cost_basis: Mapped[Decimal] = mapped_column(Money())  # per share
-    close: Mapped[Decimal | None] = mapped_column(Money())
-    taken_at: Mapped[datetime] = mapped_column(UTCDateTime())
-
-
 class ExpirySettlement(Base):
     """An option settled by the app at its underlying's close on its
     expiration day (#147, decision 0062), until the broker posts its own
@@ -857,7 +852,7 @@ class AppAlert(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     dedupe_key: Mapped[str] = mapped_column(String(200), unique=True)
-    kind: Mapped[str] = mapped_column(String(20))  # settled, correction, broker_record
+    kind: Mapped[str] = mapped_column(String(20))  # settled, correction, broker_record, user_alert
     title: Mapped[str] = mapped_column(String(200))
     detail: Mapped[str] = mapped_column(Text)
     link: Mapped[str] = mapped_column(String(400))
@@ -928,3 +923,23 @@ class TradeEvent(Base):
     occurred_at: Mapped[datetime] = mapped_column(UTCDateTime(), index=True)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime())
     detail: Mapped[str] = mapped_column(Text, default="", server_default="")
+
+
+class Idea(Base):
+    """A saved Trade ticket to follow (0055, #292). Its P/L is live from the quote hub
+    until every leg has expired and has its official close; then final_pnl and final_at
+    freeze it and it is never priced again. cards is the ticket as saved (see
+    core/ideas.py)."""
+
+    __tablename__ = "ideas"
+    __table_args__ = {"sqlite_autoincrement": True}  # a deleted idea's id is never reused
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    ticker: Mapped[str] = mapped_column(String(16))
+    label: Mapped[str] = mapped_column(String(80))
+    note: Mapped[str | None] = mapped_column(Text)
+    cards: Mapped[list] = mapped_column(JSON)
+    spot_at_entry: Mapped[Decimal | None] = mapped_column(Money())
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    final_pnl: Mapped[Decimal | None] = mapped_column(Money())
+    final_at: Mapped[datetime | None] = mapped_column(UTCDateTime())

@@ -10,7 +10,7 @@
         <a class="button button--quiet" href="{{ url_for('automation.automation_page') }}">Back to Automation</a>
     </div>
 </div>
-<p class="muted">Trades in your journal that no bot is linked to yet, each listed under the live bot it looks most like: same account, underlying and legs, and opened at one of the bot's entry times when it has them. Ticked ones are linked to their bot and get its tag, so the journal shows the bot's name and they count in its record. Nothing changes until you press Match selected.</p>
+<p class="muted">Trades in your journal that no bot is linked to yet, each listed under the live bot it looks most like: same account, underlying and legs, and opened at one of the bot's entry times when it has them. Ticked ones are linked to their bot and get its tag, so the journal shows the bot's name and they count in its record. Nothing changes until you press Match selected. Each sync already links the clear ones (one bot, at its entry time) for you, so what's left here is mostly for you to decide.</p>
 
 {% if undo %}
 <form method="post" action="{{ url_for('automation.match_all_undo') }}" class="inline-form">

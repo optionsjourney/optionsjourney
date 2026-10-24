@@ -15,10 +15,10 @@ The tags you ticked under **How you trade** when you set up the app are there to
 
 ## Tags that come by themselves
 Some tags are put on trades for you. They aren't in the page's counts, which are only the trades you've tagged yourself (or matched to a bot):
-- **A bot's trades** carry the tag the bot files them under, its **Journal tag** (you pick it in the bot's Basics).
+- **A bot's trades** carry all of the bot's tags (you pick them in the bot's Basics). Change a bot's tags and its past trades change with it.
 - **Stock trades** always carry **Stocks**.
 
-**A bot's tag can't be deleted.** The page names the bot beside the count ("bot: IC Mornings"); click the name to open the bot and pick another Journal tag first. A bot you've deleted still holds its tag, shown as "(deleted)", because its past trades keep their link to it. You can still rename a bot's tag.
+**A bot's main tag can't be deleted.** The page names the bot beside the count ("bot: IC Mornings"); click the name to open the bot and take that tag off it first, so another of its tags becomes the main one. Any other tag can be deleted: it comes off the bots that have it too, and renaming a tag renames it on bots. A bot you've deleted still holds its tag, shown as "(deleted)", because its past trades keep their link to it. You can still rename a bot's tag.
 
 ## Tagging trades
 - **One trade:** click the gear (⚙) on it, then **Edit name, tags and notes**, and change its tags on the trade's own page (see [The trade's own page](journal.md#the-trades-own-page)). A tag you type that doesn't exist yet is made for you.

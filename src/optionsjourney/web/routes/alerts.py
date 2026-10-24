@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 
 from optionsjourney.core import trade_events as trade_events_core
-from optionsjourney.services import app_alerts, trade_events, user_alerts
+from optionsjourney.services import app_alerts, journal, trade_events, user_alerts
 from optionsjourney.services.alerts import system_alerts
 from optionsjourney.web import services
 
@@ -17,6 +17,12 @@ bp = Blueprint("alerts", __name__)
 def alerts_page():
     s = services()
     kind = request.args.get("kind", "")
+    show = request.args.get("show", "active")
+    show = show if show in user_alerts.TABLE_SHOWS else "active"
+
+    def open_pl(key):
+        return journal.open_pl_of(s.session_factory, s.positions_cache, s.quote_hub, key)
+
     recent = app_alerts.recent(s.session_factory)
     unread_ids = {a.id for a in recent if a.read_at is None}  # before this view marks them read
     app_alerts.mark_read(s.session_factory, unread_ids, datetime.now(UTC))  # only the ones shown
@@ -25,12 +31,57 @@ def alerts_page():
         unread_alerts=recent,
         unread_ids=unread_ids,
         alerts=system_alerts(s.session_factory, credentials=s.credentials),
-        mine=user_alerts.active(s.session_factory),
-        describe=user_alerts.describe,
+        show=show,
+        price_alerts=user_alerts.table(s.session_factory, show, s.quote_hub, open_pl),
         kind=kind,
         popups=trade_events.popups_on(s.session_factory),
         kinds=trade_events_core.LABELS,
         events=trade_events.recent(s.session_factory, kind=kind),
+    )
+
+
+BELL_LIMIT = 15  # the bell's list: the newest alerts (#272)
+
+
+@bp.get("/api/alerts/recent")
+def api_recent():
+    """The bell's list (#272): what needs fixing or a look, then the newest alerts.
+    Like the page, it marks the ones it shows read."""
+    s = services()
+    recent = app_alerts.recent(s.session_factory, limit=BELL_LIMIT)
+    unread_ids = {a.id for a in recent if a.read_at is None}
+    app_alerts.mark_read(s.session_factory, unread_ids, datetime.now(UTC))
+    # #275: a price or trade alert that went off is listed once, as a new alert below
+    standing = [
+        a
+        for a in system_alerts(s.session_factory, credentials=s.credentials)
+        if a.user_alert_id is None
+    ]
+    return jsonify(
+        {
+            "standing": [
+                {
+                    "level": a.level,
+                    "title": a.title,
+                    "detail": a.detail,
+                    "link": a.link,
+                    "action": a.action,
+                }
+                for a in standing
+            ],  # fmt: skip
+            "recent": [
+                {
+                    "id": a.id,
+                    "title": a.title,
+                    "detail": a.detail,
+                    "link": a.link,
+                    "created_at": a.created_at.isoformat(),
+                    "unread": a.id in unread_ids,
+                }
+                for a in recent
+            ],  # fmt: skip
+            "unread": app_alerts.unread_count(s.session_factory),
+        }
     )
 
 
@@ -72,6 +123,7 @@ def create():
 def change(alert_id, action):
     actions = {
         "dismiss": user_alerts.dismiss,
+        "disable": user_alerts.disable,
         "rearm": user_alerts.rearm,
         "delete": user_alerts.delete,
     }

@@ -98,26 +98,52 @@ test('confirmParts: one line per leg, then the terms', () => {
   assert.deepEqual(C.confirmParts('Sell 1 SPXW 5800P'), { legs: ['Sell 1 SPXW 5800P'], terms: '' });
 });
 
-test('workingRows: the legs as text, a partly filled leg, and read-only rows that are not yours', () => {
+test('workingRows: the legs as text, a partly filled leg, who owns it and what it allows', () => {
   const rows = C.workingRows([
-    { order_id: '11', status: 'live', yours: true, price: 1.1, entered_at: null, legs: [
-      { symbol: 'SPXW261013P5800', side: 'sell', opening: true, quantity: 2, remaining: 2 },
-      { symbol: 'SPXW261013P5750', side: 'buy', opening: true, quantity: 2, remaining: 1 },
-    ] },
-    { order_id: '12', status: 'received', yours: false, price: null, entered_at: null, legs: [
-      { symbol: 'SPY', side: 'buy', opening: false, quantity: 5, remaining: 5 },
-    ] },
-    { order_id: '13', status: 'live', yours: true, price: -0.4, entered_at: null, legs: [
-      { symbol: 'QQQ261016C500', side: 'buy', opening: true, quantity: 1, remaining: 1 },
-    ] },
+    { order_id: '11', status: 'live', yours: true, price: 1.1, entered_at: null,
+      owner: { kind: 'you', name: null, link: null }, can_change: false, can_cancel: true,
+      reason: 'Part of this order filled.', legs: [
+        { symbol: 'SPXW261013P5800', side: 'sell', opening: true, quantity: 2, remaining: 2 },
+        { symbol: 'SPXW261013P5750', side: 'buy', opening: true, quantity: 2, remaining: 1 },
+      ] },
+    { order_id: '12', status: 'received', yours: false, price: null, entered_at: null,
+      owner: { kind: 'bot', name: 'Put seller', link: '/automation/runs/4' }, can_change: false,
+      can_cancel: false, reason: 'Managed by Put seller, use its controls.', legs: [
+        { symbol: 'SPY', side: 'buy', opening: false, quantity: 5, remaining: 5 },
+      ] },
+    { order_id: '13', status: 'live', yours: false, price: -0.4, entered_at: null,
+      owner: { kind: 'outside', name: null, link: null }, can_change: false, can_cancel: false,
+      reason: 'Placed outside the app. Change or cancel it at your broker.', legs: [
+        { symbol: 'QQQ261016C500', side: 'buy', opening: true, quantity: 1, remaining: 1 },
+      ] },
+    { order_id: '14', status: 'live', yours: false, price: 1, entered_at: null,
+      owner: { kind: 'managed', name: null, link: null }, can_change: false, can_cancel: false,
+      reason: "Managed by this trade's rules, use its controls.", legs: [] },
   ]);
   assert.deepEqual(rows[0], { id: '11', lines: ['Sell 2 SPXW 13 Oct 5800P', 'Buy 1 of 2 SPXW 13 Oct 5750P'],
-    status: 'live', yours: true, price: 1.1, effect: 'credit', canReplace: false });
+    status: 'live', yours: true, price: 1.1, effect: 'credit', from: 'You',
+    canChange: false, canCancel: true, reason: 'Part of this order filled.' });
   assert.deepEqual(rows[1], { id: '12', lines: ['Buy 5 SPY'], status: 'received', yours: false, price: null, effect: null,
-    canReplace: true });
+    from: 'Put seller', canChange: false, canCancel: false, reason: 'Managed by Put seller, use its controls.' });
   assert.equal(rows[2].price, 0.4);
   assert.equal(rows[2].effect, 'debit');
-  assert.equal(rows[2].canReplace, true);  // nothing filled yet; a partly filled one can only be cancelled
+  assert.equal(rows[2].from, 'Outside the app');
+  assert.equal(rows[2].canChange, false);
+  assert.equal(rows[2].canCancel, false);
+  assert.equal(rows[2].reason, 'Placed outside the app. Change or cancel it at your broker.');
+  assert.equal(rows[3].from, "This trade's rules");
+  const [unknown] = C.workingRows([{ order_id: '16', status: 'live', price: 1, legs: [],
+    owner: { kind: 'unknown', name: null, link: null }, can_change: false, can_cancel: false,
+    reason: "The app sent this order but can't tell which part of it owns it." }]);
+  assert.equal(unknown.from, 'The app (unknown part)');
+  assert.equal(unknown.canCancel, false);
+});
+
+test('workingRows: a row without owner fields offers nothing', () => {
+  const [row] = C.workingRows([{ order_id: '15', status: 'live', price: 1, legs: [] }]);
+  assert.equal(row.canChange, false);
+  assert.equal(row.canCancel, false);
+  assert.equal(row.from, 'Outside the app');
 });
 
 test('readableSymbol: OCC symbols with or without the padded strike, others as they are', () => {
@@ -213,4 +239,22 @@ test('reviewBp: a review\'s costs as the strip\'s BP Eff., BP After and Fees (#2
     { status: 'success', available: true, ok: true, bp_change: null, new_buying_power: -50, fees: 1.14 });
   assert.equal(C.reviewBp({ value: 1, commission: null, fees: null, bp_change: null, bp_after: null }).fees, null);
   assert.equal(C.reviewBp(null), null);
+});
+
+test('confirmRequest carries idea_id only for an idea (#292)', () => {
+  assert.deepEqual(C.confirmRequest(3, 'abc', '', 12), { account_id: 3, code: 'abc', idea_id: 12 });
+  assert.deepEqual(C.confirmRequest(3, 'abc', '5', 12), { account_id: 3, code: 'abc', manual_bot_id: 5, idea_id: 12 });
+  assert.deepEqual(C.confirmRequest(3, 'abc', ''), { account_id: 3, code: 'abc' });
+  assert.deepEqual(C.confirmRequest(3, 'abc', '', null), { account_id: 3, code: 'abc' });
+});
+
+test('botRequest carries idea_id only for an idea (#292)', () => {
+  const opts = { accountId: 3, botId: 7, token: 'abcabcabcabc', code: 'c' };
+  assert.equal(C.botRequest(condor, { ...opts, ideaId: 12 }).idea_id, 12);
+  assert.equal('idea_id' in C.botRequest(condor, opts), false);
+});
+
+test('optionParts: the parts of an OCC symbol, null for anything else', () => {
+  assert.deepEqual(C.optionParts('SPY   261121P00512500'), { root: 'SPY', month: 'Nov', day: 21, strike: 512.5, right: 'P' });
+  assert.equal(C.optionParts('SPY'), null);
 });
