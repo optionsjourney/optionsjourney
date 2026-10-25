@@ -134,6 +134,64 @@ def test_latest_from_override_uses_zip_url(monkeypatch):
     assert got == Release("v0.2.1", "http://127.0.0.1:8765/p", "http://127.0.0.1:8765/z.zip")
 
 
+ASSET = (
+    "https://github.com/optionsjourney/optionsjourney/releases/download/v0.2.1/OptionsJourney.zip"
+)
+RELEASE_ASSETS = (
+    "https://release-assets.githubusercontent.com/github-production-release-asset/1/abc"
+)
+
+
+def with_assets(*assets, tag="v0.2.1"):
+    data = release_json(tag)
+    data["assets"] = [{"name": n, "browser_download_url": u} for n, u in assets]
+    return data
+
+
+def test_latest_prefers_the_attached_optionsjourney_zip():
+    data = with_assets(("notes.txt", ASSET[:-18] + "notes.txt"), ("OptionsJourney.zip", ASSET))
+    got = updates.latest(client(lambda r: httpx.Response(200, json=data)), "0.2.0")
+    assert got == release(zip_url=ASSET)
+
+
+def test_latest_uses_the_source_zip_without_the_file():
+    for data in (with_assets(), release_json()):
+        got = updates.latest(client(lambda r, d=data: httpx.Response(200, json=d)), "0.2.0")
+        assert got == release()
+
+
+@pytest.mark.parametrize(
+    "asset",
+    [
+        (
+            "OptionsJourney-v0.2.1.zip",
+            ASSET.replace("OptionsJourney.zip", "OptionsJourney-v0.2.1.zip"),
+        ),
+        ("optionsjourney.zip", ASSET),
+        ("OptionsJourney.zip", ASSET.replace("/v0.2.1/", "/v0.2.0/")),
+        (
+            "OptionsJourney.zip",
+            ASSET.replace("optionsjourney/optionsjourney", "evil/optionsjourney"),
+        ),
+        ("OptionsJourney.zip", "https://evil.example/releases/download/v0.2.1/OptionsJourney.zip"),
+        ("OptionsJourney.zip", ASSET.replace("https://", "http://")),
+        ("OptionsJourney.zip", None),
+    ],
+)
+def test_latest_ignores_a_file_with_the_wrong_name_or_place(asset):
+    data = with_assets(asset)
+    got = updates.latest(client(lambda r: httpx.Response(200, json=data)), "0.2.0")
+    assert got == release()
+
+
+def test_latest_ignores_odd_assets():
+    data = release_json()
+    for assets in ("x", [1, None, {"name": 3}]):
+        data["assets"] = assets
+        got = updates.latest(client(lambda r, d=data: httpx.Response(200, json=d)), "0.2.0")
+        assert got == release()
+
+
 # --- download ---
 
 
@@ -229,6 +287,70 @@ def test_refuses_redirect_to_another_host(tmp_path):
     with pytest.raises(UpdateError):
         updates.download(release(), tmp_path, client(handler))
     assert not (tmp_path / "v0.2.1").exists()
+
+
+def test_follows_a_release_file_redirect_to_release_assets(tmp_path):
+    data = make_zip()
+    seen = []
+
+    def handler(request):
+        seen.append(str(request.url))
+        if request.url.host == "github.com":
+            return httpx.Response(302, headers={"location": RELEASE_ASSETS})
+        return httpx.Response(200, content=data)
+
+    updates.download(release(zip_url=ASSET), tmp_path, client(handler))
+    assert seen == [ASSET, RELEASE_ASSETS]
+
+
+@pytest.mark.parametrize(
+    "location",
+    [
+        "https://objects.githubusercontent.com/x.zip",
+        "https://evil.githubusercontent.com/x.zip",
+        "http://release-assets.githubusercontent.com/x.zip",
+        "https://release-assets.githubusercontent.com:8443/x.zip",
+    ],
+)
+def test_a_release_file_redirect_elsewhere_is_refused(tmp_path, location):
+    def handler(request):
+        if request.url.host == "github.com":
+            return httpx.Response(302, headers={"location": location})
+        raise AssertionError("must not be requested")
+
+    with pytest.raises(UpdateError):
+        updates.download(release(zip_url=ASSET), tmp_path, client(handler))
+    assert not (tmp_path / "v0.2.1").exists()
+
+
+def git_archive_zip(top: str) -> bytes:
+    """Shaped like `git archive --format=zip --prefix=<top>/`: folder entries,
+    unix modes, an exec bit on the Mac installer."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for name, mode, body in [
+            (top, 0o40755, b""),
+            (top + "README.md", 0o100644, b"hi"),
+            (top + "scripts/", 0o40755, b""),
+            (top + "scripts/install-mac.sh", 0o100755, b"#!/bin/bash\n"),
+            (top + "scripts/install-windows.ps1", 0o100644, b"x"),
+            (top + "scripts/OptionsJourney.command", 0o100755, b"#!/bin/bash\n"),
+        ]:
+            info = zipfile.ZipInfo(name)
+            info.external_attr = mode << 16
+            info.create_system = 3
+            z.writestr(info, body)
+    return buf.getvalue()
+
+
+def test_a_release_file_zip_unpacks_and_is_ready(tmp_path):
+    rel = release(tag="v9.9.9", zip_url=ASSET.replace("v0.2.1", "v9.9.9"))
+    folder = updates.download(
+        rel, tmp_path, client(zip_handler(git_archive_zip("OptionsJourney-v9.9.9/")))
+    )
+    assert folder == tmp_path / "v9.9.9" / "OptionsJourney-v9.9.9"
+    assert (folder / "scripts" / "install-mac.sh").read_text() == "#!/bin/bash\n"
+    assert updates.ready(tmp_path) == (rel, folder)
 
 
 def test_refuses_redirect_to_http_downgrade(tmp_path):

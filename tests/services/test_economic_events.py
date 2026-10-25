@@ -184,6 +184,15 @@ def test_the_drawers_notes_for_a_day(factory, fetch, alerts):
     assert not ee.day_notes(factory, date(2035, 3, 1))["calendar_covers"]
 
 
+def test_events_between_gives_each_days_items(factory, fetch, alerts):
+    refresh(factory, fetch, alerts)
+    october = ee.events_between(factory, date(2026, 10, 1), date(2026, 10, 31))
+    assert any(i["key"] == "CPI" for i in october[date(2026, 10, 14)])
+    assert all(items for items in october.values())
+    assert all(date(2026, 10, 1) <= day <= date(2026, 10, 31) for day in october)
+    assert ee.events_between(factory, date(2035, 3, 1), date(2035, 3, 31)) == {}
+
+
 # Membership (date_sets.is_member)
 
 

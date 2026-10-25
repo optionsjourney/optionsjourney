@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_macros.html" import pl %}
 {% from "_tooltip.html" import info %}
-{% block title %}Trading metrics · {{ dashboard.name if dashboard else 'Journal' }} · OptionsJourney{% endblock %}
+{% block title %}Trading metrics · {{ dashboard.name if dashboard else 'Metrics' }} · OptionsJourney{% endblock %}
 
 {% macro pct(value) %}{{ '%.0f%%' % value if value is not none else '—' }}{% endmacro %}
 {% macro ratio(value) %}{{ '%.2f' % value if value is not none else '—' }}{% endmacro %}
@@ -9,7 +9,7 @@
 
 {% block content %}
 <div class="page-header">
-    <h1>Journal</h1>
+    <h1>Metrics</h1>
     <a class="link" href="{{ url_for('journal.tags_page') }}">Tags</a>
 </div>
 
@@ -71,6 +71,7 @@
         </nav>
     </div>
     {% if m.bars %}
+    <p class="muted small">Bars: the P/L of each {{ period }}. <span class="chart__legend-cumulative">Line</span>: your cumulative P/L, on the right-hand scale. {{ info('metrics-cumulative', "Your realized P/L added up period by period, starting from zero at the first trade the filters show. Zero is at the same height on both scales.", 'Cumulative P/L', more='/help/metrics#trading-metrics') }}</p>
     <figure class="chart" id="pl-bars" data-period="{{ period }}">
         <svg class="chart__plot" role="img" aria-label="Realized P/L per {{ period }}"></svg>
         <div class="chart__tooltip" role="status" hidden></div>
@@ -81,13 +82,14 @@
     <p class="muted">No closed trades yet.</p>
     {% endif %}
 
-    <div class="table-scroll"><table class="table section-gap">
+    {# On a phone only the chosen period's column shows (#302); the Day/Week/Month switch picks it #}
+    <div class="table-scroll"><table class="table section-gap metrics-periods">
         <thead>
             <tr><th></th>{% for s in m.periods %}<th class="num {{ 'is-current' if s.period == period }}">{{ s.period | title }}s</th>{% endfor %}</tr>
         </thead>
         <tbody>
             <tr><td>With P/L</td>{% for s in m.periods %}<td class="num {{ 'is-current' if s.period == period }}">{{ s.count }}</td>{% endfor %}</tr>
-            <tr><td>Winning / losing {{ info('metrics-winning-days', "How many of the days, weeks or months in each column made money, and how many lost. One that came out at exactly zero is in neither count.", 'Winning and losing', more='/help/journal#trading-metrics') }}</td>{% for s in m.periods %}<td class="num {{ 'is-current' if s.period == period }}">{{ s.winning }} / {{ s.losing }}</td>{% endfor %}</tr>
+            <tr><td>Winning / losing {{ info('metrics-winning-days', "How many of the days, weeks or months in each column made money, and how many lost. One that came out at exactly zero is in neither count.", 'Winning and losing', more='/help/metrics#trading-metrics') }}</td>{% for s in m.periods %}<td class="num {{ 'is-current' if s.period == period }}">{{ s.winning }} / {{ s.losing }}</td>{% endfor %}</tr>
             <tr><td>Win rate</td>{% for s in m.periods %}<td class="num {{ 'is-current' if s.period == period }}">{{ pct(s.win_rate) }}</td>{% endfor %}</tr>
             <tr><td>Average</td>{% for s in m.periods %}<td class="num {{ 'is-current' if s.period == period }}">{{ plx(s.average) }}</td>{% endfor %}</tr>
             <tr><td>Average win / loss</td>{% for s in m.periods %}<td class="num nowrap {{ 'is-current' if s.period == period }}">{{ plx(s.average_win) }} / {{ plx(s.average_loss) }}</td>{% endfor %}</tr>
@@ -99,14 +101,14 @@
 <section class="card section-gap">
     <h2 class="card__title">Day of the week</h2>
     <p class="muted small">Each day's realized P/L, and the trades that fully closed on it.</p>
-    <div class="table-scroll"><table class="table">
+    <div class="table-scroll"><table class="table table--stack">
         <thead>
             <tr>
                 <th>Day</th>
                 <th class="num">P/L</th>
                 <th class="num">Days</th>
                 <th class="num">Average day</th>
-                <th class="num">Winning / losing days {{ info('metrics-day-winning-days', "How many of these weekdays ended with a profit and how many with a loss, counting each day's total realized P/L. A day at exactly zero is in neither count.", 'Winning and losing days', more='/help/journal#trading-metrics') }}</th>
+                <th class="num">Winning / losing days {{ info('metrics-day-winning-days', "How many of these weekdays ended with a profit and how many with a loss, counting each day's total realized P/L. A day at exactly zero is in neither count.", 'Winning and losing days', more='/help/metrics#trading-metrics') }}</th>
                 <th class="num">Trades closed</th>
                 <th class="num">Won / lost</th>
             </tr>
@@ -115,12 +117,12 @@
             {% for d in m.weekdays %}
             <tr>
                 <td>{{ d.name }}</td>
-                <td class="num">{{ pl(d.pl) }}</td>
-                <td class="num">{{ d.days }}</td>
-                <td class="num">{{ plx(d.average) }}</td>
-                <td class="num">{{ d.winning_days }} / {{ d.losing_days }}</td>
-                <td class="num">{{ d.trades }}</td>
-                <td class="num">{{ d.wins }} / {{ d.losses }}</td>
+                <td class="num" data-label="P/L">{{ pl(d.pl) }}</td>
+                <td class="num" data-label="Days">{{ d.days }}</td>
+                <td class="num" data-label="Average day">{{ plx(d.average) }}</td>
+                <td class="num" data-label="Winning / losing days">{{ d.winning_days }} / {{ d.losing_days }}</td>
+                <td class="num" data-label="Trades closed">{{ d.trades }}</td>
+                <td class="num" data-label="Won / lost">{{ d.wins }} / {{ d.losses }}</td>
             </tr>
             {% endfor %}
         </tbody>

@@ -11,8 +11,16 @@ from tests.services.bot_fakes import FakeChain, FakeHub, FakeTasty, make
 
 from optionsjourney.app import create_app
 from optionsjourney.core.accounts import BrokerAccount
+from optionsjourney.core.stats import net_entry
 from optionsjourney.core.transactions import RawTransaction
-from optionsjourney.db.models import Bot, BotIntegrityAlert, BotRun, BotTradeMatch, Tag
+from optionsjourney.db.models import (
+    Bot,
+    BotIntegrityAlert,
+    BotRun,
+    BotTradeMatch,
+    Tag,
+    UserAlert,
+)
 from optionsjourney.services import bot_entry, bot_loops
 from optionsjourney.services import journal as journal_service
 from optionsjourney.web.routes import journal as journal_routes
@@ -158,16 +166,50 @@ def test_a_trades_tags_are_ticks_and_its_bots_tag_stays(client):
     assert [t.name for t in entry.fixed_tags] == ["0DTE"]
 
 
-def test_tag_ticked_trades_from_the_select_bar(client):
+def test_select_bar_alerts_and_closes_and_no_longer_tags(client):
+    """#300: the bar's Add/Remove tags are gone; Alert and Close took their place, and each
+    open row has a bell next to its graph and gear."""
     html = client.get("/journal").get_data(as_text=True)
-    assert 'id="select-edit"' in html
+    assert 'id="select-edit"' not in html and 'name="add_tags"' not in html
+    assert 'id="select-alert"' in html and 'id="select-close"' in html
+    assert 'name="order_type"' not in html  # decision 0118: each trade's own chase decides
+    assert "alert-bell" in html and "/journal/alert-panel?trade=" in html
+
+
+def test_alert_panel_sets_an_in_app_alert_at_a_percent_of_entry(client):
+    html = client.get("/journal/alert-panel", query_string={"trade": KEY}).get_data(as_text=True)
+    assert "Open P/L" in html and "SPX price" in html
+    assert "short put 5,800" in html and "long call 6,020" in html
     response = client.post(
-        "/journal/trades/edit-many",
-        data={"trade": [KEY], "add_tags": "bulk-tag", "back": "/journal"},
+        "/alerts/new",
+        data={"kind": "trade_pl", "position": KEY, "name": "IC", "direction": "above",
+              "level": "50", "unit": "pct", "quiet": "1", "next": "/journal"},
         headers=ORIGIN,
-    )
-    assert response.status_code == 302
-    assert "bulk-tag" in client.get("/journal").get_data(as_text=True)
+    )  # fmt: skip
+    assert response.location.endswith("/journal")
+    factory = client.application.extensions["optionsjourney"].session_factory
+    view = journal_service.load_journal(factory)
+    entry_cost = net_entry([journal_service.find_entry(view, KEY).position])
+    with factory() as session:
+        alert = session.scalars(select(UserAlert)).one()
+    assert alert.quiet and alert.label == "IC (+50% of entry)"
+    assert alert.level == (entry_cost / 2).quantize(Decimal("0.01"))
+    assert "alert-bell--armed" in client.get("/journal").get_data(as_text=True)
+
+
+def test_alert_panel_refuses_a_closed_or_unknown_trade(client):
+    html = client.get("/journal/alert-panel", query_string={"trade": "nope"}).get_data(as_text=True)
+    assert "Tick trades to alert on." in html and "Set alert" not in html
+
+
+def test_close_selected_skips_trades_no_bot_or_rules_manage(client):
+    response = client.post(
+        "/journal/trades/close-selected", data={"trade": [KEY], "back": "/journal"},
+        headers=ORIGIN, follow_redirects=True,
+    )  # fmt: skip
+    html = response.get_data(as_text=True)
+    assert "None of the ticked trades can be closed here." in html
+    assert "SPX Iron Condor" in html
 
 
 def test_back_link_never_leaves_the_app(client):
@@ -376,28 +418,28 @@ def _closed_trade_client(settings, fake_credentials, day=datetime(2026, 9, 1, tz
 
 def test_pl_calendar(settings, fake_credentials):
     client = _closed_trade_client(settings, fake_credentials)
-    html = client.get("/journal/pl?month=2026-09").get_data(as_text=True)
+    html = client.get("/metrics/calendar?month=2026-09").get_data(as_text=True)
     assert "P/L calendar" in html
     assert "September 2026" in html
     assert "+$150" in html  # Tue Sep 1
-    assert 'href="/journal/pl?month=2026-08"' in html  # previous month
-    assert 'href="/journal/pl?month=2026-10"' in html  # next month
+    assert 'href="/metrics/calendar?month=2026-08"' in html  # previous month
+    assert 'href="/metrics/calendar?month=2026-10"' in html  # next month
 
 
 def test_pl_calendar_keeps_the_filters(settings, fake_credentials):
     client = _closed_trade_client(settings, fake_credentials)
-    html = client.get("/journal/pl?month=2026-09&status=closed").get_data(as_text=True)
+    html = client.get("/metrics/calendar?month=2026-09&status=closed").get_data(as_text=True)
     assert "status=closed" in html.split("September 2026")[0].rsplit("<a", 1)[-1]
 
 
 def test_pl_calendar_ignores_a_bad_month(settings, fake_credentials):
     client = _closed_trade_client(settings, fake_credentials)
-    assert client.get("/journal/pl?month=nonsense").status_code == 200
+    assert client.get("/metrics/calendar?month=nonsense").status_code == 200
 
 
 def test_pl_over_time_chart(settings, fake_credentials):
     client = _closed_trade_client(settings, fake_credentials)
-    html = client.get("/journal/pl").get_data(as_text=True)
+    html = client.get("/metrics/calendar").get_data(as_text=True)
     assert "P/L over time" in html
     # The chart's data, for the script that draws it
     assert '"day": "2026-09-01"' in html and '"cumulative": 150.0' in html
@@ -407,7 +449,7 @@ def test_pl_over_time_chart(settings, fake_credentials):
 
 def test_trading_metrics_page(settings, fake_credentials):
     client = _closed_trade_client(settings, fake_credentials)
-    html = client.get("/journal/metrics").get_data(as_text=True)
+    html = client.get("/metrics").get_data(as_text=True)
     assert "Trading metrics" in html
     assert "Profit factor" in html and "Max drawdown" in html
     assert "Day of the week" in html and "Tue" in html
@@ -417,17 +459,29 @@ def test_trading_metrics_page(settings, fake_credentials):
 def test_trading_metrics_follow_dashboards(settings, fake_credentials):
     client = _closed_trade_client(settings, fake_credentials)
     client.post("/journal/dashboards", data={"name": "Closed", "status": "closed"}, headers=ORIGIN)
-    response = client.get("/journal/metrics?dashboard=1")
+    response = client.get("/metrics?dashboard=1")
     assert response.status_code == 302
-    assert "status=closed" in response.location and "/journal/metrics" in response.location
+    assert "status=closed" in response.location and "/metrics" in response.location
     html = client.get(response.location).get_data(as_text=True)
     assert "Trading metrics" in html
 
 
-def test_journal_links_to_metrics_with_its_filters(settings, fake_credentials):
+def test_metrics_views_link_to_each_other_with_the_filters(settings, fake_credentials):
+    # #301: the Metrics tab; the Journal keeps Trades and Paper trades
     client = _closed_trade_client(settings, fake_credentials)
+    html = client.get("/metrics/calendar?status=closed").get_data(as_text=True)
+    assert 'href="/metrics?status=closed"' in html
+    assert 'nav__link nav__link--active" href="/metrics/calendar"' in " ".join(html.split())
     html = client.get("/journal?status=closed").get_data(as_text=True)
-    assert 'href="/journal/metrics?status=closed"' in html
+    assert 'href="/metrics?status=closed"' not in html and 'href="/metrics/calendar"' in html
+
+
+def test_old_journal_links_go_to_the_metrics_tab(settings, fake_credentials):
+    client = _closed_trade_client(settings, fake_credentials)
+    response = client.get("/journal/pl?month=2026-09&status=closed")
+    assert response.status_code == 302
+    assert response.location == "/metrics/calendar?month=2026-09&status=closed"
+    assert client.get("/journal/metrics?period=day").location == "/metrics?period=day"
 
 
 def test_journal_shows_only_the_trades(settings, fake_credentials):
@@ -435,7 +489,7 @@ def test_journal_shows_only_the_trades(settings, fake_credentials):
     client = _closed_trade_client(settings, fake_credentials)
     html = client.get("/journal").get_data(as_text=True)
     assert "P/L calendar" not in html and "P/L over time" not in html
-    assert 'href="/journal/pl"' in html
+    assert 'href="/metrics/calendar"' in html
 
 
 def test_journal_opens_on_open_trades(settings, fake_credentials):
@@ -446,16 +500,15 @@ def test_journal_opens_on_open_trades(settings, fake_credentials):
     assert "$150.00" not in html
     assert '<summary aria-label="Dates">Open + Today</summary>' in html  # #284: the picker
     assert ">Open + Today (Default)</button>" in html
-    assert 'href="/journal/pl"' in html  # P/L keeps its own default
+    assert 'href="/metrics/calendar"' in html  # the Metrics tab keeps its own default
     assert "trades only, and the numbers below" not in html  # #283: the status menu says it
 
     html = client.get("/journal?status=all").get_data(as_text=True)
     assert "$150.00" in html
     assert '<summary aria-label="Dates">All Time</summary>' in html
-    assert 'href="/journal/pl?status=all"' in html
     assert "Showing" not in html
 
-    html = client.get("/journal/pl").get_data(as_text=True)
+    html = client.get("/metrics/calendar").get_data(as_text=True)
     assert '<summary aria-label="Dates">All Time</summary>' in html
     assert ">Open + Today</button>" in html  # not P/L's default
 
@@ -512,11 +565,74 @@ def test_a_dashboards_save_shows_only_for_a_change(settings, fake_credentials):
     assert 'id="save-dashboard"' in html and "Save to “All”" in html
 
 
+def test_pl_calendar_cells_open_the_drawer(settings, fake_credentials):
+    client = _closed_trade_client(settings, fake_credentials)
+    html = client.get("/metrics/calendar?month=2026-09").get_data(as_text=True)
+    assert 'id="pl-drawer"' in html and "pl_drawer.js" in html
+    assert 'data-period-start="2026-09-01" data-period-end="2026-09-01"' in html  # the day
+    # The first week is Aug 31 - Sep 6, only Sep 1 on in September; the month is all of it
+    assert 'data-period-start="2026-09-01" data-period-end="2026-09-06"' in html
+    assert 'data-period-start="2026-09-01" data-period-end="2026-09-30"' in html
+
+
+def test_pl_drawer_groups_by_dashboard_and_account(settings, fake_credentials):
+    # #301: a dashboard's status and dates don't apply; the period is the date
+    client = _closed_trade_client(settings, fake_credentials)
+    today_only = {"name": "Today only", "status": "today"}
+    client.post("/journal/dashboards", data=today_only, headers=ORIGIN)
+    client.post("/journal/dashboards", data={"name": "Nothing", "q": "zzz"}, headers=ORIGIN)
+    html = client.get("/metrics/calendar/period?first=2026-09-01&last=2026-09-06").get_data(
+        as_text=True
+    )
+    assert "Today only" in html and "Nothing" not in html and "Other trades" not in html
+    assert "$150.00" in html and "Closed" in html and "••" in html
+    assert "more than one dashboard" not in html
+
+    client.post("/journal/dashboards", data={"name": "Everything"}, headers=ORIGIN)
+    html = client.get("/metrics/calendar/period?first=2026-09-01&last=2026-09-01").get_data(
+        as_text=True
+    )
+    assert "Everything" in html and "more than one dashboard" in html
+
+    html = client.get("/metrics/calendar/period?first=2026-09-02&last=2026-09-02").get_data(
+        as_text=True
+    )
+    assert "No trades made or lost money" in html
+
+
+def test_pl_drawer_follows_the_page_filters(settings, fake_credentials):
+    client = _closed_trade_client(settings, fake_credentials)
+    url = "/metrics/calendar/period?first=2026-09-01&last=2026-09-01"
+    assert "$150.00" not in client.get(url + "&q=zzz").get_data(as_text=True)
+
+
+def test_pl_drawer_dates_are_not_the_filters_opening_dates(settings, fake_credentials):
+    # The drawer's first/last are when P/L was booked; start/end stay the page's
+    # "opened on or after / before" filter, so a trade opened earlier still shows
+    client = _closed_trade_client(settings, fake_credentials)
+    url = "/metrics/calendar/period?first=2026-09-01&last=2026-09-01"
+    assert "$150.00" in client.get(url + "&end=2026-09-30").get_data(as_text=True)
+    assert "$150.00" not in client.get(url + "&start=2026-09-02").get_data(as_text=True)
+
+
+def test_pl_drawer_refuses_bad_dates(settings, fake_credentials):
+    client = _closed_trade_client(settings, fake_credentials)
+    for args in ("", "first=2026-09-01", "first=x&last=y", "first=2026-09-02&last=2026-09-01",
+                 "first=2026-01-01&last=2026-12-31"):  # fmt: skip
+        assert client.get(f"/metrics/calendar/period?{args}").status_code == 400
+
+
+def test_trading_metrics_bars_carry_the_running_total(settings, fake_credentials):
+    client = _closed_trade_client(settings, fake_credentials)
+    html = client.get("/metrics?period=day").get_data(as_text=True)
+    assert '"cumulative": 150.0' in html and "right-hand scale" in html
+
+
 def test_pl_view_follows_dashboards(settings, fake_credentials):
     client = _closed_trade_client(settings, fake_credentials)
     client.post("/journal/dashboards", data={"name": "Closed", "status": "closed"}, headers=ORIGIN)
-    response = client.get("/journal/pl?dashboard=1")
-    assert response.status_code == 302 and "/journal/pl" in response.location
+    response = client.get("/metrics/calendar?dashboard=1")
+    assert response.status_code == 302 and "/metrics/calendar" in response.location
 
 
 def test_percent_never_shows_minus_zero():
@@ -614,6 +730,30 @@ def test_live_open_pl(settings, fake_credentials):
     assert body["total"] == 90.0 and body["priced"] == 1 and body["open"] == 1
 
 
+def test_a_combined_alerts_value_is_the_trades_pl_together(settings, fake_credentials):
+    """#300: the iron condor split into its put and call sides: one combined alert on both
+    is worth the whole condor's $90, and nothing while either side is unpriced."""
+    marks = {
+        "SPXW  261120P05780000": Decimal("0.40"),
+        "SPXW  261120P05800000": Decimal("1.00"),
+        "SPXW  261120C06000000": Decimal("0.70"),
+        "SPXW  261120C06020000": Decimal("0.20"),
+    }
+    hub = _MarksHub(marks)
+    app = create_app(settings, credentials=fake_credentials,
+                     broker_clients=lambda: [FakeTastyTrade()], quote_hub=hub)  # fmt: skip
+    app.test_client().post("/sync", headers=ORIGIN)
+    factory = app.extensions["optionsjourney"].session_factory
+    journal_service.set_split(factory, KEY, True)
+    view = journal_service.load_journal(factory)
+    keys = [e.position.key for e in view.entries]
+    assert len(keys) == 2
+    assert journal_service.combined_pl(view, hub, keys) == Decimal("90")
+    del marks["SPXW  261120C06020000"]
+    assert journal_service.combined_pl(view, hub, keys) is None
+    assert journal_service.combined_pl(view, hub, [keys[0], "gone"]) is None
+
+
 def test_journal_shows_a_live_open_pl_box(client):
     html = client.get("/journal").get_data(as_text=True)
     assert "Open P/L" in html and "open_pl.js" in html
@@ -627,7 +767,7 @@ def test_a_view_saved_with_no_filters_opens(client):
     )
     view = client.get(made.location)
     assert view.status_code == 200 and "Everything" in view.get_data(as_text=True)
-    for page in ("/journal/pl", "/journal/metrics"):
+    for page in ("/metrics/calendar", "/metrics"):
         assert client.get(f"{page}?{made.location.split('?')[1]}").status_code == 200
 
 
@@ -643,14 +783,14 @@ def test_stocks_tab(client):
     assert "SPX Iron Condor" not in stocks
     assert 'tabs__tab tabs__tab--active" href="/journal?kind=stocks"' in stocks
     assert '<input type="hidden" name="kind" value="stocks">' in stocks  # Apply keeps the tab
-    assert client.get("/journal/pl?kind=stocks").status_code == 200
+    assert client.get("/metrics/calendar?kind=stocks").status_code == 200
 
 
-def test_stocks_tab_opens_the_holdings_from_any_view(client):
-    # The Stocks tab has no Trades / P/L / metrics switch, so it always opens the holdings
-    for page in ("/journal/pl", "/journal/metrics"):
-        html = client.get(page).get_data(as_text=True)
-        assert 'href="/journal?kind=stocks"' in html
+def test_stocks_tab_is_the_journals_only(client):
+    # The Stocks tab is holdings, so it isn't on the Metrics tab (#301)
+    assert 'href="/journal?kind=stocks"' in client.get("/journal").get_data(as_text=True)
+    for page in ("/metrics/calendar", "/metrics"):
+        assert 'href="/journal?kind=stocks"' not in client.get(page).get_data(as_text=True)
 
 
 def test_all_trades_leaves_out_stock_trades(client, monkeypatch):
@@ -701,7 +841,7 @@ def test_rows_show_legs_premium_and_fees(client):
 def test_open_trades_open_the_risk_graph(client):
     html = client.get("/journal").get_data(as_text=True)
     assert "/risk-graph?trade=tastytrade" in html and 'id="risk-drawer"' in html
-    assert "/analyze?trade=" not in html and "Risk graph together" in html
+    assert "/analyze?trade=" not in html and ">Risk graph</button>" in html
     grid = client.get("/journal/grid?status=open").get_data(as_text=True)
     assert "SPX Iron Condor" in grid and "/risk-graph?trade=" in grid and "embed=1" in grid
     assert "/analyze?trade=" not in grid
@@ -1197,13 +1337,13 @@ def test_paper_journal_has_tips(client):
 
 def test_pl_page_has_tips(settings, fake_credentials):
     client = _closed_trade_client(settings, fake_credentials)
-    _has_tips(client.get("/journal/pl").get_data(as_text=True),
+    _has_tips(client.get("/metrics/calendar").get_data(as_text=True),
               "pl-cumulative", "pl-deepest-drawdown")  # fmt: skip
 
 
 def test_metrics_page_has_tips(settings, fake_credentials):
     client = _closed_trade_client(settings, fake_credentials)
-    _has_tips(client.get("/journal/metrics").get_data(as_text=True),
+    _has_tips(client.get("/metrics").get_data(as_text=True),
               "metrics-winning-days", "metrics-day-winning-days")  # fmt: skip
 
 

@@ -13,6 +13,10 @@
 <div id="accounts-cards">
     {% if pending %}<p class="muted small">Getting fresh balances from your brokers…</p>{% endif %}
 
+    {# #304: only brokers you're logged in to are listed #}
+    {% if not brokers %}
+    <p class="notice">No broker is connected yet. <a class="link" href="{{ url_for('settings.settings_page') }}#brokers">Connect one in Settings → Brokers</a>.</p>
+    {% endif %}
     {% for broker in brokers %}
     {% set n = loop.index %}
     <section class="card">

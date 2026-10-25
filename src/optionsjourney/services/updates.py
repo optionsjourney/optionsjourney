@@ -1,7 +1,9 @@
 """Ask GitHub whether a newer OptionsJourney is out, and fetch and unpack it.
 
-Only the release zip is downloaded here. Running the installer is done
-elsewhere. Every address is checked against a short list of hosts before it is
+Only the release zip is downloaded here: the file OptionsJourney.zip attached to
+the release (decision 0116), or GitHub's automatic source zip for a release
+without one. Running the installer is done elsewhere. Every address is checked
+against a short list of hosts (GITHUB_HOSTS, https on port 443 only) before it is
 fetched, redirects included, and a zip is unpacked only if every entry stays
 inside its folder. Nothing about the user is sent but the usual User-Agent.
 """
@@ -27,7 +29,13 @@ from optionsjourney.core.versions import is_newer, parse_tag
 logger = logging.getLogger(__name__)
 
 GITHUB_LATEST = "https://api.github.com/repos/optionsjourney/optionsjourney/releases/latest"
-GITHUB_HOSTS = {"api.github.com", "codeload.github.com", "github.com"}
+# release-assets.githubusercontent.com is where a release file's download redirects to
+GITHUB_HOSTS = {
+    "api.github.com", "codeload.github.com", "github.com",
+    "release-assets.githubusercontent.com",
+}  # fmt: skip
+RELEASE_DOWNLOADS = "https://github.com/optionsjourney/optionsjourney/releases/download/"
+ASSET_NAME = "OptionsJourney.zip"
 MAX_BYTES = 200 * 1024 * 1024
 TIMEOUT_S = 30
 MAX_REDIRECTS = 5
@@ -81,6 +89,23 @@ def _headers() -> dict:
     return {"Accept": "application/json", "User-Agent": f"optionsjourney/{__version__}"}
 
 
+def _asset_url(data: dict) -> str | None:
+    """The download address of the release's OptionsJourney.zip, if it has one on
+    this repo's own download path for this tag."""
+    tag = data.get("tag_name")
+    assets = data.get("assets")
+    if not isinstance(tag, str) or not isinstance(assets, list):
+        return None
+    prefix = f"{RELEASE_DOWNLOADS}{tag}/"
+    for asset in assets:
+        if not isinstance(asset, dict) or asset.get("name") != ASSET_NAME:
+            continue
+        url = asset.get("browser_download_url")
+        if isinstance(url, str) and url.startswith(prefix):
+            return url
+    return None
+
+
 def latest(http: httpx.Client, running: str) -> Release | None:
     """The newest release if it is newer than `running`; None otherwise and on
     any problem (private repo, rate limit, no network, odd reply)."""
@@ -96,7 +121,7 @@ def latest(http: httpx.Client, running: str) -> Release | None:
         tag, page, zip_url = (
             data["tag_name"],
             data["html_url"],
-            data.get("zip_url") or data["zipball_url"],
+            data.get("zip_url") or _asset_url(data) or data["zipball_url"],
         )
         if not all(isinstance(v, str) and v for v in (tag, page, zip_url)):
             raise ValueError("fields are not text")

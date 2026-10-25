@@ -1,7 +1,8 @@
 """The Stocks tab (#58): the shares held, from the brokers' own positions,
 priced live from the quote hub. Previous closes come from the brokers'
 quotes (Schwab's regular-session change first, as the watchlist). Positions
-and closes are kept a minute; prices are live."""
+and closes are kept a minute, and the portfolio value chart reads the same
+positions (#304); prices are live."""
 
 import logging
 from decimal import Decimal
@@ -19,12 +20,16 @@ _cache = Cache()
 
 
 def broker_positions(
-    clients: list, *, strict: bool = False, skipped: set[str] | None = None
+    clients: list,
+    *,
+    strict: bool = False,
+    skipped: set[str] | None = None,
+    failed: set[str] | None = None,
 ) -> list[StockPosition] | None:
-    """Every account's shares. A broker that can't be reached is left out,
-    or with `strict` makes the whole answer None (the portfolio value chart needs all).
-    A broker that was never connected is left out either way, and its name
-    (`client.broker`) is added to `skipped` when one is given."""
+    """Every account's shares. A broker that can't be reached is left out (its name
+    added to `failed` when one is given), or with `strict` makes the whole answer
+    None (the portfolio value chart needs all). A broker that was never connected
+    is left out either way, and its name (`client.broker`) is added to `skipped`."""
     found: list[StockPosition] = []
     for client in clients:
         if not hasattr(client, "stock_positions"):
@@ -41,13 +46,31 @@ def broker_positions(
                 skipped.add(client.broker)
         except (BrokerError, CredentialsUnavailable, OSError) as e:
             logger.info("%s positions unavailable: %s", client.name, e)
+            if failed is not None:
+                failed.add(client.broker)
             if strict:
                 return None
     return found
 
 
+def kept_positions(
+    clients: list, *, strict: bool = False, skipped: set[str] | None = None
+) -> list[StockPosition] | None:
+    """broker_positions, asked once a minute and shared by the Stocks page and its
+    value chart (#304): the chart used to ask every broker again on each load."""
+
+    def fetch():
+        never, down = set(), set()
+        return broker_positions(clients, skipped=never, failed=down), never, down
+
+    found, never, down = _cache.get(("positions",), KEEP_FOR, fetch)
+    if skipped is not None:
+        skipped |= never
+    return None if strict and down else found
+
+
 def stock_holdings(clients: list, hub, accounts=()) -> list[Holding]:
-    positions = _cache.get(("positions",), KEEP_FOR, lambda: broker_positions(clients)) or []
+    positions = kept_positions(clients) or []
     if accounts:  # "broker:number" each (#285); none: every account
         positions = [p for p in positions if p.account in accounts]
     tickers = sorted({p.ticker for p in positions if p.quantity})

@@ -78,3 +78,6 @@ When adding a broker endpoint that changes anything, add a case to `tests/broker
 - **Never open a Schwab streaming connection.** Schwab allows one per login, and ours would knock the server's off. Three things enforce it (decision 0052): `make_hub` builds no Schwab stream in gateway mode, `SchwabStream` won't connect while the guard is installed, and the guard refuses `/userPreference`. The guard can't see websockets, so any new streaming code must check `guard.is_installed()` itself.
 - **Stop preview servers when you're done.** Each one shares the server's logins; don't leave one running across days.
 - **Never refresh a token.** The guard blocks it anyway.
+
+## Which brokers are asked (#304, decision 0120)
+`create_app` builds a TastyTrade and a Schwab client, but `Services.broker_clients()` returns only those you're logged in to (`app._logged_in`, using `LocalProvider.connected`: a refresh token is stored). A broker never connected is never called, so features don't fail and log for it on every refresh, and it doesn't appear on the Accounts page. An expired login (Schwab after 7 days) still counts as connected, so its problem is still shown. The quote hub gets both clients at start-up, so a broker connected later streams without a restart. `GatewayProvider` has no `connected`, so in gateway mode every client is used.

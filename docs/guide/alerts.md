@@ -58,7 +58,7 @@ Below the list of what needs your attention, the Alerts page has two tabs: **Pri
 
 The buttons above the table choose what it shows: **Armed + fired today** (the starting view), **Armed**, **Fired** or **All**. On each row, **Turn off** stops an armed alert without deleting it, **Set again** turns one back on with the same level, and **Delete** removes it.
 
-To set an alert, fill in the form at the top of the tab, for example "SPX goes below 7,700", with an optional note to yourself. To alert on a trade, open it from the journal and use **Alert me when its open P/L goes below…**, for example −$500.
+To set an alert, fill in the form at the top of the tab, for example "SPX goes below 7,700", with an optional note to yourself. To alert on a trade, click the **bell** on it in the journal (or tick several trades and click **Alert** to watch them together); see [Alerts on trades](journal.md#alerts-on-trades). Its own page also has **Alert me when its open P/L goes below…**, for example −$500.
 
 On the [Trade](trade.md) page, **Add alert** sets a **spread alert** on the trade you built: a price for the spread, for example "below 0.20". When a price or spread alert goes off, its link opens the Trade page on that symbol. A spread's price is its legs' mids added up, as a positive number whether it's a credit or a debit. Spread alerts work for stocks and indexes, not futures.
 

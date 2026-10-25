@@ -80,6 +80,32 @@ def test_a_trade_open_pl_alert(factory):
     assert "now -$650" in fired[0].detail
 
 
+def test_a_combined_alert_watches_the_trades_together(factory):
+    """#300: one alert on several trades, valued by their P/L together; the bells see it
+    on each of them."""
+    keys = ["tt:1:1", "tt:1:2"]
+    user_alerts.create_trade(factory, keys, "SPX × 2 trades", "above", "100", quiet=True)
+    asked = []
+    fired = user_alerts.check(
+        factory, Hub({}), open_pl=lambda key: asked.append(key) or Decimal("120"),
+        notify=lambda a: pytest.fail("in the app only: never sent"), now=NOW,
+    )  # fmt: skip
+    assert asked == [keys]
+    assert fired[0].title == "SPX × 2 trades combined P/L went above $100"
+    assert user_alerts.states_by_trade(factory) == {"tt:1:1": ["fired"], "tt:1:2": ["fired"]}
+    assert user_alerts.for_trades(factory, ["tt:1:2"])[0]["condition"].startswith("combined P/L")
+    with pytest.raises(AlertError, match="at most 10"):
+        user_alerts.create_trade(factory, [f"tt:1:{n}" for n in range(11)], "x", "above", "1")
+
+
+def test_a_percent_of_entry_level_in_dollars():
+    assert user_alerts.pct_level("-50", Decimal("1300")) == Decimal("-650.00")
+    with pytest.raises(AlertError, match=r"\$50"):
+        user_alerts.pct_level("10", Decimal("49"))
+    with pytest.raises(AlertError, match="0%"):
+        user_alerts.pct_level("0", Decimal("500"))
+
+
 def test_no_price_no_alert(factory):
     user_alerts.create_price(factory, "SPY", "above", "800")
     assert (

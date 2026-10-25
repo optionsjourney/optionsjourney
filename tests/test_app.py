@@ -177,3 +177,27 @@ def test_newer_data_is_refused_untouched(settings):
     with pytest.raises(NewerDataError):
         create_app(settings)
     assert settings.database_path.read_bytes() == before
+
+
+def test_brokers_you_are_not_logged_in_to_are_never_asked():
+    # #304: no "isn't connected" errors on every refresh for a broker you never connected
+    from optionsjourney.app import _logged_in
+
+    class Client:
+        def __init__(self, broker):
+            self.broker = broker
+
+    class Credentials:
+        logged_in = {"tastytrade"}
+
+        def connected(self, broker):
+            return broker in self.logged_in
+
+    clients = [Client("tastytrade"), Client("schwab")]
+    credentials = Credentials()
+    listed = _logged_in(clients, credentials)
+    assert [c.broker for c in listed()] == ["tastytrade"]
+    credentials.logged_in.add("schwab")  # connecting needs no restart
+    assert [c.broker for c in listed()] == ["tastytrade", "schwab"]
+    # Gateway credentials have no such check: every client is used
+    assert _logged_in(clients, object())() == clients

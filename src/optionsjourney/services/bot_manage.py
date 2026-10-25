@@ -1415,10 +1415,15 @@ def _close_trade_job(deps, run_id: int, plan, kind: str) -> None:
 MAX_CLOSE_SELECTED = 15  # automation_bp.MAX_CLOSE_SELECTED
 
 
-def close_selected(deps, run_ids, order_type: str = "limit") -> list[tuple[int, Outcome]]:
+def close_selected(
+    deps, run_ids, order_type: str = "limit", only: dict | None = None,
+    zero_dte_only: bool = True,
+) -> list[tuple[int, Outcome]]:  # fmt: skip
     """Close selected (automation_bp.api_close_selected): every ticked 0DTE trade
     closed in full, each as its own Close entire trade. One refusal never blocks the
-    rest."""
+    rest. The journal's Close (#300, decision 0117) takes any expiration, as its Close
+    entire trade does, and `only` {run id: groups} closes just one side of a split
+    iron condor."""
     ids = []
     for raw in run_ids:
         try:
@@ -1433,10 +1438,10 @@ def close_selected(deps, run_ids, order_type: str = "limit") -> list[tuple[int, 
     out = []
     for run_id in ids:
         try:
-            if not _run_0dte(deps, run_id):
+            if zero_dte_only and not _run_0dte(deps, run_id):
                 out.append((run_id, _refused("Close selected is for 0DTE trades only.")))
                 continue
-            out.append((run_id, close_trade(deps, run_id, order_type)))
+            out.append((run_id, close_trade(deps, run_id, order_type, (only or {}).get(run_id))))
         except Exception:  # noqa: BLE001 -- one trade never stops the others
             logger.exception("close selected: run %s", run_id)
             out.append((run_id, Outcome(False, CHECK_BROKER)))

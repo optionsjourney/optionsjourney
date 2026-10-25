@@ -62,7 +62,9 @@ def _direction(text: str) -> str:
     return text
 
 
-def _create(session_factory, kind, target, label, direction, level, note, legs=None) -> int:
+def _create(
+    session_factory, kind, target, label, direction, level, note, legs=None, quiet=False
+) -> int:
     with session_factory() as session:
         alert = UserAlert(
             kind=kind,
@@ -75,24 +77,79 @@ def _create(session_factory, kind, target, label, direction, level, note, legs=N
             active=True,
             created_at=datetime.now(UTC),
             dismissed=False,
+            quiet=quiet,
         )
         session.add(alert)
         session.commit()
         return alert.id
 
 
-def create_price(session_factory, symbol: str, direction: str, level, note: str = "") -> int:
+def create_price(
+    session_factory, symbol: str, direction: str, level, note: str = "", quiet: bool = False
+) -> int:
     try:
         symbol = clean_symbol(symbol)
     except ChartError as e:
         raise AlertError("Enter a symbol such as SPY or SPX.") from e
-    return _create(session_factory, "price", symbol, symbol, direction, level, note)
+    return _create(session_factory, "price", symbol, symbol, direction, level, note, quiet=quiet)
+
+
+MAX_TRADES = 10  # Tracker2's trade_alerts MAX_POSITIONS
 
 
 def create_trade(
-    session_factory, position_key: str, name: str, direction: str, level, note: str = ""
-) -> int:
-    return _create(session_factory, "trade_pl", position_key, name, direction, level, note)
+    session_factory, position_key: str | list[str], name: str, direction: str, level,
+    note: str = "", quiet: bool = False,
+) -> int:  # fmt: skip
+    """A trade's open P/L, or (several keys, from the journal's select bar) the
+    combined P/L of the trades together: their keys in `legs`, the first in `target`."""
+    keys = [position_key] if isinstance(position_key, str) else list(dict.fromkeys(position_key))
+    if not keys or not all(keys):
+        raise AlertError("Choose a trade to alert on.")
+    if len(keys) > MAX_TRADES:
+        raise AlertError(f"An alert covers at most {MAX_TRADES} trades.")
+    legs = [{"key": key} for key in keys] if len(keys) > 1 else None
+    return _create(session_factory, "trade_pl", keys[0], name, direction, level, note, legs, quiet)
+
+
+def pct_level(text, entry: Decimal, least: Decimal = Decimal(50)) -> Decimal:
+    """A "% of entry" level in dollars of P/L (Tracker2's pct unit: P/L / |net entry|),
+    fixed when the alert is set. Refused under $50 of entry, or at 0%."""
+    if entry < least:
+        raise AlertError(f"% of entry needs at least ${least:,.0f} of entry: use $.")
+    pct = _level(text)
+    if pct == 0:
+        raise AlertError("The level can't be 0%.")
+    return (entry * pct / 100).quantize(Decimal("0.01"))
+
+
+def trade_keys(alert: UserAlert) -> list[str]:
+    """The trades a trade alert watches."""
+    return [leg["key"] for leg in alert.legs] if alert.legs else [alert.target]
+
+
+def states_by_trade(session_factory) -> dict[str, list[str]]:
+    """The journal bells' colours: each trade's own alerts' states (armed, fired, off)."""
+    found: dict[str, list[str]] = {}
+    with session_factory() as session:
+        query = select(UserAlert).where(UserAlert.kind == "trade_pl")
+        for alert in session.scalars(query.where(UserAlert.bot_run_id.is_(None))):
+            for key in trade_keys(alert):
+                found.setdefault(key, []).append(state(alert))
+    return found
+
+
+def for_trades(session_factory, keys) -> list[dict]:
+    """The alerts the journal's alert panel lists: any covering one of these trades."""
+    wanted = set(keys)
+    with session_factory() as session:
+        query = select(UserAlert).where(UserAlert.kind == "trade_pl")
+        rows = session.scalars(query.order_by(UserAlert.created_at.desc()))
+        return [
+            {"id": a.id, "name": a.label, "condition": condition(a), "state": state(a)}
+            for a in rows
+            if a.bot_run_id is None and wanted & set(trade_keys(a))
+        ]
 
 
 MAX_SPREAD_LEGS = 12
@@ -234,7 +291,8 @@ def describe(alert: UserAlert, value: Decimal | None = None) -> Fired:
         now = f"now {value:,.2f}" if value is not None else ""
         link = f"/trade?ticker={alert.target}"
     else:
-        title = f"{alert.label} open P/L went {alert.direction} {_money(alert.level)}"
+        what = "combined P/L" if alert.legs else "open P/L"
+        title = f"{alert.label} {what} went {alert.direction} {_money(alert.level)}"
         now = f"now {_money(value)}" if value is not None else ""
         link = f"/journal/trades/{alert.target}"
     detail = " · ".join(part for part in (now, alert.note or "") if part)
@@ -248,7 +306,7 @@ def _value(alert: UserAlert, hub, open_pl: Callable[[str], Decimal | None]) -> D
         return quote.mark if quote is not None else None
     if alert.kind in SPREADS:
         return spread_value(hub, alert.legs or [])
-    return open_pl(alert.target)
+    return open_pl(trade_keys(alert) if alert.legs else alert.target)
 
 
 def _shown(alert: UserAlert, value: Decimal) -> str:
@@ -258,6 +316,8 @@ def _shown(alert: UserAlert, value: Decimal) -> str:
 def condition(alert: UserAlert) -> str:
     """What it waits for: "goes below 7,700.00", "open P/L goes above $250"."""
     what = {"trade_pl": "open P/L ", "bot_pl": "close price "}.get(alert.kind, "")
+    if alert.kind == "trade_pl" and alert.legs:
+        what = "combined P/L "
     if alert.bot_run_id is not None and alert.kind == "price":
         what = f"{alert.target} "
     return f"{what}goes {alert.direction} {_shown(alert, alert.level)}"

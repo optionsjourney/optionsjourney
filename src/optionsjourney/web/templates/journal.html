@@ -237,7 +237,7 @@
             <button type="button" data-set-trade-view="table" title="Show trades as a table">▦ Table</button>
             <a href="{{ url_for('journal.grid_page', **filters.to_args()) }}" title="The open trades in a table, ticked ones in one risk graph together">⊞ Grid</a>
         </div>
-        <span class="muted small">Tick trades to tag them or graph them together</span>
+        <span class="muted small">Tick trades to graph, alert on or close them together</span>
     </div>
     <div class="table-scroll"><table class="table journal-table">
         <thead>
@@ -287,7 +287,7 @@
             {% else %}
             {% set p = entry.position %}
             <tr class="trade-row" data-group="{{ 'closed' if p.status.value == 'closed' else 'open' }}"{% if p.status.value == 'closed' and p.closed_at %} data-day="day-{{ p.closed_at | market_day }}"{% endif %}>
-                <td class="col-tick"><input type="checkbox" class="select-trade" value="{{ p.key }}" {{ 'data-analyzable' if analyzable(entry) }} aria-label="Tick {{ entry.name }}"></td>
+                <td class="col-tick"><input type="checkbox" class="select-trade" value="{{ p.key }}" {{ 'data-analyzable' if analyzable(entry) }}{% if p.status.value != 'closed' %} data-open data-ticker="{{ p.underlying }}"{% if entry.bot and not entry.bot.matched %} data-closable{% endif %}{% endif %} aria-label="Tick {{ entry.name }}"></td>
                 <td class="col-trade trade-cell">
                     <div class="trade-name">
                         {{ entry.name }}
@@ -342,6 +342,7 @@
                 </td>
                 <td class="col-actions nowrap">
                     {% if analyzable(entry) %}{% set href = url_for('risk_graph.risk_graph_page', trade=p.key) %}<a class="risk-graph-link" href="{{ href }}" onclick='return window.riskLinkClick ? riskLinkClick(event, {{ href | tojson }}) : true' aria-label="Risk graph" title="Risk graph"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M6 16l4-6 4 3 6-8"/></svg></a>{% endif %}
+                    {% if p.status.value != 'closed' %}{% set states = alert_states.get(p.key, []) %}<button type="button" class="manage-gear alert-bell{% if 'armed' in states %} alert-bell--armed{% elif 'fired' in states %} alert-bell--fired{% endif %}" data-manage-panel="{{ url_for('journal.alert_panel', trade=p.key) }}" aria-label="Set an alert" title="{% if states %}{{ states | length }} alert{{ 's' if states | length != 1 }} on this trade: set another{% else %}Set an alert{% endif %}"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></button>{% endif %}
                     <button type="button" class="manage-gear" data-manage-panel="{{ url_for('journal.panel', key=p.key) }}" data-panel-key="{{ p.key }}" aria-label="Manage this trade" title="Manage this trade"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
                 </td>
             </tr>
@@ -380,18 +381,15 @@
 <script type="module" src="{{ url_for('static', filename='js/open_pl.js') }}"></script>
 <div class="select-bar" id="select-bar" hidden>
     <span id="select-count"></span>
-    <form method="post" action="{{ url_for('journal.edit_many') }}" id="select-edit" class="select-bar__edit">
+    <span class="tip"><button class="button" type="button" id="select-analyze" aria-describedby="tip-journal-graph-together">Risk graph</button>{{ tip_text('journal-graph-together', "One risk graph of the ticked open trades as one position, for example the put and call sides of an iron condor. You can untick any of them to see the rest.", more='/help/journal#risk-graphs') }}</span>
+    <span class="tip"><button class="button" type="button" id="select-alert" data-manage-panel="{{ url_for('journal.alert_panel') }}" aria-describedby="tip-journal-alert-together">Alert</button>{{ tip_text('journal-alert-together', "One alert on the ticked trades together: their combined P/L, or their underlying's price. Open trades on one underlying, up to 10.", more='/help/journal#alerts-on-trades') }}</span>
+    <form method="post" action="{{ url_for('journal.close_selected') }}" id="select-close" class="select-bar__edit">
         <input type="hidden" name="back" value="{{ request.full_path }}">
-        <input type="text" name="add_tags" placeholder="Add tags" aria-label="Tags to add, separated by commas" list="select-tag-names" data-tag-list="Tags to add" size="12">
-        <input type="text" name="remove_tags" placeholder="Remove tags" aria-label="Tags to remove, separated by commas" list="select-tag-names" data-tag-list="Tags to remove" size="12">
-        <datalist id="select-tag-names">{% for t in view.tags %}<option value="{{ t.name }}">{% endfor %}</datalist>
-        <button class="button button--quiet" type="submit">Save</button>
+        <span class="tip"><button class="button button--stop" type="submit" id="select-close-button" aria-describedby="tip-journal-close-together">Close</button>{{ tip_text('journal-close-together', "Closes every ticked trade that a bot or its own exit rules manage, in full, each by its own exit chase. You confirm first. Other trades are skipped.", more='/help/journal#closing-trades-together') }}</span>
     </form>
-    <span class="tip"><button class="button" type="button" id="select-analyze" aria-describedby="tip-journal-graph-together">Risk graph together</button>{{ tip_text('journal-graph-together', "Draws the ticked trades as one position, for example the put and call sides of an iron condor. You can untick any of them to see the rest.", more='/help/journal#risk-graphs') }}</span>
     <button class="button button--quiet" type="button" id="select-clear">Clear</button>
 </div>
 <script src="{{ url_for('static', filename='js/journal_select.js') }}" defer></script>
-<script type="module" src="{{ url_for('static', filename='js/tag_list.js') }}"></script>
 <script type="module" src="{{ url_for('static', filename='js/journal_live.js') }}"></script>
 {% if page.items | selectattr('bot') | list %}
 <script type="module" src="{{ url_for('static', filename='js/bot_chips.js') }}"></script>

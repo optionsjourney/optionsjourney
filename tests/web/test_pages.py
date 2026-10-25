@@ -88,10 +88,11 @@ def test_accounts_page_shows_a_broker_problem(settings, fake_credentials):
 
 
 def test_local_mode_without_a_connection(settings):
-    """The real local provider and client: no broker connected yet."""
+    """The real local provider and client: no broker connected yet, so none is asked
+    (#304) and the page says where to connect one."""
     response = create_app(settings).test_client().get("/accounts/live")
     assert response.status_code == 200
-    assert "isn&#39;t connected. Connect it in Settings" in response.get_data(as_text=True)
+    assert "No broker is connected yet" in response.get_data(as_text=True)
     assert not guard.is_installed()
 
 
@@ -160,3 +161,14 @@ def test_the_version_is_in_the_footer(settings, fake_credentials):
     line = f'<span class="footer__version">OptionsJourney v{optionsjourney.__version__}</span>'
     for page in ("/journal", "/settings"):
         assert line in client.get(page).get_data(as_text=True), page
+
+
+def test_short_money_fits_a_phone_calendar_cell():
+    # #303: only a loss carries a sign; near $1,000 rounds to 1.0k, not "$1,000"
+    from decimal import Decimal
+
+    from optionsjourney.web.formatting import short_money
+
+    cases = {"150": "$150", "-150.4": "-$150", "0": "$0", "999.6": "$1.0k",
+             "9949": "$9.9k", "9950": "$10k", "-12411.26": "-$12k", "-6859.77": "-$6.9k"}  # fmt: skip
+    assert {k: short_money(Decimal(k)) for k in cases} == cases

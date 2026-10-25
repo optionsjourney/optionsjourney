@@ -1,0 +1,48 @@
+{#- The journal bell's panel (#300, Tracker2's journal Alert modal), fetched into the Manage
+    drawer from journal.alert_panel: one trade's open P/L, the ticked trades' combined P/L,
+    or their underlying's price. The form posts to alerts.create and comes back here. -#}
+{% from "_macros.html" import pl %}
+<div class="manage-panel alert-panel">
+    <h3 class="manage-panel__title" data-panel-title>Alert{% if entries | length > 1 %} on {{ entries | length }} trades{% endif %}</h3>
+{% if problem %}
+    <p class="notice notice--warning">{{ problem }}</p>
+{% else %}
+    <section class="card">
+        <ul class="alert-panel__trades small">
+            {% for e in entries %}<li>{{ e.name }}</li>{% endfor %}
+        </ul>
+        <p class="muted small">Entry {{ net_entry | money }} · {{ 'combined P/L' if entries | length > 1 else 'open P/L' }} now {% if now is not none %}{{ pl(now) }}{% if pct_allowed %} ({{ '%+.1f' % (now / net_entry * 100) }}%){% endif %}{% else %}—{% endif %} · {{ ticker }} {{ '{:,.2f}'.format(spot) if spot is not none else '—' }}</p>
+        {% if existing %}
+        <p class="small">Already set: {% for a in existing %}{{ a.name }} <span class="muted">({{ a.condition }}, {{ a.state }})</span>{{ ', ' if not loop.last }}{% endfor %} · <a class="link" href="{{ url_for('alerts.alerts_page', show='all') }}">manage</a></p>
+        {% endif %}
+    </section>
+    <form class="alert-panel__form card" method="post" action="{{ url_for('alerts.create') }}" data-choice>
+        <input type="hidden" name="next" value="{{ back }}">
+        <input type="hidden" name="symbol" value="{{ ticker }}">
+        {% for key in keys %}<input type="hidden" name="position" value="{{ key }}">{% endfor %}
+        <label class="alert-panel__row">Alert on
+            <select name="kind" data-choice-by>
+                <option value="trade_pl">{{ 'Combined P/L' if entries | length > 1 else 'Open P/L' }}</option>
+                <option value="price">{{ ticker }} price</option>
+            </select>
+        </label>
+        <div class="alert-panel__row">
+            <select name="direction" aria-label="Above or below"><option value="below">goes below</option><option value="above">goes above</option></select>
+            <input type="text" name="level" inputmode="decimal" required aria-label="Level" size="8" list="alert-strikes" placeholder="-500">
+            <select name="unit" aria-label="Dollars or % of entry" data-when="trade_pl">
+                <option value="usd">$</option>
+                {% if pct_allowed %}<option value="pct">% of entry</option>{% endif %}
+            </select>
+        </div>
+        {% if not pct_allowed %}<p class="muted small" data-when="trade_pl">% of entry needs at least $50 of entry: use $.</p>{% endif %}
+        {% if strikes %}
+        <datalist id="alert-strikes">{% for s in strikes %}<option value="{{ s.price }}">{{ s.label }} ({{ s.direction }})</option>{% endfor %}</datalist>
+        <p class="muted small" data-when="price">Pick a strike from the list, or type a price. Puts usually alert below, calls above.</p>
+        {% endif %}
+        <p class="muted small" data-when="trade_pl">A loss is negative: below -500 goes off once the trade is down $500 or more.</p>
+        <label class="alert-panel__row">Name <input type="text" name="name" value="{{ name }}" maxlength="160" size="24"></label>
+        <label class="alert-panel__row"><input type="checkbox" name="quiet" value="1"> In the app only (not sent to Discord or Telegram)</label>
+        <p><button class="button" type="submit">Set alert</button></p>
+    </form>
+{% endif %}
+</div>

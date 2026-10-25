@@ -41,7 +41,7 @@ optionsjourney/
 │   │   ├── security.py       Refuses POSTs that don't come from the app's own pages
 │   │   ├── formatting.py     Template filters (money, numbers, Eastern time)
 │   │   ├── guide.py          Reads docs/guide/*.md (or the wheel's bundled guide/ folder) and renders it to HTML with GitHub-style anchors
-│   │   ├── routes/           One file per area (journal, dashboard, setup, settings, …); help_pages.py serves the guide at /help; update.py is the Install page
+│   │   ├── routes/           One file per area (journal, metrics, setup, settings, …); help_pages.py serves the guide at /help; update.py is the Install page
 │   │   ├── sockets.py        Socket.IO events for the charts and the risk graph
 │   │   ├── templates/        update.html (the Install page), startup_problem.html (the page the launcher shows when the app can't start)
 │   │   └── static/

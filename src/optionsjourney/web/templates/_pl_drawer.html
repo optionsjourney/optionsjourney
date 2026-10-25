@@ -1,0 +1,17 @@
+{# The P/L calendar's drawer (#301): a day, week or month's trades. pl_drawer.js opens it from
+   any [data-period-start] cell and fills the body from metrics.pl_period. #}
+<div id="pl-drawer" class="drawer hidden" role="dialog" aria-modal="true" aria-labelledby="pl-drawer-title"
+     data-url="{{ url_for('metrics.pl_period', **filters.to_args()) }}">
+    <div data-pl-backdrop class="drawer__backdrop opacity-0"></div>
+    <div data-pl-panel class="drawer__panel drawer__panel--period translate-x-full">
+        <div class="drawer__header">
+            <h3 id="pl-drawer-title"></h3>
+            <button data-pl-close type="button" class="drawer__close" title="Close" aria-label="Close">✕</button>
+        </div>
+        <div id="pl-drawer-body" class="drawer__body" aria-live="polite"></div>
+    </div>
+</div>
+<script type="module">
+    import { installPlDrawer } from "{{ url_for('static', filename='js/pl_drawer.js') }}";
+    installPlDrawer(document, window);
+</script>

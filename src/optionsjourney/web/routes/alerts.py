@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from flask import Blueprint, flash, jsonify, redirect, render_template, request, url_for
 
 from optionsjourney.core import trade_events as trade_events_core
+from optionsjourney.core.stats import net_entry
 from optionsjourney.services import app_alerts, journal, trade_events, user_alerts
 from optionsjourney.services.alerts import system_alerts
 from optionsjourney.web import services
@@ -95,16 +96,18 @@ def _back():
 @bp.post("/alerts/new")
 def create():
     form = request.form
+    quiet = form.get("quiet") == "1"  # in the app only, never sent (#300)
     try:
         if form.get("kind") == "trade_pl":
+            keys = form.getlist("position")
+            name = form.get("name", "").strip() or "Trade"
+            level = form.get("level", "")
+            if form.get("unit") == "pct":
+                level, name = _pct_of_entry(keys, level, name)
             user_alerts.create_trade(
-                services().session_factory,
-                form["position"],
-                form.get("name", "Trade"),
-                form.get("direction", ""),
-                form.get("level", ""),
-                form.get("note", ""),
-            )
+                services().session_factory, keys if len(keys) > 1 else (keys or [""])[0],
+                name, form.get("direction", ""), level, form.get("note", ""), quiet,
+            )  # fmt: skip
         else:
             user_alerts.create_price(
                 services().session_factory,
@@ -112,11 +115,22 @@ def create():
                 form.get("direction", ""),
                 form.get("level", ""),
                 form.get("note", ""),
+                quiet,
             )
         flash("Alert set. You'll see it here, and in the top bar, when it goes off.", "success")
     except user_alerts.AlertError as e:
         flash(str(e), "warning")
     return _back()
+
+
+def _pct_of_entry(keys, text, name):
+    """A "% of entry" level as dollars of P/L, from the trades' net entry (#300)."""
+    s = services()
+    view = journal.load_journal(s.session_factory, cache=s.positions_cache)
+    positions = [e.position for key in keys if (e := journal.find_entry(view, key))]
+    pct = text.strip().rstrip("%")
+    level = user_alerts.pct_level(pct, net_entry(positions))
+    return level, f"{name} ({'' if pct.startswith('-') else '+'}{pct}% of entry)"
 
 
 @bp.post("/alerts/<int:alert_id>/<action>")

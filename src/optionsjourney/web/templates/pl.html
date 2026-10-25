@@ -1,11 +1,24 @@
 {% extends "base.html" %}
 {% from "_macros.html" import pl %}
 {% from "_tooltip.html" import info %}
-{% block title %}P/L · {{ dashboard.name if dashboard else 'Journal' }} · OptionsJourney{% endblock %}
+{% block title %}P/L · {{ dashboard.name if dashboard else 'Metrics' }} · OptionsJourney{% endblock %}
+
+{# #301: a day's economic events in its cell (Tracker2's EconEvents.cellHtml): the first
+   high-impact one with its time, a count of the rest, every event in the tooltip #}
+{% macro econ_marker(items) %}
+{% if items %}
+{% set high = items | selectattr('impact', 'equalto', 'high') | list %}
+{% set medium = items | selectattr('impact', 'equalto', 'medium') | list %}
+<div class="calendar__econ" title="{% for i in items %}{{ i.time or 'All day' }} {{ i.label }}{{ '\n' if not loop.last }}{% endfor %}">
+    {% if high %}<span class="econ-chip econ-chip--high">{{ high[0].time ~ ' ' if high[0].time }}{{ high[0].label }}{% if high | length > 1 %} +{{ high | length - 1 }}{% endif %}</span>{% endif %}
+    {% if medium %}<span class="econ-chip econ-chip--medium">{{ medium | length }}</span>{% endif %}
+</div>
+{% endif %}
+{% endmacro %}
 
 {% block content %}
 <div class="page-header">
-    <h1>Journal</h1>
+    <h1>Metrics</h1>
     <a class="link" href="{{ url_for('journal.tags_page') }}">Tags</a>
 </div>
 
@@ -21,7 +34,8 @@
             <a class="button button--quiet" href="{{ month_url(1) }}" aria-label="Next month">›</a>
         </nav>
     </div>
-    <div class="calendar__summary">
+    <div class="calendar__summary calendar__open" data-period-start="{{ c.first.isoformat() }}" data-period-end="{{ c.last.isoformat() }}"
+         data-period-title="{{ c.first.strftime('%B %Y') }}" role="button" tabindex="0" aria-label="Details for {{ c.first.strftime('%B %Y') }}">
         <div><div class="stat__label">Month P/L</div>{{ pl(c.total) }}</div>
         <div><div class="stat__label">Trades closed</div>{{ c.trades }}{% if c.partials %} <span class="muted small">+ {{ c.partials }} partial</span>{% endif %}</div>
         <div><div class="stat__label">Winning days</div>{% if c.days %}{{ c.winning_days }} of {{ c.days | length }}{% else %}—{% endif %}</div>
@@ -36,16 +50,20 @@
             {% for week in c.weeks %}
             <tr>
                 {% for cell in week.days %}
-                <td class="calendar__day {{ 'calendar__day--' ~ cell.shade if cell.shade }} {{ 'calendar__day--outside' if not cell.in_month }}"
+                <td class="calendar__day {{ 'calendar__day--' ~ cell.shade if cell.shade }} {{ 'calendar__day--outside' if not cell.in_month }} {{ 'calendar__open' if cell.in_month }}"
+                    {% if cell.in_month %}data-period-start="{{ cell.day.isoformat() }}" data-period-end="{{ cell.day.isoformat() }}" data-period-title="{{ cell.day.strftime('%A, %B') }} {{ cell.day.day }}, {{ cell.day.year }}" role="button" tabindex="0"{% endif %}
                     {% if cell.pl %}title="{{ cell.day.strftime('%a %b') }} {{ cell.day.day }}: {{ cell.pl.realized | money }} · {{ cell.pl.trades }} closed{% if cell.pl.partials %}, {{ cell.pl.partials }} partial{% endif %}{% if cell.pl.trades %} · {{ cell.pl.wins }} won, {{ cell.pl.losses }} lost{% endif %}"{% endif %}>
                     <div class="calendar__date">{{ cell.day.day }}</div>
                     {% if cell.pl %}
                     <div class="calendar__pl"><span class="calendar__long">{{ cell.pl.realized | signed_money }}</span><span class="calendar__short">{{ cell.pl.realized | short_money }}</span></div>
                     <div class="calendar__count muted small">{{ cell.pl.trades }} closed{% if cell.pl.partials %} · {{ cell.pl.partials }} partial{% endif %}</div>
                     {% endif %}
+                    {% if cell.in_month %}{{ econ_marker(events.get(cell.day)) }}{% endif %}
                 </td>
                 {% endfor %}
-                <td class="calendar__week {{ 'calendar__week--gain' if week.total > 0 else 'calendar__week--loss' if week.total < 0 }}">
+                <td class="calendar__week calendar__open {{ 'calendar__week--gain' if week.total > 0 else 'calendar__week--loss' if week.total < 0 }}"
+                    data-period-start="{{ week.start.isoformat() }}" data-period-end="{{ week.end.isoformat() }}" role="button" tabindex="0"
+                    data-period-title="Week of {{ week.start.strftime('%b') }} {{ week.start.day }}{% if week.end != week.start %} – {{ week.end.strftime('%b') }} {{ week.end.day }}{% endif %}">
                     {% if week.total or week.trades %}
                     <div class="calendar__pl"><span class="calendar__long">{{ week.total | signed_money }}</span><span class="calendar__short">{{ week.total | short_money }}</span></div>
                     <div class="calendar__count muted small">{{ week.trades }} closed</div>
@@ -56,7 +74,9 @@
             {% endfor %}
         </tbody>
     </table>
+    <p class="muted small">Click a day, a week's total or the month summary for its trades. {{ info('pl-drawer', "The trades that made or lost money in that day, week or month, grouped by your saved dashboards, with a column for each account that traded. A trade closed in parts counts only what it made in that period.", 'Day, week and month details', more='/help/metrics#pl-calendar') }}</p>
 </section>
+{% include "_pl_drawer.html" %}
 
 {% set h = history %}
 <section class="card pl-history" aria-labelledby="history-title">
@@ -74,7 +94,7 @@
     {% else %}
     <figure class="chart" id="pl-history" data-line-chart="pl-history-data"
             data-tooltip='[["Cumulative", "cumulative", "signed"], ["That day", "pl", "signed"], ["Drawdown", "drawdown", "drawdown"]]'>
-        <div class="chart__label">Cumulative P/L {{ info('pl-cumulative', "Your realized P/L added up day by day, starting from zero. Each day's P/L counts on the day it was made, so closing part of a trade adds that part.", 'Cumulative P/L', more='/help/journal#pl-over-time') }}</div>
+        <div class="chart__label">Cumulative P/L {{ info('pl-cumulative', "Your realized P/L added up day by day, starting from zero. Each day's P/L counts on the day it was made, so closing part of a trade adds that part.", 'Cumulative P/L', more='/help/metrics#pl-over-time') }}</div>
         <svg class="chart__plot" data-series="cumulative" data-mark="end" role="img" aria-label="Cumulative realized P/L by day"></svg>
         <div class="chart__label">Drawdown <span class="muted">· how far below its highest point so far</span></div>
         <svg class="chart__plot chart__plot--short" data-series="drawdown" data-mark="min" data-color="loss" role="img" aria-label="Drawdown by day"></svg>
@@ -84,7 +104,7 @@
     <details class="section-gap">
         <summary class="link">Show as a table</summary>
         <div class="table-scroll"><table class="table">
-            <thead><tr><th>Month</th><th class="num">P/L</th><th class="num">Cumulative</th><th class="num">Deepest drawdown {{ info('pl-deepest-drawdown', "The biggest fall below your best cumulative P/L so far, within that month. The best point starts at zero, so losses before your first gain count as drawdown.", 'Deepest drawdown', more='/help/journal#pl-over-time') }}</th></tr></thead>
+            <thead><tr><th>Month</th><th class="num">P/L</th><th class="num">Cumulative</th><th class="num">Deepest drawdown {{ info('pl-deepest-drawdown', "The biggest fall below your best cumulative P/L so far, within that month. The best point starts at zero, so losses before your first gain count as drawdown.", 'Deepest drawdown', more='/help/metrics#pl-over-time') }}</th></tr></thead>
             <tbody>
                 {% for row in h.months %}
                 <tr>

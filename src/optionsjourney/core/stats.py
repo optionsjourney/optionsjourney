@@ -140,6 +140,15 @@ def premium_of(position: Position) -> Decimal:
     )
 
 
+def net_entry(positions) -> Decimal:
+    """What the trades took in or paid to open, rolls included, together: the "% of
+    entry" basis of an alert (signed before adding, so two debits add up)."""
+    return abs(sum(
+        (e.value for p in positions for e in p.events
+         if e.kind in (EventKind.OPEN, EventKind.ROLL)), ZERO,
+    ))  # fmt: skip
+
+
 def _premium_split(position: Position) -> tuple[Decimal, Decimal]:
     """A partly closed trade's premium, split leg by leg into the part still
     open and the part closed, like its P/L."""

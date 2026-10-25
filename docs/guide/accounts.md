@@ -4,6 +4,8 @@ The **Accounts** page lists every account the app is connected to, with its valu
 
 The page opens straight away with the balances the app last read, then checks your brokers and updates them, usually within a couple of seconds. Next to each broker, **As of** shows when its balances were read. If a broker can't be reached, you keep seeing the last balances it gave, with a note saying why they weren't updated.
 
+A broker you haven't connected (in **Settings → Brokers**) isn't shown here, and the app doesn't try to reach it anywhere else either. If your Schwab login has run out (every 7 days), Schwab still shows, with a note to log in again.
+
 ## Account values over time
 Click **Account values over time →** next to the page title to see how your accounts' value has changed.
 

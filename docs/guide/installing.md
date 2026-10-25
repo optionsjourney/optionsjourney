@@ -2,7 +2,7 @@
 
 **Using Schwab?** Request your Schwab API app first: Schwab takes a few business days to approve it. See [Getting your broker API keys](broker-api-keys.md).
 
-Download the latest version from the [Releases page](https://github.com/optionsjourney/optionsjourney/releases/latest): under **Assets**, click **Source code (zip)**.
+Download **[OptionsJourney.zip](https://github.com/optionsjourney/optionsjourney/releases/latest/download/OptionsJourney.zip)**. That link always gets the latest version. (It is also on the [Releases page](https://github.com/optionsjourney/optionsjourney/releases/latest), under **Assets**.)
 
 ## Windows
 1. Open your **Downloads** folder, right-click the zip and choose **Extract All…**, then **Extract**.

@@ -141,6 +141,11 @@ Documentation is a first-class part of this project. A feature isn't done until 
 | [0113](decisions/0113-stocks-value-from-holdings-and-fills.md) | The Stocks tab's value chart is worked back from today's holdings and the synced fills | Accepted |
 | [0114](decisions/0114-trade-ideas-and-pending-orders.md) | Trade Ideas, and a Pending drawer for every working order | Accepted (outside orders being changeable replaced by 0115) |
 | [0115](decisions/0115-outside-orders-read-only.md) | Only orders the app sent for you can be changed or cancelled | Accepted |
+| [0116](decisions/0116-release-zip-as-a-release-file.md) | Each release carries its zip as a Release file, OptionsJourney.zip | Accepted |
+| [0117](decisions/0117-journal-alerts-and-close-from-the-select-bar.md) | The journal's select bar alerts on and closes trades; tagging moves to each trade's page | Accepted (Close's order type replaced by 0118) |
+| [0118](decisions/0118-journal-close-has-no-market-choice.md) | The journal's Close has no Limit/Market choice | Accepted |
+| [0119](decisions/0119-metrics-tab-and-calendar-drawer.md) | Metrics gets its own tab; the P/L calendar opens a day, week or month by dashboard and account | Accepted |
+| [0120](decisions/0120-only-logged-in-brokers-are-asked.md) | Only brokers you're logged in to are asked | Accepted |
 
 ## Writing a new decision
 

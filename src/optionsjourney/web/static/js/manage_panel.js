@@ -11,9 +11,10 @@ export function withoutPanel(search) {
   return rest ? '?' + rest : '';
 }
 
-// The panel's URL for a trade, told which journal view to come back to.
+// The panel's URL for a trade (or the alert panel's, which has its trades in its query),
+// told which journal view to come back to.
 export function panelUrl(base, pathname, search) {
-  return base + '?back=' + encodeURIComponent(pathname + withoutPanel(search));
+  return base + (base.includes('?') ? '&' : '?') + 'back=' + encodeURIComponent(pathname + withoutPanel(search));
 }
 
 export function install(doc, win) {

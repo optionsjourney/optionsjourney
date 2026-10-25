@@ -41,6 +41,7 @@ from optionsjourney.web.routes import (
     ideas,
     journal,
     manual,
+    metrics,
     pending,
     quotes,
     risk_graph,
@@ -159,6 +160,17 @@ def _demo_parts(settings: Settings) -> SimpleNamespace:
     )
 
 
+def _logged_in(clients: list, credentials) -> Callable[[], list]:
+    """The clients of the brokers you're logged in to (#304): one never connected
+    isn't asked, so nothing fails or logs for it on every refresh. An expired login
+    still counts, so it's still reported. Gateway credentials have no such check:
+    there every client is used."""
+    connected = getattr(credentials, "connected", None)
+    if connected is None:
+        return lambda: clients
+    return lambda: [c for c in clients if connected(c.broker)]
+
+
 def create_app(
     settings: Settings | None = None,
     *,
@@ -193,9 +205,10 @@ def create_app(
         raise
 
     credentials = credentials or provider_for(settings)
+    clients = None
     if broker_clients is None:
         clients = [TastyTradeClient(credentials), SchwabClient(credentials)]
-        broker_clients = lambda: clients  # noqa: E731
+        broker_clients = _logged_in(clients, credentials)
 
     app = Flask(__name__, template_folder="web/templates", static_folder="web/static")
     # Only signs flash messages; a new key each start is fine.
@@ -208,7 +221,9 @@ def create_app(
         broker_clients=broker_clients,
         positions_cache=PositionsCache(),
         close_cache=CloseCache(),
-        quote_hub=quote_hub or make_hub(broker_clients(), credentials, gateway=settings.is_gateway),
+        # Both clients, so a broker you connect later streams without a restart
+        quote_hub=quote_hub
+        or make_hub(clients or broker_clients(), credentials, gateway=settings.is_gateway),
     )
     if demo is not None:
         from optionsjourney.demo.engine import DemoEngine  # noqa: PLC0415
@@ -271,6 +286,7 @@ def create_app(
     app.register_blueprint(ideas.bp)
     app.register_blueprint(automation.bp)
     app.register_blueprint(journal.bp)
+    app.register_blueprint(metrics.bp)
     app.register_blueprint(manual.bp)
     app.register_blueprint(orders_routes.bp)
     app.register_blueprint(setup.bp)

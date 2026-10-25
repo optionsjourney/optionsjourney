@@ -24,10 +24,10 @@ Each row is one trade, from the moment you opened it until it closed:
 - **Views:** the switch above the list picks **Compact** (one line per trade without the legs, entry, exit, premium and fees; click a row to see them under it), **Cards** (one card per trade: name, P/L, day P/L, when and where; click a card to see its legs and prices), **Table** (every column), or **Grid** (risk graphs of the open trades side by side). It starts on Compact, or Cards on a phone, and your browser remembers your choice after that.
 - **Columns:** each trade shows its name and tags first, then **P/L Day** (since the last close, with its % of the premium) and **P/L** (with its % of the premium; open trades show live P/L), then when it opened, the account, the legs still open, and the **closing legs**, grouped by closing order with the time and fill prices.
 - **Open and closed:** with both showing, open trades come first under **Open**, then closed ones under **Closed** with their total P/L. Closed trades are grouped by the day they closed, and within a day listed by when they opened, latest first; each day shows how many trades closed and that day's P/L. Click a column heading to sort the whole list by it instead.
-- **Several at once:** tick the box at the start of open trades and click **Risk graph together** to see them as one position, for example the put and call sides of an iron condor. Each trade gets a checkbox, so you can take one out and see the rest; trades on different underlyings get a tab each.
+- **Several at once:** tick the box at the start of open trades and click **Risk graph** in the bar at the bottom to see them as one position, for example the put and call sides of an iron condor. Each trade gets a checkbox, so you can take one out and see the rest; trades on different underlyings get a tab each.
 - **Stays up to date:** when new fills come in from your broker (a bot's stop filling, a trade you placed), the journal reloads itself within a few seconds. If you have trades ticked, a panel open or are typing, it waits and shows a **Reload** link at the top right instead.
-- **Ticking trades:** in the table, click anywhere on a row (or its box) to tick it; in Cards and Compact, use the box. **Select all** and **None** on the Open and Closed headings tick a whole section, and **Select day** ticks one closing day. Ticks stay if you reload the page; **Esc** or **Clear** unticks everything. **Risk graph together** greys out when none of the ticked trades can be graphed (only open option trades can); hover it to see why.
-- **Tags for several trades:** tick any trades and use the bar at the bottom: type tags to add or remove (separate them with commas), then click **Save**. Each trade keeps its other tags, notes and name.
+- **Ticking trades:** in the table, click anywhere on a row (or its box) to tick it; in Cards and Compact, use the box. **Select all** and **None** on the Open and Closed headings tick a whole section, and **Select day** ticks one closing day. Ticks stay if you reload the page; **Esc** or **Clear** unticks everything. **Risk graph**, **Alert** and **Close** grey out when the ticked trades can't be used for them (for example, only open trades can have an alert); hover a button to see why, or what it will do.
+- **The bar at the bottom** has **Risk graph** (see [Risk graphs](#risk-graphs)), **Alert** (one alert on the ticked trades together, see [Alerts on trades](#alerts-on-trades)) and **Close** (see [Closing trades together](#closing-trades-together)). To tag trades, use each trade's own page.
 - **⊞ Grid** shows the open trades the filters pick in a table, with one risk graph below it of the trades you tick, drawn together:
   - Every trade starts ticked (up to 50, the most one graph takes). Click a row or its box to tick or untick it; the graph redraws a moment later.
   - The box in the table's header ticks them all, or unticks them all if any are ticked.
@@ -35,6 +35,16 @@ Each row is one trade, from the moment you opened it until it closed:
   - Click **Total open P/L** to fold the table away and keep just that line. The page remembers it next time.
   - **⤢** opens the graph large.
 - **Futures trades** (like /ES options) show their graph at their opening prices; they don't update live yet.
+
+## Alerts on trades
+The **bell** (next to the chart icon and the ⚙ gear) on an open trade sets an alert on it. To set one alert on several trades together, tick them and click **Alert** in the bar at the bottom: they must be open, on one underlying (SPX, say), and no more than 10.
+- **Open P/L** (or **Combined P/L** for several trades): goes off when it goes above or below a level, in dollars or as a **% of entry** (what the trades took in or paid to open). A loss is negative: "below -20% of entry" on a $1,620 calendar goes off once it's down $324. % of entry needs at least $50 of entry. Combined P/L counts what a trade that has since closed made, so the alert keeps watching the rest.
+- **The underlying's price:** the level box lists the trades' strikes to pick from. Puts usually alert below, calls above.
+- **In the app only** keeps it off Discord and Telegram.
+- The panel lists the alerts already set on the trade. The bell turns **green** while one waits and **amber** once one has gone off. Manage them all on the [Alerts](alerts.md#price-alerts) page.
+
+## Closing trades together
+Tick trades and click **Close** in the bar at the bottom to close them in full, each the way its own exit rules close it: a bot's trade by the bot's exit chase, a trade you gave rules to (**Manage this trade**) by its rules. Each starts from the mid and chases toward a fill, by that trade's own chase settings (which say whether a last leg goes to market). Confirm, and it starts. A trade no bot or rules of its own manage is skipped: close it at your broker. Ticking one side of a split iron condor closes only that side. It works only while the market is open, and never while orders are frozen.
 
 ## Grouping trades with tags
 Tags are how you group your trades, such as "MEIC", "Wheel" or "earnings". A trade can have as many as you like, and you pick which ones matter by filtering on them. (There used to be "strategies" as well; each one became a tag of the same name, and every trade that was filed under one has that tag.)
@@ -121,7 +131,7 @@ Use the filters above the list to narrow it down by tag, account and dates. They
 
 - **Accounts:** tick one or more accounts (each shows its broker, so two accounts with the same name can be told apart). None ticked means all your accounts.
 - **Tags:** tick one or more; a trade shows if it has any of them. **No tags** shows the trades you haven't tagged. A dashboard you saved with a strategy filter now filters by that strategy's tag, and one saved with "No strategy" by **No tags**.
-- **Totals:** the numbers above the list (and on P/L and Trading metrics) always come from the trades shown, each counted once. A trade with three tags still counts once, even if you pick all three.
+- **Totals:** the numbers above the list (and on the [Metrics](metrics.md) tab) always come from the trades shown, each counted once. A trade with three tags still counts once, even if you pick all three.
 
 **Dates:** the date button opens a list of choices and a calendar.
 
@@ -130,7 +140,7 @@ Use the filters above the list to narrow it down by tag, account and dates. They
 - **All Time:** every trade. **P/L Calendar** and **Trading metrics** open on this.
 - **Custom Range:** click a first and a last day in the calendar (or type them in the two boxes) and press **Apply**. **Cancel** closes it without changing anything.
 
-A date choice you make yourself stays as you move between Trades, P/L and Trading metrics, and a dashboard keeps the one it was saved with.
+A date choice you make yourself stays as you move between **P/L Calendar** and **Trading metrics** on the [Metrics](metrics.md) tab, and a dashboard keeps the one it was saved with.
 
 - **Search:** type words that appear in a trade's name, symbol, tags or notes (`hood`, `earnings`). Type `#` and a broker order number (`#123456`) to find that exact order's trade.
 
@@ -159,39 +169,6 @@ After the market closes and before it opens, brokers often pull the bid on index
 - **At the weekend or on a holiday** it shows the last trading day's change, labelled with that day ("Fri 10/9").
 
 To change a dashboard, adjust the filters: a blue **Save to "…"** button appears as soon as they differ from what the dashboard saved, so you can't miss it; click it to keep them. To remove the dashboard, click the small **Delete dashboard** at the right of the filters. Deleting a dashboard never touches your trades.
-
-## The P/L view: calendar and charts
-Click **P/L Calendar** under the filters. Like **Trading metrics**, it uses the same filters and dashboards as the trade list.
-
-### The P/L calendar
-The **P/L calendar** shows the month one day at a time, Monday to Friday, with a total for each week. Use **‹** and **›** to move between months. It follows the filters, so on a dashboard it shows only that dashboard's trades.
-
-- **Each day** shows the P/L you made that day and how many trades closed. Green days made money and red days lost it; the stronger the color, the closer the day was to the month's best (or worst) day. Hover over a day for the details.
-- **P/L lands on the day it happened.** If you closed part of a trade on Monday and the rest on Wednesday, each day gets its share. The trade itself counts as one closed trade, on Wednesday; on Monday it shows as "1 partial".
-- **Days are New York days,** the market's own calendar.
-- **Weekend amounts:** brokers sometimes book an expiration on the Saturday after. Those amounts are included in the week's total and noted under it.
-- **Above the grid:** the month's P/L, trades closed, winning days, the average day, and the best and worst day.
-
-### P/L over time
-Under the calendar, two charts show how your P/L has built up. Like everything else on the page, they follow the filters.
-
-- **Cumulative P/L** adds up your realized P/L day by day. The label at the end is where you stand now.
-- **Drawdown** shows how far you were below your best point so far. Zero means you were at a new high. The deepest point is labelled, and it's also shown at the top of the card.
-
-Move the pointer over either chart (or click it and use the arrow keys) to see the numbers for any day: the running total, that day's P/L, and the drawdown. **Show as a table** lists the same numbers month by month.
-
-## Trading metrics
-Click **Trading metrics** under the filters (next to **Trades** and **P/L Calendar**) to see the numbers behind your trading. It uses the same filters and dashboards as the trade list, and **Trades** takes you back.
-
-- **At the top:**
-  - **Realized P/L**, split between trades you've closed and partial closes of trades still open.
-  - **Win rate:** closed trades that made money, out of all closed trades. A trade that broke even counts as one that didn't win.
-  - **Expectancy:** what a closed trade made on average.
-  - **Profit factor:** money won divided by money lost. Above 1 means you won more than you lost.
-  - **Max drawdown:** your deepest fall from a high point.
-- **Closed trades:** average win and loss, how big wins are next to losses, the largest win and loss, and fees (already counted in your P/L).
-- **P/L by day, week or month:** a bar for each one, with a table comparing all three: how many were winners, the average, and the best and worst. Weeks start on Monday.
-- **Day of the week:** how each weekday has gone, and the trades that closed on it.
 
 ## The gear: manage a trade without leaving the journal
 Every trade in the journal has a small gear (⚙) at the end of its row. In the Compact view it shows when you point at the row or open it. Click it and a panel slides in from the right, over the journal. Close it with **✕**, the **Esc** key, or a click on the dimmed journal beside it. On a phone the panel fills the screen.
@@ -243,7 +220,7 @@ On a hand-entered trade's page, you can:
 Trades from your synced accounts can't be added or deleted by hand: your broker's records are the source of truth.
 
 ## Paper trades
-A bot set to **Paper** makes pretend trades. They never appear in the Journal and never change its numbers. They have a view of their own inside the Journal: **Paper trades**, next to Trades, P/L and Trading metrics.
+A bot set to **Paper** makes pretend trades. They never appear in the Journal and never change its numbers. They have a view of their own inside the Journal: **Paper trades**, next to Trades.
 
 - Each row is one pretend trade: when it opened and closed, what it took in, what closing cost, what closed it (a stop, target, timed close, expiry...) and its P/L.
 - If the bot splits its iron condors (as MEIC bots do), each pretend iron condor shows as two rows, its **Put side** and its **Call side**, the same way the Journal splits real ones. Each side has its own stop, its own close and its own P/L.

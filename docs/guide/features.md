@@ -48,12 +48,13 @@ Everything OptionsJourney does, in one list. Each part links to its page in the 
 - **Paper trades** have a view of their own and never mix with your real numbers.
 
 ## Metrics
-See what's working and what isn't. Every number follows the Journal's filters, so you can look at everything or at one tag, account, bot or saved dashboard. See [The P/L view](journal.md#the-pl-view-calendar-and-charts) and [Trading metrics](journal.md#trading-metrics).
+See what's working and what isn't, on the **Metrics** tab. Every number follows the Journal's filters, so you can look at everything or at one tag, account, bot or saved dashboard. See [Metrics](metrics.md).
 - **The headline numbers:** realized P/L, win rate, expectancy (what a trade makes on average), profit factor (money won for each dollar lost) and max drawdown.
 - **Wins next to losses:** the average win and loss, how big wins are next to losses, the largest of each, and what you paid in fees.
-- **P/L calendar:** each day in green or red, with how many trades closed, a total for each week, and the month's best and worst day.
+- **P/L calendar:** each day in green or red, with how many trades closed, the day's big economic events, a total for each week, and the month's best and worst day.
+- **A day, week or month's trades:** click one for its trades, grouped by your dashboards, with a column for each account that traded.
 - **Cumulative P/L and drawdown:** two charts of your running P/L and how far below your best point you were, day by day.
-- **By day, week or month:** a bar for each, with the winners, the average, and the best and worst.
+- **By day, week or month:** a bar for each with a cumulative P/L line over them, plus the winners, the average, and the best and worst.
 - **Day of the week:** how each weekday has gone.
 - **Each bot's record:** its P/L and win rate, per lot the average trade, winner and loser, and every trade it made, with how many days it was held and its P/L as a % of the premium.
 
@@ -64,7 +65,7 @@ See what's working and what isn't. Every number follows the Journal's filters, s
 
 ## Alerts
 - **The bell** shows what needs your attention, with a button to go and fix it. See [Alerts](alerts.md).
-- **Your own alerts** on a price, a spread or a trade's P/L.
+- **Your own alerts** on a price, a spread, a trade's P/L, or several trades' P/L together (the bell on a journal trade).
 - **On your phone** through Discord or Telegram. See [Get alerts on your phone](how-to-phone-alerts.md).
 
 ## Yours

@@ -12,7 +12,7 @@ York dates rather than UTC:
   booked on a weekend (a broker posting late) counts in its week and month.
 - Days are shaded by how they compare with the month's best and worst day."""
 
-from calendar import Calendar
+from calendar import Calendar, monthrange
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import date
@@ -62,6 +62,27 @@ def daily_pl(positions: Iterable[Position]) -> dict[date, DayPL]:
 
 
 @dataclass(frozen=True)
+class TradePL:
+    position: Position
+    realized: Decimal  # booked from start to end
+    closed: bool  # fully closed in the period (daily_pl's trade count)
+
+
+def realized_between(positions: Iterable[Position], start: date, end: date) -> list[TradePL]:
+    """Each trade's P/L booked from start to end (New York dates, both included), on
+    the same days daily_pl books it, so the trades add up to the calendar's cells."""
+    found = []
+    for position in positions:
+        closes = [e for e in position.events if e.kind is not EventKind.OPEN]
+        inside = [e for e in closes if start <= market_date(e.at) <= end]
+        if not inside:
+            continue
+        closed = position.status is Status.CLOSED and start <= market_date(closes[-1].at) <= end
+        found.append(TradePL(position, sum((e.realized for e in inside), ZERO), closed))
+    return found
+
+
+@dataclass(frozen=True)
 class Cell:
     day: date
     in_month: bool
@@ -75,6 +96,8 @@ class Week:
     weekend: Decimal = ZERO  # P/L booked on the Saturday or Sunday after
     total: Decimal = ZERO
     trades: int = 0
+    start: date | None = None  # the week's first and last day in the month (its drawer)
+    end: date | None = None
 
 
 @dataclass
@@ -87,6 +110,10 @@ class MonthGrid:
     @property
     def first(self) -> date:
         return date(self.year, self.month, 1)
+
+    @property
+    def last(self) -> date:
+        return date(self.year, self.month, monthrange(self.year, self.month)[1])
 
     @property
     def total(self) -> Decimal:
@@ -135,7 +162,8 @@ def month_grid(year: int, month: int, days: dict[date, DayPL]) -> MonthGrid:
             day.month == month and day in days for day in week
         ):
             continue  # only a weekend of the month, with nothing booked on it
-        row = Week(days=[])
+        inside = [day for day in week if day.month == month]
+        row = Week(days=[], start=inside[0], end=inside[-1])
         for day in week:
             in_month = day.month == month
             pl = days.get(day) if in_month else None

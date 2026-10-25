@@ -4,6 +4,27 @@ Notable changes to OptionsJourney. The format follows [Keep a Changelog](https:/
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-25
+
+A Metrics tab with a P/L calendar you can click into, alerts and closing on several journal trades at once, and the app on your phone.
+
+### Added
+- **Metrics:** the **P/L Calendar** and **Trading metrics** have their own tab, next to **Journal** at the top. They still use the Journal's filters and dashboards, and old links take you there. See the guide's Metrics page.
+- Click a day, a week's total or the month on the P/L calendar to open a panel with its P/L by dashboard and by account. Trades with the same name in one account share a line (a bot's many entries in a day, say); click it to see each trade.
+- The P/L calendar shows each day's economic events: a big release (CPI, a Fed decision, jobs numbers) in red with its time, and a count of the smaller ones.
+- **Trading metrics** has an amber **cumulative P/L** line over the bars, with its own scale on the right.
+- **Alerts on trades:** the **bell** on an open trade in the Journal sets an alert on it. Tick several trades on one underlying and click **Alert** to watch their combined P/L. The alert panel shows the underlying's price.
+- **Close** in the Journal's bottom bar closes the trades you ticked, each by its own exit chase: a bot's trade by its bot's, a trade you gave rules to by its rules.
+
+### Changed
+- Downloads and app updates now come from a file attached to each release, **OptionsJourney.zip**. Nothing changes for you.
+- On a phone, the top bar's links are behind a menu button, Trading metrics' tables fit without sideways scrolling, and the P/L calendar's amounts fit their days.
+- Every box and dropdown is dark by default.
+- A broker you haven't connected is never asked for anything, anywhere in the app.
+
+### Fixed
+- The tips on the Journal bottom bar's buttons show again.
+
 ## [0.5.0] - 2026-10-24
 
 Save trades as ideas and see how they would have done, every order waiting at your brokers in one place, a Stocks page, and a better bell.

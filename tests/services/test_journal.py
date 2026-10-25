@@ -591,6 +591,7 @@ def test_open_trades_come_first_then_closed_by_day_with_headers(session_factory)
 
 def test_closed_trades_are_by_closing_day_then_opening_time():
     from datetime import UTC, datetime
+    from decimal import Decimal
     from types import SimpleNamespace
 
     from optionsjourney.core.positions import Status
@@ -647,6 +648,7 @@ def test_a_deleted_bots_tag_stays_on_its_trades_as_their_own(bot_condor):
 
 def _side(name, account, second, *, minute=47, bot="MEIC", closed=None):
     """#214: one side of an entry, opened at 13:<minute>:<second> UTC."""
+    from decimal import Decimal
     from types import SimpleNamespace
 
     from optionsjourney.core.positions import Status
@@ -697,3 +699,28 @@ def test_different_bots_in_the_same_minute_are_different_entries():
                _side("a2", "JJ", 3, bot="A")]  # fmt: skip
     names = [e.name for e in journal.sort_entries(entries, "opened", True)]
     assert _adjacent(names, "a1", "a2")
+
+
+def test_a_period_groups_one_names_trades_in_an_account_into_one_row():
+    # #301: a bot's many entries (MEIC - Beta) in a period are one line per account
+    from decimal import Decimal
+    from types import SimpleNamespace
+
+    from optionsjourney.services.journal import PeriodGroup, PeriodTrade
+
+    def trade(name, account, pl, closed=True):
+        position = SimpleNamespace(broker="tastytrade", account_number=account)
+        return PeriodTrade(SimpleNamespace(name=name, position=position), Decimal(pl), closed)
+
+    group = PeriodGroup("0DTE", [
+        trade("MEIC - Beta", "6562", "-181.60"),
+        trade("MEIC - IRA", "1999", "-162.60"),
+        trade("MEIC - Beta", "6562", "-203.60"),
+        trade("MEIC - Beta", "6562", "50", closed=False),
+    ], {}, Decimal("0"))  # fmt: skip
+    rows = group.rows
+    assert [(r.name, r.account[1], len(r.trades), r.closed) for r in rows] == [
+        ("MEIC - Beta", "6562", 3, 2),
+        ("MEIC - IRA", "1999", 1, 1),
+    ]
+    assert rows[0].realized == Decimal("-335.20")

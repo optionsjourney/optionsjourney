@@ -14,3 +14,10 @@ test("the panel is told which journal view to come back to", () => {
     '/journal/trades/k/panel?back=' + encodeURIComponent('/journal?status=open'),
   );
 });
+
+test("the alert panel's trades stay in its query (#300)", () => {
+  assert.equal(
+    panelUrl('/journal/alert-panel?trade=a&trade=b', '/journal', ''),
+    '/journal/alert-panel?trade=a&trade=b&back=' + encodeURIComponent('/journal'),
+  );
+});

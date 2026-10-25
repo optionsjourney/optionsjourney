@@ -1,0 +1,70 @@
+{# The drawer's body for one day, week or month (#301; Tracker2's calendar drawer, with the
+   user's dashboards for its categories). `period` is journal.PeriodView. #}
+{% from "_macros.html" import pl %}
+{% macro account_name(key) %}{% set a = accounts.get(key) %}{{ a.display_name ~ ' ' ~ a.masked_number if a else '••' ~ key[1][-4:] }}{% endmacro %}
+{% set p = period %}
+{% set partials = p.total.trades | rejectattr('closed') | list | length %}
+<div class="calendar__summary">
+    <div><div class="stat__label">P/L</div>{{ pl(p.total.total) }}</div>
+    <div><div class="stat__label">Trades closed</div>{{ p.total.trades | length - partials }}{% if partials %} <span class="muted small">+ {{ partials }} partial</span>{% endif %}</div>
+    <div><div class="stat__label">Won / lost</div>{{ p.wins }} / {{ p.losses }}</div>
+</div>
+
+{% if events %}
+<div class="pl-drawer__econ">
+    <div class="muted small">Economic events</div>
+    <div class="chips">
+        {% for i in events | sort(attribute='impact') %}
+        <span class="econ-chip econ-chip--{{ i.impact }}" title="{% for x in i.prints %}{{ x.title }}{% if x.forecast %} · fcst {{ x.forecast }}{% endif %}{% if x.previous %} · prev {{ x.previous }}{% endif %}{{ '\n' if not loop.last }}{% endfor %}">{{ i.time ~ ' ' if i.time }}{{ i.label }}</span>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if not p.total.trades %}
+<p class="muted">No trades made or lost money in this period.</p>
+{% else %}
+<div class="table-scroll"><table class="table pl-drawer__table">
+    <thead><tr><th></th>{% for key in p.accounts %}<th class="num">{{ account_name(key) }}<div class="muted small pl-drawer__broker">{{ broker_names.get(key[0], key[0]) }}</div></th>{% endfor %}<th class="num">Total</th></tr></thead>
+    <tbody>
+        {% for g in p.groups %}
+        <tr><td>{{ g.name }} <span class="muted small">({{ g.trades | length }})</span></td>
+            {% for key in p.accounts %}<td class="num">{{ pl(g.by_account[key]) if key in g.by_account else '—' }}</td>{% endfor %}
+            <td class="num">{{ pl(g.total) }}</td></tr>
+        {% endfor %}
+        {% if p.groups | length > 1 %}
+        <tr class="table__total"><td>Total</td>
+            {% for key in p.accounts %}<td class="num">{{ pl(p.total.by_account[key]) }}</td>{% endfor %}
+            <td class="num">{{ pl(p.total.total) }}</td></tr>
+        {% endif %}
+    </tbody>
+</table></div>
+{% if p.overlap %}<p class="muted small">Some trades are in more than one dashboard, so the rows add up to more than the total. The total counts each trade once.</p>{% endif %}
+
+{% for g in p.groups %}
+<h4 class="pl-drawer__group">{{ g.name }} <span class="muted small">{{ g.trades | length }} trade{{ 's' if g.trades | length != 1 }}</span></h4>
+{# One line per trade name and account (a bot's entries together); open it for each trade #}
+<div class="pl-drawer__rows">
+    <div class="pl-drawer__line pl-drawer__line--head"><span>Trade</span><span>Account</span><span></span><span class="num">P/L</span></div>
+    {% for r in g.rows %}
+    {% set partial = r.trades | length - r.closed %}
+    <details class="pl-drawer__row">
+        <summary class="pl-drawer__line">
+            <span>{{ r.name }}</span>
+            <span class="nowrap">{{ account_name(r.account) }}</span>
+            <span class="muted small">{% if r.closed %}{{ r.closed }} closed{% endif %}{% if r.closed and partial %} · {% endif %}{% if partial %}{{ partial }} partial{% endif %}</span>
+            <span class="num">{{ pl(r.realized) }}</span>
+        </summary>
+        {% for t in r.trades %}
+        <div class="pl-drawer__line pl-drawer__line--trade">
+            <a class="link" href="{{ url_for('journal.trade_page', key=t.entry.position.key) }}">Opened {{ t.entry.position.opened_at | market_time }}</a>
+            <span></span>
+            <span class="muted small">{{ 'Closed' if t.closed else 'Partial close' }}</span>
+            <span class="num">{{ pl(t.realized) }}</span>
+        </div>
+        {% endfor %}
+    </details>
+    {% endfor %}
+</div>
+{% endfor %}
+{% endif %}

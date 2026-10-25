@@ -5,7 +5,7 @@
 A trade can have as many tags as you like, such as "MEIC", "Wheel" or "earnings". You choose which ones matter by filtering on them (see [Filters and dashboards](journal.md#filters-and-dashboards)). This page is about your trades' tags. Bots have labels of their own, for finding them on the Automation page (see [Tags on bots](automation.md#tags)).
 
 ## The Tags page
-Click **Tags** above the trade list in the Journal (it's there on P/L and Trading metrics too). It lists every tag, A to Z, with how many trades you've given it. **← Back to the journal** takes you back.
+Click **Tags** above the trade list in the Journal (it's there on the Metrics tab too). It lists every tag, A to Z, with how many trades you've given it. **← Back to the journal** takes you back.
 
 - **Add a tag:** type its name in the box at the bottom and click **Add tag**. A name can be up to 60 characters and can't have a comma in it. A name that's already taken, in any capitals, is refused.
 - **Rename** one: change the name in its box and click **Rename**. Every trade with it shows the new name.

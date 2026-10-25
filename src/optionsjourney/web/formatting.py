@@ -41,11 +41,15 @@ def signed_money(value: Decimal | None) -> str:
 
 
 def short_money(value: Decimal | None) -> str:
-    """Signed, abbreviated for small spaces: "+$150", "-$1.2k"."""
-    if value is None or abs(value) < 1000:
+    """Abbreviated for a phone's calendar cell (#303): "$150", "-$1.2k", "$12k". Only a
+    loss gets a sign, and $10k and up drop the decimal: the cell has no more room."""
+    if value is None:
         return signed_money(value)
-    sign = "-" if value < 0 else "+"
-    return f"{sign}${abs(value) / 1000:,.1f}k"
+    sign = "-" if value < 0 else ""
+    size = abs(value)
+    if size >= Decimal("9950"):
+        return f"{sign}${size / 1000:,.0f}k"
+    return f"{sign}${size / 1000:,.1f}k" if size >= Decimal("999.5") else f"{sign}${size:,.0f}"
 
 
 def number(value: Decimal | None) -> str:

@@ -19,7 +19,7 @@ SQLite, through plain SQLAlchemy 2 ([0012](../decisions/0012-broker-apis-over-pl
 | `settings` | Values saved on the Settings page, by key. What can be set, and the defaults, are in `core/settings.py` |
 | `account_values` | Each account's value at the end of each day, from TastyTrade's history (`source` "history") or a Schwab balance read that day ("daily"). Amounts use the `Money` column type: exact decimals stored as text ([0023](../decisions/0023-manual-entry-backups-account-values.md)) |
 | `latest_balances` | Each account's balance as last read (net liquidating value, cash, buying power, name, `read_at`), so the Accounts page can show it before the brokers answer. Overwritten by each read; accounts a broker no longer lists are removed ([0029](../decisions/0029-accounts-page-shows-stored-balances-first.md)) |
-| `user_alerts` | Alerts the user set (price, trade P/L, or a spread's price with its `legs`): what to watch, above or below what level, and when it went off |
+| `user_alerts` | Alerts the user set (price, trade P/L, or a spread's price with its `legs`; a combined trade alert keeps its trades' keys in `legs`): what to watch, above or below what level, and when it went off |
 | `chart_layouts` | Chart grid layouts: a name, Tracker2's layout `payload` (shape and panes) and which one is active ([developer/charts.md](charts.md)) |
 | `chart_tabs` | The grid's open tabs: a layout and each pane's symbol. Deleted with their layout |
 | `chart_drawings` | Lines drawn on charts, by symbol and timeframe |

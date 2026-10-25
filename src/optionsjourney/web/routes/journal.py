@@ -17,9 +17,11 @@ from optionsjourney.core import date_ranges
 from optionsjourney.core.holdings import stock_summary
 from optionsjourney.core.market import MARKET_TZ, market_date
 from optionsjourney.core.positions import Status
+from optionsjourney.core.stats import net_entry
 from optionsjourney.core.stock_history import RANGES, range_start, stock_transactions, trade_marks
-from optionsjourney.core.symbols import parse_occ
+from optionsjourney.core.symbols import normalize_underlying, parse_occ
 from optionsjourney.core.trade_rows import row_details
+from optionsjourney.db.models import BotRun
 from optionsjourney.services import (
     bot_adopt,
     bot_integrity,
@@ -38,10 +40,12 @@ from optionsjourney.services import (
     setup,
     stock_value,
     transactions,
+    user_alerts,
 )
 from optionsjourney.services.journal import Filters, JournalError
 from optionsjourney.web import services
 from optionsjourney.web.pagination import paginate
+from optionsjourney.web.routes import automation as automation_routes
 from optionsjourney.web.routes import risk_graph
 from optionsjourney.web.routes.automation import run_context
 from optionsjourney.web.security import local_path
@@ -76,7 +80,7 @@ def _estimate(view) -> None:
     journal.estimate_expired(view, _closes)
 
 
-def _dashboard(endpoint: str):
+def dashboard_for(endpoint: str):
     """The dashboard the page is showing, or a redirect: to its saved
     filters when a tab was just opened, or away from one that's gone."""
     dashboard_id = request.args.get("dashboard", type=int)
@@ -94,7 +98,7 @@ def _dashboard(endpoint: str):
 
 @bp.route("/journal")
 def journal_page():
-    dashboard, response = _dashboard("journal.journal_page")
+    dashboard, response = dashboard_for("journal.journal_page")
     if response:
         return response
 
@@ -139,6 +143,7 @@ def journal_page():
         grouped=grouped,
         bot_chips=_bot_chips(page.items),
         needs_a_look=_needs_a_look(page.items),
+        alert_states=user_alerts.states_by_trade(services().session_factory),
         stocks=stocks,
         stock_summary=summary,
         stocks_view=stocks_view,
@@ -435,72 +440,13 @@ def open_pl():
 
 @bp.route("/journal/pl")
 def pl_page():
-    """The P/L calendar and P/L over time, for the trades the filters pick."""
-    dashboard, response = _dashboard("journal.pl_page")
-    if response:
-        return response
-
-    filters = Filters.from_args(request.args)
-    view = journal.load_journal(
-        services().session_factory, filters, cache=services().positions_cache
-    )
-    month = journal.parse_month(request.args.get("month"))
-    days = journal.pl_by_day(view)
-    return render_template(
-        "pl.html",
-        page_endpoint="journal.pl_page",
-        view=view,
-        calendar=journal.load_calendar(days, month),
-        history=journal.load_history(days),
-        month_url=lambda months: _month_url(month, months),
-        filters=filters,
-        dashboard=dashboard,
-        periods=journal.PERIODS,
-        date_ranges=date_ranges.RANGES,
-        broker_names=BROKER_NAMES,
-        today=market_date(_now()),
-        statuses=journal.STATUSES,
-        uncategorized=journal.UNCATEGORIZED,
-    )
+    """Moved to the Metrics tab (#301): old links and bookmarks still land."""
+    return redirect(url_for("metrics.pl_page", **request.args.to_dict(flat=False)))
 
 
 @bp.route("/journal/metrics")
 def metrics_page():
-    dashboard, response = _dashboard("journal.metrics_page")
-    if response:
-        return response
-
-    filters = Filters.from_args(request.args)
-    view = journal.load_journal(
-        services().session_factory, filters, cache=services().positions_cache
-    )
-    period = request.args.get("period", "week")
-    if period not in journal.METRIC_PERIODS:
-        period = "week"
-    return render_template(
-        "metrics.html",
-        page_endpoint="journal.metrics_page",
-        view=view,
-        metrics=journal.load_metrics(view, period),
-        period=period,
-        filters=filters,
-        dashboard=dashboard,
-        periods=journal.PERIODS,
-        date_ranges=date_ranges.RANGES,
-        broker_names=BROKER_NAMES,
-        today=market_date(_now()),
-        statuses=journal.STATUSES,
-        uncategorized=journal.UNCATEGORIZED,
-    )
-
-
-def _month_url(month, months: int) -> str:
-    """This page with the calendar moved `months` forward (or back), keeping
-    the filters."""
-    index = month.year * 12 + month.month - 1 + months
-    args = request.args.to_dict(flat=False)
-    args["month"] = f"{index // 12:04d}-{index % 12 + 1:02d}"
-    return url_for("journal.pl_page", **args)
+    return redirect(url_for("metrics.metrics_page", **request.args.to_dict(flat=False)))
 
 
 # --- Dashboards ----------------------------------------------------------------
@@ -619,24 +565,63 @@ def save_trade(key):
     return redirect(_back())
 
 
-@bp.post("/journal/trades/edit-many")
-def edit_many():
-    """The select bar's Save: tags added to or removed from every ticked trade."""
+def _half_groups(run_id: int, key: str) -> set[int] | None:
+    """One side of a split iron condor's groups (the put or the call ones), as _one_side."""
+    put_call = {"put": "PUT", "call": "CALL"}.get(key.rsplit("#", 1)[-1])
+    with services().session_factory() as session:
+        run = session.get(BotRun, run_id)
+        legs = list(run.legs or []) if run is not None else []
+    return {
+        leg["group"] for leg in legs
+        if (found := parse_occ(leg.get("symbol", ""))) and found[1].put_call == put_call
+    } or None  # fmt: skip
+
+
+@bp.post("/journal/trades/close-selected")
+def close_selected():
+    """The select bar's Close (#300, Tracker2's Close selected): each ticked trade that a
+    bot or its own rules manage, closed in full by its exit chase; the rest are skipped."""
     form = request.form
-    keys = form.getlist("trade")
-    add, remove = form.get("add_tags", ""), form.get("remove_tags", "")
-    if not keys:
-        flash("Tick at least one trade.", "warning")
-    elif not add.strip() and not remove.strip():
-        flash("Nothing changed: type a tag to add or remove.", "warning")
-    else:
-        try:
-            n = journal.edit_many(
-                services().session_factory, keys, add_tags=add, remove_tags=remove
-            )
-            flash(f"Updated {n} trade{'' if n == 1 else 's'}.", "success")
-        except JournalError as e:
-            flash(str(e), "warning")
+    keys = list(dict.fromkeys(form.getlist("trade")))
+    kind = "limit"  # each trade by its own exit chase, which goes to market when its rules say (#300)
+    view = journal.load_journal(services().session_factory, cache=services().positions_cache)
+    runs, only, skipped = [], {}, []
+    for key in keys:
+        entry = journal.find_entry(view, key)
+        if entry is None or entry.position.status is Status.CLOSED:
+            continue
+        if not _run_bot(entry):
+            skipped.append(entry.name)
+            continue
+        run_id = entry.bot.run_id
+        half = _half_groups(run_id, key) if entry.position.split_from else None
+        if run_id in runs:  # both sides ticked: the whole trade
+            only[run_id] = None if only.get(run_id) is None or half is None else only[run_id] | half
+        else:
+            runs.append(run_id)
+            only[run_id] = half
+    skip = (f" Not closed, as no bot or rules of their own manage them: {', '.join(skipped)}."
+            if skipped else "")  # fmt: skip
+    if not runs:
+        flash(f"None of the ticked trades can be closed here.{skip}", "warning")
+        return redirect(_back())
+    if form.get("confirm") != "1":
+        n = len(runs)
+        return automation_routes._confirm(
+            f"Close {n} trade{'s' if n != 1 else ''}?",
+            f"Close {n} trade{'s' if n != 1 else ''} in full, each on its own, "
+            f"{automation_routes._kind_words(kind)} by its own exit chase.{skip}",
+            url_for("journal.close_selected"),
+            [("back", _back()), *(("trade", k) for k in keys)],
+            _back(),
+        )  # fmt: skip
+    deps = bot_loops.deps_for(services())
+    results = bot_manage.close_selected(deps, runs, kind, only, zero_dte_only=False)
+    for run_id, outcome in results:
+        flash(f"{f'Run {run_id}: ' if run_id else ''}{outcome.message}",
+              "success" if outcome.ok else "warning")  # fmt: skip
+    if skipped:
+        flash(skip.strip(), "warning")
     return redirect(_back())
 
 
@@ -868,6 +853,78 @@ def panel(key):
         "next_url": _panel_next(_back(), p.key),
     }  # fmt: skip
     return render_template("_manage_panel.html", **context)
+
+
+# --- Alerts on trades (#300, Tracker2's journal Alert modal) ------------------------------
+
+MIN_PCT_ENTRY = 50  # Tracker2: % of entry is refused under $50 of net entry
+
+
+def _alert_problem(entries) -> str | None:
+    """Why these trades can't share one alert (Tracker2's alertState), or None."""
+    if not entries:
+        return "Tick trades to alert on."
+    if len(entries) > user_alerts.MAX_TRADES:
+        return f"An alert covers at most {user_alerts.MAX_TRADES} trades."
+    if any(e.position.status is Status.CLOSED for e in entries):
+        return "Only open trades can have an alert."
+    tickers = sorted({normalize_underlying(e.position.underlying) for e in entries})
+    if len(tickers) > 1:
+        return f"The trades are on {', '.join(tickers)}: an alert covers one underlying."
+    return None
+
+
+def _strikes(entries) -> list[dict]:
+    """Strike shortcuts for a price alert: one per short or long strike held, below for
+    puts and above for calls (Tracker2's strikeShortcuts)."""
+    seen = {}
+    for e in entries:
+        for leg in e.position.live_legs:
+            if leg.option is None or leg.remaining <= 0:
+                continue
+            put = leg.option.put_call == "PUT"
+            side = "short" if leg.sign < 0 else "long"
+            label = f"{side} {'put' if put else 'call'} {leg.option.strike.normalize():,f}"
+            seen[label] = {"label": label, "price": leg.option.strike,
+                           "direction": "below" if put else "above"}  # fmt: skip
+    return sorted(seen.values(), key=lambda s: s["price"])
+
+
+def _alert_entries(keys):
+    view = journal.load_journal(services().session_factory, cache=services().positions_cache)
+    return view, [e for key in keys if (e := journal.find_entry(view, key)) is not None]
+
+
+@bp.get("/journal/alert-panel")
+def alert_panel():
+    """The bell's slide-in panel: an alert on a trade's open P/L, on the ticked trades'
+    combined P/L, or on their underlying's price. Its form posts to alerts.create."""
+    keys = list(dict.fromkeys(request.args.getlist("trade")))
+    s = services()
+    view, entries = _alert_entries(keys)
+    problem = _alert_problem(entries) or (None if len(entries) == len(keys) else
+                                          "A ticked trade is no longer in the journal.")  # fmt: skip
+    context = {"entries": entries, "keys": keys, "problem": problem, "back": _back()}
+    if problem is None:
+        ticker = normalize_underlying(entries[0].position.underlying)
+        if len(entries) > 1:
+            now = journal.combined_pl(view, s.quote_hub, keys)
+        else:
+            now = journal.live_open_pl(journal.JournalView(entries=entries), s.quote_hub)[
+                "positions"
+            ].get(keys[0])
+        s.quote_hub.subscribe({ticker})  # the underlying isn't watched unless a chart or alert asks
+        quote = s.quote_hub.latest(ticker)
+        entry_cost = net_entry([e.position for e in entries])
+        context |= {
+            "ticker": ticker, "now": now, "net_entry": entry_cost,
+            "pct_allowed": entry_cost >= MIN_PCT_ENTRY,
+            "spot": quote.mark if quote is not None else None,
+            "strikes": _strikes(entries),
+            "existing": user_alerts.for_trades(s.session_factory, keys),
+            "name": entries[0].name if len(entries) == 1 else f"{ticker} × {len(entries)} trades",
+        }  # fmt: skip
+    return render_template("_alert_panel.html", **context)
 
 
 def _one_side(run: dict, half: str) -> dict:

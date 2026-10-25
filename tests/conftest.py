@@ -15,6 +15,15 @@ def _reset_guard():
 
 
 @pytest.fixture(autouse=True)
+def _forget_kept_positions(monkeypatch):
+    """The Stocks positions are kept a minute, process-wide (services/holdings)."""
+    from optionsjourney.services import holdings
+    from optionsjourney.services.chain import Cache
+
+    monkeypatch.setattr(holdings, "_cache", Cache())
+
+
+@pytest.fixture(autouse=True)
 def _forget_learned_ticks():
     """Stocks' learned increments (trading/ticks.learn) are process-wide too."""
     from optionsjourney.trading import ticks

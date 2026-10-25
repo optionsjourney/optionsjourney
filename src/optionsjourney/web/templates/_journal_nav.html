@@ -11,7 +11,9 @@
 
 <nav class="tabs" aria-label="Dashboards">
     <a class="tabs__tab {{ 'tabs__tab--active' if not dashboard and filters.kind != 'stocks' }}" href="{{ url_for(page_endpoint) }}">All trades</a>
+    {% if not page_endpoint.startswith('metrics.') %}
     <a class="tabs__tab {{ 'tabs__tab--active' if not dashboard and filters.kind == 'stocks' }}" href="{{ url_for('journal.journal_page', kind='stocks') }}">Stocks</a>
+    {% endif %}
     {% for d in view.dashboards %}
     <a class="tabs__tab {{ 'tabs__tab--active' if dashboard and dashboard.id == d.id }}"
        href="{{ url_for(page_endpoint, dashboard=d.id) }}">{{ d.name }}</a>
@@ -114,9 +116,13 @@
 {% set view_args = dict(filters.to_args(), **({'dashboard': dashboard.id} if dashboard else {})) %}
 {% if not holdings_only %}
 <nav class="view-switch" aria-label="View">
+    {# #301: the P/L calendar and metrics are the Metrics tab; Trades and Paper trades the Journal #}
+    {% if page_endpoint.startswith('metrics.') %}
+    <a class="view-switch__link {{ 'view-switch__link--active' if page_endpoint == 'metrics.pl_page' }}" href="{{ url_for('metrics.pl_page', **view_args) }}">P/L Calendar</a>
+    <a class="view-switch__link {{ 'view-switch__link--active' if page_endpoint == 'metrics.metrics_page' }}" href="{{ url_for('metrics.metrics_page', **view_args) }}">Trading metrics</a>
+    {% else %}
     <a class="view-switch__link {{ 'view-switch__link--active' if page_endpoint == 'journal.journal_page' }}" href="{{ url_for('journal.journal_page', **view_args) }}">Trades</a>
-    <a class="view-switch__link {{ 'view-switch__link--active' if page_endpoint == 'journal.pl_page' }}" href="{{ url_for('journal.pl_page', **view_args) }}">P/L Calendar</a>
-    <a class="view-switch__link {{ 'view-switch__link--active' if page_endpoint == 'journal.metrics_page' }}" href="{{ url_for('journal.metrics_page', **view_args) }}">Trading metrics</a>
     <a class="view-switch__link" href="{{ url_for('journal.paper_page') }}">Paper trades</a>
+    {% endif %}
 </nav>
 {% endif %}

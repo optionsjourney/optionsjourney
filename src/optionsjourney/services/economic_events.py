@@ -465,6 +465,19 @@ def day_notes(session_factory, day: date) -> dict:
     }
 
 
+def events_between(session_factory, start: date, end: date) -> dict[date, list[dict]]:
+    """Each day's events from start to end, as day_items, for the P/L calendar's
+    markers (#301; Tracker2's EconEvents.fetchMonth). Days without any are left out."""
+    with session_factory() as session:
+        rows = list(session.scalars(
+            select(EconomicEvent).where(EconomicEvent.event_date.between(start, end))
+        ))  # fmt: skip
+    by_day: dict[date, list] = {}
+    for row in rows:
+        by_day.setdefault(row.event_date, []).append(row)
+    return {day: ec.day_items(day_rows) for day, day_rows in sorted(by_day.items())}
+
+
 def _has_row(session, source: str, key: str, day: date) -> bool:
     found = select(EconomicEvent.id).where(
         EconomicEvent.source == source, EconomicEvent.key == key, EconomicEvent.event_date == day

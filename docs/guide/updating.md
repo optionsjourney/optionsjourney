@@ -22,12 +22,12 @@ What the warnings mean:
 
 If it goes wrong, the installer puts the old version back. The window stays open so you can read what happened. The installer's notes are in the file `update.log`, in the logs folder that **Open logs** in the OJ menu shows.
 
-If the app doesn't start at all after an update was stopped half way (for example, the computer turned off), run the installer again by hand, as below. Use the zip you downloaded before (its **scripts** folder), or download it again from the [Releases page](https://github.com/optionsjourney/optionsjourney/releases/latest).
+If the app doesn't start at all after an update was stopped half way (for example, the computer turned off), run the installer again by hand, as below. Use the zip you downloaded before (its **scripts** folder), or download **[OptionsJourney.zip](https://github.com/optionsjourney/optionsjourney/releases/latest/download/OptionsJourney.zip)** again.
 
 To stop the daily check, turn off **Check for new versions** in [Settings](settings.md) → This computer.
 
 ## By hand
-1. Download the new version from the [Releases page](https://github.com/optionsjourney/optionsjourney/releases/latest) and unzip it, just like [installing](installing.md).
+1. Download **[OptionsJourney.zip](https://github.com/optionsjourney/optionsjourney/releases/latest/download/OptionsJourney.zip)** (always the latest version) and unzip it, just like [installing](installing.md).
 2. Open its **scripts** folder and double-click the installer again: **Install OptionsJourney for Mac.command** or **Install OptionsJourney for Windows.bat**.
 
 The installer quits the running app, replaces it with the new version and starts it again. Your trades, bots and settings are kept: they live in a separate data folder. Then delete the downloaded files.
@@ -35,7 +35,7 @@ The installer quits the running app, replaces it with the new version and starts
 ## Going back
 Sometimes you want the older version again. Before every update that changes your data, the app makes a backup of it first. So you can go back. The backup goes in your backup folder. If that folder can't be reached (a USB drive that isn't plugged in), it goes in Documents/OptionsJourney Backups instead.
 
-1. Go to the [Releases page](https://github.com/optionsjourney/optionsjourney/releases), pick the older version, and download its zip.
+1. Go to the [Releases page](https://github.com/optionsjourney/optionsjourney/releases), pick the older version, and download its zip (under **Assets**).
 2. Unzip it and run its installer, as in "By hand" above.
 3. The older app sees that your data is from a newer version and won't use it. It opens a page that says so, with a button: **Restore the backup from before the upgrade**. Click it. The app restarts on the older data.
 

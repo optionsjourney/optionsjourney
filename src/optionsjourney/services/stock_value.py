@@ -88,7 +88,7 @@ def portfolio_value(
     accounts: Collection[str],
     now: datetime,
     *,
-    positions: Callable = holdings.broker_positions,
+    positions: Callable = holdings.kept_positions,
     closes: Callable = daily_closes,
 ) -> ValueChart:
     """The value of the shares held in `accounts` (none: every account) at each

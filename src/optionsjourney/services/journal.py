@@ -3,7 +3,7 @@ trades are filed under (tags only: decision 0072)."""
 
 import threading
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 
@@ -23,6 +23,7 @@ from optionsjourney.core.calendar import (
     equity_curve,
     max_drawdown,
     month_grid,
+    realized_between,
 )
 from optionsjourney.core.expiry import (
     estimate_expiration,
@@ -756,13 +757,31 @@ def live_open_pl(view: JournalView, hub) -> dict:
     }
 
 
-def open_pl_of(session_factory, cache, hub, key: str) -> Decimal | None:
-    """One trade's live open P/L (for its alerts), or None."""
+def open_pl_of(session_factory, cache, hub, key: str | list[str]) -> Decimal | None:
+    """One trade's live open P/L (for its alerts), or None. Several keys (a combined
+    alert): the trades' P/L together, realized and open (Tracker2's position_pl), or
+    None while any open one is unpriced or once every one is closed."""
     view = load_journal(session_factory, cache=cache)
+    if not isinstance(key, str):
+        return combined_pl(view, hub, key)
     entry = find_entry(view, key)
     if entry is None or entry.position.status is Status.CLOSED:
         return None
     return live_open_pl(JournalView(entries=[entry]), hub)["positions"].get(key)
+
+
+def combined_pl(view: JournalView, hub, keys) -> Decimal | None:
+    entries = [find_entry(view, key) for key in keys]
+    if any(e is None for e in entries) or all(e.position.status is Status.CLOSED for e in entries):
+        return None
+    still_open = [e for e in entries if e.position.status is not Status.CLOSED]
+    live = live_open_pl(JournalView(entries=still_open), hub)["positions"]
+    if any(live.get(e.position.key) is None for e in still_open):
+        return None
+    return sum(
+        (e.position.realized_pl + live.get(e.position.key, Decimal(0)) for e in entries),
+        Decimal(0),
+    )
 
 
 def held_legs(
@@ -828,6 +847,113 @@ def load_history(days: dict[date, DayPL]) -> PLHistory:
     return PLHistory(curve, list(reversed(by_month(curve))), max_drawdown(curve))
 
 
+@dataclass(frozen=True)
+class PeriodTrade:
+    entry: JournalEntry
+    realized: Decimal  # booked in the period
+    closed: bool  # fully closed in the period
+
+
+@dataclass
+class PeriodGroup:
+    """One row of the drawer's table: a dashboard (or "Other trades"), its P/L per
+    account and its trades."""
+
+    name: str
+    trades: list[PeriodTrade]
+    by_account: dict[tuple[str, str], Decimal]
+    total: Decimal
+
+    @property
+    def rows(self) -> list[PeriodRow]:
+        """Its trades with one name in one account as one row (a bot's many
+        entries in a period are one line), by name then account."""
+        rows: dict[tuple, PeriodRow] = {}
+        for t in self.trades:
+            p = t.entry.position
+            key = (t.entry.name, p.broker, p.account_number)
+            row = rows.setdefault(key, PeriodRow(t.entry.name, (p.broker, p.account_number), []))
+            row.trades.append(t)
+        return [rows[key] for key in sorted(rows, key=lambda k: (k[0].lower(), k[1], k[2]))]
+
+
+@dataclass
+class PeriodRow:
+    name: str
+    account: tuple[str, str]
+    trades: list[PeriodTrade]
+
+    @property
+    def realized(self) -> Decimal:
+        return sum((t.realized for t in self.trades), Decimal("0"))
+
+    @property
+    def closed(self) -> int:
+        return sum(t.closed for t in self.trades)
+
+
+@dataclass
+class PeriodView:
+    """The P/L calendar's drawer for a day, week or month (#301)."""
+
+    start: date
+    end: date
+    total: PeriodGroup  # every trade once: dashboards can overlap
+    groups: list[PeriodGroup]
+    accounts: list[tuple[str, str]]  # the columns: accounts with P/L in the period
+    wins: int
+    losses: int
+
+    @property
+    def overlap(self) -> bool:
+        """A trade sits in two dashboards, so the rows add up to more than the total."""
+        return sum(len(g.trades) for g in self.groups) > len(self.total.trades)
+
+
+def _group(name: str, trades: list[PeriodTrade]) -> PeriodGroup:
+    by_account: dict[tuple[str, str], Decimal] = {}
+    for t in trades:
+        key = (t.entry.position.broker, t.entry.position.account_number)
+        by_account[key] = by_account.get(key, Decimal("0")) + t.realized
+    trades = sorted(trades, key=lambda t: t.entry.position.closed_at or t.entry.position.opened_at)
+    return PeriodGroup(name, trades, by_account, sum((t.realized for t in trades), Decimal("0")))
+
+
+def load_period(
+    view: JournalView, start: date, end: date, now: datetime | None = None
+) -> PeriodView:
+    """The trades the view shows that booked P/L from start to end, grouped by the
+    dashboards they fall in. A dashboard picks by its tags, accounts and search; its
+    status and dates are left out, as the period is the date."""
+    now = now or datetime.now(UTC)
+    entries = {id(e.position): e for e in view.entries}
+    trades = [
+        PeriodTrade(entries[id(t.position)], t.realized, t.closed)
+        for t in realized_between((e.position for e in view.entries), start, end)
+    ]
+    groups, placed = [], set()
+    for dashboard in view.dashboards:
+        saved = Filters.from_saved(dashboard.filters or {})
+        picks = replace(saved, status="", days=0, start=None, end=None, range="")
+        mine = [t for t in trades if _matches(t.entry, picks, now)]
+        if mine:
+            groups.append(_group(dashboard.name, mine))
+            placed.update(id(t) for t in mine)
+    rest = [t for t in trades if id(t) not in placed]
+    if rest:
+        groups.append(_group("Other trades" if groups else "Trades", rest))
+    total = _group("Total", trades)
+    return PeriodView(
+        start=start,
+        end=end,
+        total=total,
+        groups=groups,
+        accounts=sorted(total.by_account),
+        wins=sum(1 for t in trades if t.closed and t.entry.position.realized_pl > 0),
+        losses=sum(1 for t in trades if t.closed and t.entry.position.realized_pl < 0),
+    )
+
+
 # --- Trading metrics -----------------------------------------------------------
 
 
@@ -859,11 +985,17 @@ def load_metrics(view: JournalView, period: str) -> Metrics:
         max_drawdown=max_drawdown(equity_curve(days)),
         periods=[period_stats(days, name) for name in METRIC_PERIODS],
         weekdays=weekday_stats(days),
-        bars=[
-            {"start": start.isoformat(), "pl": float(pl)}
-            for start, pl in pl_by_period(days, period).items()
-        ],
+        bars=_with_cumulative(pl_by_period(days, period)),
     )
+
+
+def _with_cumulative(by_period: dict[date, Decimal]) -> list[dict]:
+    """The P/L bars, each with the running total up to it (#301), oldest first."""
+    bars, total = [], Decimal("0")
+    for start, pl in sorted(by_period.items()):
+        total += pl
+        bars.append({"start": start.isoformat(), "pl": float(pl), "cumulative": float(total)})
+    return bars
 
 
 # --- Editing a trade -----------------------------------------------------------

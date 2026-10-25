@@ -24,6 +24,9 @@ Not as it is. Never make it reachable from the internet with port forwarding, a 
 
 **For experienced users:** you can give it a web address if a login service stands in front of it and only lets you through, for example a Cloudflare Tunnel protected by Cloudflare Access that only accepts your own email (see [Cloudflare's guides](https://developers.cloudflare.com/cloudflare-one/)). That service is then the only thing between a stranger and your accounts, so check that it asks for a login before you rely on it. Tailscale is simpler and safer for most people.
 
+### Where did the P/L Calendar and Trading metrics go?
+They have their own tab now: **Metrics**, next to **Journal** at the top. They still use the Journal's filters and dashboards, and old links and bookmarks take you there. See [Metrics](metrics.md).
+
 ### Can friends share one copy?
 No. Everyone who opens a copy sees the same accounts and can trade them. Each person installs their own copy and connects their own broker (see [Setting up](setup.md)).
 
@@ -103,6 +106,11 @@ Logging in to Schwab from this app on another computer, or from another program 
 **The reason:** P/L Day measures each open trade from the value the app saved shortly after the last close (4:15 PM New York time). If it has no saved value for a trade, because the app wasn't running then or it's your first day, it works from your broker's previous closing prices instead, which is close but not exact. The **≈** says part of the figure came that way ("≈ partly from the closes before").
 
 **What to do:** nothing. The next close the app is running for, it saves the value and the **≈** goes. To avoid it, keep the app running through 4:15 PM. See [P/L Day](behind-the-scenes.md#pl-day).
+
+### Why don't a calendar day's dashboard rows add up to its total?
+**The reason:** a trade can be in more than one dashboard. A trade tagged both "0DTE" and "SPX" shows under both rows. The **Total** row counts each trade once, so it matches the calendar.
+
+**What to do:** nothing. The panel says so under the table when it happens. See [Details for a day, week or month](metrics.md#details-for-a-day-week-or-month).
 
 ### Why does my stock chart start on a certain date?
 **The reason:** the **Portfolio value** chart on the Journal's **Stocks** tab starts on the day the app first synced your trades. Your brokers only tell the app what you hold today, so the app works backwards from there through your synced buys and sells. It has no trades from before that first sync, so it can't work out earlier days. Shares you already owned then still count from that day on.

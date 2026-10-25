@@ -1728,13 +1728,26 @@ def test_a_market_close_after_the_session_sends_nothing(deps, factory, monkeypat
 def test_close_selected_takes_each_trade_once_and_at_most_15(deps, factory, monkeypatch):
     seen = []
     monkeypatch.setattr(bot_manage, "_run_0dte", lambda deps, run_id: True)
-    monkeypatch.setattr(bot_manage, "close_trade", lambda deps, run_id, kind: (
+    monkeypatch.setattr(bot_manage, "close_trade", lambda deps, run_id, kind, only=None: (
         seen.append(run_id) or bot_manage.Outcome(True, "ok")))  # fmt: skip
     results = bot_manage.close_selected(deps, ["3", "3", "4", " 3"], "limit")
     assert seen == [3, 4] and [r for r, _ in results] == [3, 4]
     assert len(bot_manage.close_selected(deps, [str(n) for n in range(1, 16)])) == 15
     over = bot_manage.close_selected(deps, [str(n) for n in range(1, 17)])
     assert len(over) == 1 and not over[0][1].ok and seen[-1] == 15
+
+
+def test_the_journals_close_selected_takes_any_expiration_and_one_side(deps, monkeypatch):
+    """#300: the journal's Close isn't 0DTE-only, and a split condor's ticked side closes
+    only its own groups, never the other side's."""
+    seen = []
+    monkeypatch.setattr(bot_manage, "_run_0dte", lambda deps, run_id: False)
+    monkeypatch.setattr(bot_manage, "close_trade", lambda deps, run_id, kind, only=None: (
+        seen.append((run_id, only)) or bot_manage.Outcome(True, "ok")))  # fmt: skip
+    refused = bot_manage.close_selected(deps, [3], "limit")
+    assert not refused[0][1].ok and seen == []
+    bot_manage.close_selected(deps, [3, 4], "limit", {3: {0, 1}, 4: None}, zero_dte_only=False)
+    assert seen == [(3, {0, 1}), (4, None)]
 
 
 def test_the_preview_with_no_fresh_quote_says_change_stop_would_refuse(deps, factory):

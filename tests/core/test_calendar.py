@@ -9,6 +9,7 @@ from optionsjourney.core.calendar import (
     equity_curve,
     max_drawdown,
     month_grid,
+    realized_between,
 )
 from optionsjourney.core.orders import group_fills
 from optionsjourney.core.positions import build_positions
@@ -261,3 +262,31 @@ def test_by_month_sums_each_month():
         (date(2026, 9, 1), Decimal("-50"), Decimal("-50"), Decimal("-150")),
         (date(2026, 10, 1), Decimal("80"), Decimal("30"), Decimal("-70")),
     ]
+
+
+def test_realized_between_adds_up_to_the_calendar():
+    # A trade closed in two parts: Mon Aug 31 (+50) and Tue Sep 1 (+100); another lost Sep 1
+    monday = T0 - timedelta(days=1)
+    trades = positions(
+        opt(S, OPEN, 5800, qty=2, price="2.00", order="1", at=monday),
+        opt(B, CLOSE, 5800, price="1.50", order="2", at=monday),
+        opt(B, CLOSE, 5800, price="1.00", order="3", at=T0),
+        opt(S, OPEN, 5700, price="1.00", order="4", at=T0),
+        opt(B, CLOSE, 5700, price="1.50", order="5", at=T0),
+    )
+    days = daily_pl(trades)
+    grid = month_grid(2026, 9, days)
+    week = grid.weeks[0]  # Aug 31 - Sep 6; only Sep 1 on is in September
+    assert (week.start, week.end) == (date(2026, 9, 1), date(2026, 9, 6))
+    for start, end, cell in (
+        (date(2026, 9, 1), date(2026, 9, 1), days[date(2026, 9, 1)].realized),
+        (week.start, week.end, week.total),
+        (date(2026, 9, 1), date(2026, 9, 30), grid.total),
+    ):
+        found = realized_between(trades, start, end)
+        assert sum(t.realized for t in found) == cell
+        assert sum(t.closed for t in found) == sum(
+            d.trades for day, d in days.items() if start <= day <= end
+        )
+    august = realized_between(trades, date(2026, 8, 31), date(2026, 8, 31))
+    assert [(t.realized, t.closed) for t in august] == [(Decimal("50"), False)]

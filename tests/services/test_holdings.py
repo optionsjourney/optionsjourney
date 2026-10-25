@@ -49,3 +49,28 @@ def test_strict_skips_a_broker_that_was_never_connected():
     assert [p.ticker for p in found] == ["AAPL"]
     assert skipped == {"tastytrade"}
     assert broker_positions([Good(), Off()], strict=True) is not None
+
+
+def test_kept_positions_asks_the_brokers_once_for_the_page_and_its_chart():
+    # #304: the value chart reuses the Stocks page's minute-old positions
+    from optionsjourney.services.holdings import kept_positions
+
+    class Counting(Good):
+        asked = 0
+
+        def stock_positions(self):
+            Counting.asked += 1
+            return super().stock_positions()
+
+    clients = [Counting()]
+    assert len(kept_positions(clients)) == 1  # the page
+    assert len(kept_positions(clients, strict=True)) == 1  # its chart
+    assert Counting.asked == 1
+
+
+def test_kept_positions_strict_is_none_while_a_broker_is_down():
+    from optionsjourney.services.holdings import kept_positions
+
+    clients = [Good(), Bad()]
+    assert len(kept_positions(clients)) == 1  # the page shows what it has
+    assert kept_positions(clients, strict=True) is None  # the chart needs every broker

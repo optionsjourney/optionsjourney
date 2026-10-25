@@ -1,8 +1,9 @@
 // Ticking trades in the journal (#62, #149, #154, as Tracker2's select mode): click a
 // row or its box to tick it; Select all / None on the Open and Closed headers and
 // Select day on each closing day. Ticks survive a reload (sessionStorage, per page);
-// Esc or Clear unticks all. The bar adds or removes tags on every ticked trade,
-// and Risk graph together opens the ticked open option trades as one position.
+// Esc or Clear unticks all. Risk graph opens the ticked open option trades as
+// one position; Alert opens one alert on them together (#300, Tracker2's alertState: open,
+// one underlying, at most 10); Close closes the ones a bot or their own rules manage.
 // Cards | Table | Compact (#155, #156): in Cards a click on a card opens its legs and
 // prices, and in Compact a click on a row opens a line under it with them.
 (function () {
@@ -63,8 +64,12 @@
     const bar = document.getElementById("select-bar");
     if (!bar) return;
     const count = document.getElementById("select-count");
-    const form = document.getElementById("select-edit");
     const analyze = document.getElementById("select-analyze");
+    const alertButton = document.getElementById("select-alert");
+    const alertBase = alertButton.dataset.managePanel;
+    const closeForm = document.getElementById("select-close");
+    const closeButton = document.getElementById("select-close-button");
+    const MAX_ALERT = 10;  // user_alerts.MAX_TRADES
     const storeKey = "journal-ticked:" + location.pathname;
     const boxes = () => [...document.querySelectorAll(".select-trade")];
     const ticked = () => boxes().filter((b) => b.checked);
@@ -90,11 +95,29 @@
         analyze.title = graphable === 0
             ? "Only open option trades can be graphed; none of the ticked ones are."
             : graphable < n ? `Graphs the ${graphable} open option trade${graphable === 1 ? "" : "s"}; the rest can't be graphed.` : "";
+        const why = alertProblem(ticked());
+        alertButton.disabled = why !== "";
+        alertButton.title = why;
+        alertButton.dataset.managePanel = alertBase + "?" + ticked().map((b) => "trade=" + encodeURIComponent(b.value)).join("&");
+        const closable = ticked().filter((b) => b.hasAttribute("data-closable")).length;
+        closeButton.disabled = closable === 0;
+        closeButton.title = closable === 0
+            ? "None of the ticked trades is managed by a bot or its own exit rules, so none can be closed here."
+            : closable < n ? `Closes the ${closable} trade${closable === 1 ? "" : "s"} a bot or its own rules manage; the rest are skipped.` : "";
         document.querySelectorAll(".trade-row").forEach((row) => {
             const box = row.querySelector(".select-trade");
             row.classList.toggle("trade-row--ticked", !!box && box.checked);
         });
         save();
+    }
+
+    // Why the ticked trades can't share one alert, or "" (Tracker2's alertState)
+    function alertProblem(list) {
+        if (list.length > MAX_ALERT) return `An alert covers at most ${MAX_ALERT} trades.`;
+        if (list.some((b) => !b.hasAttribute("data-open"))) return "Only open trades can have an alert: untick the closed ones.";
+        const tickers = [...new Set(list.map((b) => b.dataset.ticker))].sort();
+        if (tickers.length > 1) return `The ticked trades are on ${tickers.join(", ")}: an alert covers one underlying.`;
+        return "";
     }
 
     function setAll(list, on) {
@@ -128,17 +151,17 @@
     });
 
     document.addEventListener("keydown", (e) => {
-        if (e.key === "Escape" && ticked().length && !document.querySelector("dialog[open]")) setAll(boxes(), false);
+        if (e.key === "Escape" && ticked().length && !document.querySelector("dialog[open], #manage-drawer:not(.hidden)")) setAll(boxes(), false);
     });
 
     document.getElementById("select-clear").addEventListener("click", () => setAll(boxes(), false));
 
-    form.addEventListener("submit", () => {
-        form.querySelectorAll("input[name=trade]").forEach((i) => i.remove());
+    closeForm.addEventListener("submit", () => {
+        closeForm.querySelectorAll("input[name=trade]").forEach((i) => i.remove());
         ticked().forEach((b) => {
             const i = document.createElement("input");
             i.type = "hidden"; i.name = "trade"; i.value = b.value;
-            form.appendChild(i);
+            closeForm.appendChild(i);
         });
     });
 
