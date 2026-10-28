@@ -7,6 +7,7 @@ from optionsjourney.bots.strikes import (
     Chain,
     NoTrade,
     Quote2,
+    TooNarrow,
     Unsafe,
     chain_from_rows,
     entry_price,
@@ -494,7 +495,7 @@ def test_min_short_width_widens_the_side_whose_next_strike_misses_less():
 
 
 def test_min_short_width_that_runs_out_of_strikes_skips():
-    with pytest.raises(NoTrade, match="no strikes left to widen"):
+    with pytest.raises(TooNarrow, match="no strikes left to widen"):
         pick_legs(_near_shorts(), chain(), min_width=D("1000"))
 
 

@@ -37,7 +37,9 @@ from optionsjourney.bots.definition import (
     normalize_delta,
     normalize_tags,
     retag,
+    min_width,
     tags_with_main,
+    uses_fallback,
 )  # fmt: skip
 from optionsjourney.bots.exit_math import after_expiry, row_legs
 from optionsjourney.bots.schedule import normalize_time, parse_date_list, skip_target_day
@@ -94,7 +96,8 @@ def _to_def(session, bot: Bot) -> BotDef:
         legs=tuple(
             LegDef(leg.position, Side(leg.side), leg.right, leg.ratio, leg.dte, leg.pick,
                    leg.target, leg.linked_position, leg.exact, leg.group_position,
-                   leg.exit_delta_below, leg.exit_delta_above, leg.max_offset)
+                   leg.exit_delta_below, leg.exit_delta_above, leg.max_offset,
+                   leg.fallback_target)
             for leg in legs
         ),
         groups=tuple(
@@ -145,6 +148,9 @@ def _to_def(session, bot: Bot) -> BotDef:
         sizing=bot.sizing or "contracts", max_per_entry_usd=bot.max_per_entry_usd,
         min_short_width=bot.min_short_width,
         move_conflicted_strikes=bool(bot.move_conflicted_strikes),
+        keep_trying_minutes=bot.keep_trying_minutes,
+        use_min_short_width=bool(bot.use_min_short_width),
+        use_keep_trying=bool(bot.use_keep_trying),
         per_trade=bool(bot.per_trade),
     )  # fmt: skip
 
@@ -383,6 +389,8 @@ def save(
         row.sizing, row.max_per_entry_usd = bot.sizing, bot.max_per_entry_usd
         row.min_short_width = bot.min_short_width
         row.move_conflicted_strikes = bot.move_conflicted_strikes
+        row.keep_trying_minutes = bot.keep_trying_minutes
+        row.use_min_short_width, row.use_keep_trying = bot.use_min_short_width, bot.use_keep_trying
         # Final review I1: a per-trade bot stays one; the bot form doesn't carry the flag
         row.per_trade = bot.per_trade or bool(row.per_trade)
         session.flush()
@@ -394,7 +402,7 @@ def save(
                 ratio=leg.ratio, dte=leg.dte, pick=leg.pick, target=leg.target,
                 linked_position=leg.link, exact=leg.exact, group_position=leg.group,
                 exit_delta_below=leg.exit_delta_below, exit_delta_above=leg.exit_delta_above,
-                max_offset=leg.max_offset,
+                max_offset=leg.max_offset, fallback_target=leg.fallback_target,
             ))  # fmt: skip
         for group in bot.groups:
             session.add(BotLegGroup(
@@ -933,13 +941,19 @@ def _form_problems(form: Mapping, count: int, groups: int = 2) -> dict[str, str]
     if raw and not raw.isdigit():
         problems.setdefault("chase_exhaust", f"The entry's time limit {raw!r} isn't a whole "
                                              "number of minutes.")  # fmt: skip
+    for switch, field, key, what in (("use_min_short_width", "min_short_width", "strikes",
+                                      "the min short width"),
+                                     ("use_keep_trying", "keep_trying_minutes", "keep_trying",
+                                      "how long to keep trying")):  # #315  # fmt: skip
+        if form.get(switch) == "on" and not str(form.get(field) or "").strip():
+            problems.setdefault(key, f"Enter {what}, or switch it off.")
     for field, key, what in (("max_per_entry_usd", "sizing", "most buying power"),
                              ("min_short_width", "strikes", "min short width")):  # fmt: skip
         raw = str(form.get(field) or "").strip()
         if raw and _decimal(raw) is None:
             problems.setdefault(key, f"The {what} {raw!r} isn't a number.")
     for key in form:
-        found = re.fullmatch(r"leg-(\d+)-(delta-below|delta-above|max-offset)", str(key))
+        found = re.fullmatch(r"leg-(\d+)-(delta-below|delta-above|max-offset|fallback)", str(key))
         raw = str(form.get(key) or "").strip()
         if found and raw and _decimal(raw) is None:
             what = found.group(2).replace("-", " ")
@@ -1188,6 +1202,7 @@ def read_form(form: Mapping) -> tuple[BotDef, dict[str, str]]:
             exit_delta_below=_decimal(form.get(f"leg-{i}-delta-below")),
             exit_delta_above=_decimal(form.get(f"leg-{i}-delta-above")),
             max_offset=_decimal(form.get(f"leg-{i}-max-offset")),
+            fallback_target=_decimal(form.get(f"leg-{i}-fallback")),  # #314
         )
         for i in range(leg_count)
     )  # fmt: skip
@@ -1284,8 +1299,25 @@ def read_form(form: Mapping) -> tuple[BotDef, dict[str, str]]:
         max_per_entry_usd=_decimal(form.get("max_per_entry_usd")),
         min_short_width=_decimal(form.get("min_short_width")),
         move_conflicted_strikes=form.get("move_conflicted_strikes") == "on",
+        keep_trying_minutes=_window(form.get("keep_trying_minutes")),  # #314: blank is one try
+        use_min_short_width=form.get("use_min_short_width") == "on",  # #315
+        use_keep_trying=form.get("use_keep_trying") == "on",
     )  # fmt: skip
     return lone_shorts_rest_stops(bot), _form_problems(form, count, group_count)
+
+
+def blank_fallbacks(bot: BotDef) -> dict[str, str]:
+    """#314: with a min short width, saving the form needs each sold premium leg's
+    fallback premium (its red box). The form's Save only: a bot file with a min width
+    still imports, and adding a leg doesn't complain yet."""
+    if min_width(bot) is None or futures(bot.underlying):
+        return {}
+    return {
+        f"leg-{leg.position}": "Enter a fallback premium, or 0 for none: it's needed while Min "
+        "short width is on."
+        for leg in bot.legs
+        if uses_fallback(leg) and leg.fallback_target is None
+    }
 
 
 def _clock_text(text, seconds: bool = False) -> str:
@@ -1308,7 +1340,7 @@ def _window(text) -> int | None:
 # whole number. typed_texts keeps such text so a redrawn form shows it as typed.
 _DECIMAL_BOXES = re.compile(
     r"group-\d+-(stop|target|remainder-limit)|leg-\d+-target|premium_(min|max)|"
-    r"leg-\d+-(delta-below|delta-above|max-offset)|max_per_entry_usd|min_short_width|"
+    r"leg-\d+-(delta-below|delta-above|max-offset|fallback)|max_per_entry_usd|min_short_width|"
     r"stop_co_amount|ta-\d+-(stop|target)|pa-\d+-\d+-(at|stop)|da-\d+-(value|points)|"
     + "|".join(
         [field for fields in _FILTER_NUMBERS.values() for field, _ in fields]
@@ -1317,7 +1349,7 @@ _DECIMAL_BOXES = re.compile(
 )
 _WHOLE_BOXES = re.compile(
     r"time-\d+-qty|ta-\d+-(days|close)|pa-\d+-\d+-close|close_dte|chase-exit-natural|leg-\d+-dte|"
-    r"chase-entry-window|" + "|".join(field for field, _ in _PERIODS)
+    r"chase-entry-window|keep_trying_minutes|" + "|".join(field for field, _ in _PERIODS)
 )
 
 

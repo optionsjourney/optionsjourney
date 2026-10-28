@@ -37,3 +37,8 @@ def test_bounds_compare_the_size_of_the_price_on_either_side():
     assert premium_problem(BOT, D("-2.20")) is None
     assert premium_problem(BOT, D("-0.99")) == "net debit 0.99 < min 1.00"
     assert premium_problem(BOT, D("-3.01")) == "net debit 3.01 > max 3.00"
+
+
+def test_the_fallback_try_has_no_minimum_but_keeps_the_maximum():
+    assert premium_problem(BOT, D("0.50"), floor=False) is None
+    assert premium_problem(BOT, D("3.50"), floor=False) == "net credit 3.50 > max 3.00"

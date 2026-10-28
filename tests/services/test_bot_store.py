@@ -1326,3 +1326,28 @@ def test_a_split_meic_bots_halves_match_by_side(factory):
     assert sorted(pattern_of(per_leg(two)).group_shapes) == sorted(pattern_of(two).group_shapes)
     assert len(pattern_of(per_leg(two)).group_shapes) == 2
     assert pattern_of(per_leg(replace(two, split_iron_condors=False))).group_shapes == ()
+
+
+# #314
+def test_keep_trying_and_fallbacks_save_and_load(factory):
+    bot = good(factory)
+    legs = tuple(replace(leg, fallback_target=D("2.10")) if leg.position in (0, 2) else leg
+                 for leg in bot.legs)  # fmt: skip
+    bot = replace(bot, legs=legs, min_short_width=D("20"), keep_trying_minutes=3)
+    bot_id, problems = bot_store.save(factory, bot, NOW)
+    assert problems == {}
+    loaded = bot_store.load(factory, bot_id)
+    assert loaded.keep_trying_minutes == 3 and loaded.legs == legs
+
+
+def test_the_form_reads_keep_trying_and_each_legs_fallback():
+    bot, problems = bot_store.read_form(Form(full_form() | {
+        "keep_trying_minutes": "2", "leg-0-fallback": "2.10", "leg-2-fallback": "2,1"}))
+    assert bot.keep_trying_minutes == 2 and bot.legs[0].fallback_target == D("2.10")
+    assert "fallback '2,1' isn't a number" in problems["leg-2"]
+
+
+def test_saving_the_form_needs_a_fallback_while_min_short_width_is_set(factory):
+    bot = replace(good(factory), min_short_width=D("20"))
+    assert set(bot_store.blank_fallbacks(bot)) == {"leg-0", "leg-2"}  # the sold legs only
+    assert bot_store.blank_fallbacks(replace(bot, min_short_width=None)) == {}

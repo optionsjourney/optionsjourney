@@ -220,7 +220,7 @@ class Position:
 
     @property
     def one_right(self) -> str | None:
-        """"Put" or "Call" when every option leg is that type, as a MEIC half (Tracker2's
+        """ "Put" or "Call" when every option leg is that type, as a MEIC half (Tracker2's
         put_call_chip); share legs don't count. None for a mix, or no options."""
         rights = {leg.option.put_call for leg in self.legs if leg.option is not None}
         return rights.pop().title() if len(rights) == 1 else None
@@ -241,7 +241,7 @@ class Position:
             for order in event.orders
             for fill in order.fills
         ]
-        closed_units = min((leg.closed for leg in self.live_legs), default=ZERO)
+        closed_units = _units(leg.closed for leg in self.live_legs)
         if not closing or closed_units == 0:
             return None
         return sum((_signed_price_quantity(fill) for fill in closing), ZERO) / closed_units
@@ -556,7 +556,7 @@ def _add_to_running_stock(book: Book, order: OrderGroup) -> bool:
 
 def _open_one(order: OrderGroup, key: str, *, opened_as_iron: bool) -> Position:
     legs = _new_legs(order)
-    units = min(leg.opened for leg in legs)
+    units = _units(leg.opened for leg in legs)
     position = Position(
         key=key,
         broker=order.broker,
@@ -659,12 +659,12 @@ def _is_roll(position: Position, close: OrderGroup, opens: list[OrderGroup]) -> 
     ]
     if any(q != q.to_integral_value() for q in quantities):
         return False
-    size = min(leg.remaining for leg in position.live_legs if leg.remaining > 0)
+    size = _units(leg.remaining for leg in position.live_legs if leg.remaining > 0)
     return gcd(*(int(q) for q in quantities)) == size
 
 
 def _roll(position: Position, close: OrderGroup, opens: list[OrderGroup]) -> None:
-    size = min(leg.remaining for leg in position.live_legs if leg.remaining > 0)
+    size = _units(leg.remaining for leg in position.live_legs if leg.remaining > 0)
     before = position.realized_pl
     _close(position, close, EventKind.ROLL, rolled=True)
     position.events.pop()  # one roll event for the whole order, below
@@ -681,6 +681,17 @@ def _roll(position: Position, close: OrderGroup, opens: list[OrderGroup]) -> Non
     position.events.append(
         PositionEvent(EventKind.ROLL, at, (close, *opens), position.realized_pl - before)
     )
+
+
+def _units(quantities: Iterable[Decimal]) -> Decimal:
+    """How many whole copies of the trade its legs make: 3C:2P is 1, 6C:2P is 2
+    (Tracker2 4576ae8a). 0 while any leg has none; the smallest leg if one isn't whole."""
+    quantities = list(quantities)
+    if not quantities or min(quantities) == 0:
+        return ZERO
+    if any(q != q.to_integral_value() for q in quantities):
+        return min(quantities)
+    return Decimal(gcd(*(int(q) for q in quantities)))
 
 
 def _price_per_unit(fills: Iterable[Fill], units: Decimal) -> Decimal:

@@ -110,3 +110,25 @@ def test_preview_order_survives_an_unexpected_error(deps, factory):
     deps.chain.option_rows = boom
     result = bot_entry.preview_order(deps, bot_id)
     assert not result.ok and "Something went wrong (ValueError)" in result.reason
+
+
+def test_preview_order_shows_what_the_fallback_try_would_pick(deps, factory):
+    from dataclasses import replace
+
+    from optionsjourney.services import bot_store
+
+    bot_id = make(factory)
+    bot = bot_store.load(factory, bot_id)
+    legs = tuple(replace(leg, fallback_target=Decimal("1.00")) if leg.position in (0, 2) else leg
+                 for leg in bot.legs)  # fmt: skip
+    assert bot_store.save(factory, replace(bot, legs=legs, min_short_width=Decimal("5")),
+                          OPEN_TIME)[1] == {}  # fmt: skip
+    result = bot_entry.preview_order(deps, bot_id)
+    assert len(result.fallback_legs) == 4 and result.fallback_problem is None
+    assert result.fallback_price < result.price  # further out, a smaller credit
+    assert [c[0] for c in deps.tasty.calls] == ["preview"]  # the fallback isn't sent
+
+
+def test_preview_order_has_no_fallback_without_one(deps, factory):
+    result = bot_entry.preview_order(deps, make(factory))
+    assert result.fallback_legs == () and result.fallback_problem is None

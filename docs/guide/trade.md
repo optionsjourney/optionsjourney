@@ -21,6 +21,14 @@ The **Pos** column, next to the delta on each side, shows the contracts you alre
 - Click the same bid or ask again to take that leg out.
 - Change a leg's quantity in the ticket. The trade is sized by the legs you set, with no separate quantity box.
 
+## Paste a ThinkorSwim order
+Already built the trade in ThinkorSwim? Copy the order there (right-click it and copy), then press the button with the ThinkorSwim logo and a 📋 (Paste ThinkorSwim order) at the top right of this page. Paste it into the box and press **Load**.
+- The ticker, legs, quantity, limit and credit or debit fill in, exactly as if you'd clicked them in the chain. The chain switches to the order's expiration (the nearest one, for a calendar) and scrolls to its strikes. **Nothing is sent**: check the ticket, then **Review order** as usual.
+- It reads single options, verticals, straddles, strangles, calendars, diagonals, butterflies, condors, iron condors, double diagonals and custom orders, working (BUY/SELL) or filled (BOT/SOLD).
+- If one of the legs isn't in this page's chain (an expiration or strike it doesn't list), nothing is loaded and the box says which leg. Half a spread would be a different trade.
+- One order at a time: if you paste several lines, the first order is loaded and the box says how many were left out.
+- Futures orders, and SPX orders with an AM-settled leg (ThinkorSwim marks it **[AM]**), can't be pasted yet. Pick those legs in the chain.
+
 ## The ticket
 Across the top of the ticket, in large type, is the trade's **price for one unit**: green with **cr** if you're paid (a credit), red with **db** if you pay (a debit). It follows the live prices.
 - **×2, ×3 …** If every leg has the same multiple (for example 3 of each), the price is for one of each, and **×3** says how many units the ticket holds. This is also how the **Limit** is priced.

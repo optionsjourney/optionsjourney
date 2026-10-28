@@ -413,6 +413,10 @@ class Bot(Base):
     min_short_width: Mapped[Decimal | None] = mapped_column(Money())
     move_conflicted_strikes: Mapped[bool] = mapped_column(Boolean, default=False,
                                                           server_default=false())  # fmt: skip
+    keep_trying_minutes: Mapped[int | None] = mapped_column(Integer)  # #314 (0056)
+    # #315 (0057): each one's switch; off keeps the number but doesn't use it
+    use_min_short_width: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+    use_keep_trying: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
     created_at: Mapped[datetime] = mapped_column(UTCDateTime())
     updated_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
@@ -441,6 +445,7 @@ class BotLeg(Base):
     exit_delta_below: Mapped[Decimal | None] = mapped_column(Money())
     exit_delta_above: Mapped[Decimal | None] = mapped_column(Money())
     max_offset: Mapped[Decimal | None] = mapped_column(Money())
+    fallback_target: Mapped[Decimal | None] = mapped_column(Money())  # #314 (0056)
 
 
 class BotLegGroup(Base):

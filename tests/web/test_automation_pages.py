@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from optionsjourney.app import create_app
 from optionsjourney.bots import bot_file
+from optionsjourney.bots.definition import keep_trying, min_width
 from optionsjourney.db.models import (
     Account,
     Bot,
@@ -1777,6 +1778,7 @@ def test_alert_settings_round_trip_through_the_page(app):
         DefaultAlertDef("strike_offset", points=Decimal("10")),
     )
     html = client.get(f"/automation/{bot.id}").get_data(as_text=True)
+    assert html.count("data-alert-row>") == 2  # the saved ones, no extra blank row
     again = client.post("/automation/save", data=posted_back(html), headers=ORIGIN)
     assert again.status_code == 302
     assert bot_store.load(sf(app), bot.id) == bot
@@ -2886,7 +2888,9 @@ def test_slice_19_settings_round_trip_through_the_form(app):
     data = form(app, **{
         "chase-entry-window": "3", "chase-exit-market": "on", "use_delta_exit": "on",
         "leg-0-delta-below": "-40", "leg-3-pick": "premium", "leg-3-target": "0.50",
-        "leg-3-max-offset": "-25", "min_short_width": "20", "move_conflicted_strikes": "on",
+        "leg-3-max-offset": "-25", "min_short_width": "20", "use_min_short_width": "on",
+        "move_conflicted_strikes": "on",
+        "leg-0-fallback": "1.00", "leg-2-fallback": "1.00",  # #314: needed with a min width
         "group-0-target": "80", "group-0-use-profit": "on", "group-0-profits": "1",
         "pa-0-0-at": "50", "pa-0-0-close": "0", "pa-0-0-stop": "0.40",
         "pa-0-0-stop-unit": "usd",
@@ -3732,7 +3736,7 @@ def test_profit_actions_have_three_columns_one_blank_row_and_an_example(app):
     assert '<input type="hidden" name="group-0-profits" value="1"' in html
     assert "Close % (optional)" in html and "Then move the stop to (optional)" in html
     assert "<th>In</th>" not in html and "data-add-profit" in html
-    assert "At 75, leave Close % blank, and Then move the stop to 0 % loss" in html
+    assert "<td>Move the stop to break-even once it's 75% up, closing none</td><td>75</td>" in html
 
 
 def test_a_lone_short_is_not_offered_group_premium(app):
@@ -4277,3 +4281,56 @@ def test_outside_demo_the_arm_pages_keep_the_real_order_wording(app):
     many = client.post("/automation/arm-many", data={"bot_id": ids, "on": "1"}, headers=ORIGIN)
     assert "Live bots send real orders to your broker" in many.get_data(as_text=True)
     assert "pretend broker" not in many.get_data(as_text=True)
+
+
+# #314
+def test_keep_trying_and_a_fallback_round_trip_through_the_form(app):
+    data = form(app, keep_trying_minutes="2", min_short_width="20", use_keep_trying="on",
+                use_min_short_width="on",
+                **{"leg-0-fallback": "1.00", "leg-2-fallback": "1.00"})  # fmt: skip
+    r = app.test_client().post("/automation/save", data=data, headers=ORIGIN)
+    assert r.status_code == 302, r.get_data(as_text=True)
+    with sf(app)() as session:
+        bot_id = session.scalar(select(Bot.id))
+    bot = bot_store.load(sf(app), bot_id)
+    assert bot.keep_trying_minutes == 2 and bot.legs[0].fallback_target == Decimal("1.00")
+    html = app.test_client().get(f"/automation/{bot_id}").get_data(as_text=True)
+    assert 'name="keep_trying_minutes" inputmode="numeric" value="2"' in html
+    assert 'name="leg-0-fallback" inputmode="decimal" value="1.00"' in html
+    assert "<th>At the entry</th>" in html and "Enters at 10:00:30" in html  # the ⓘ's examples
+    assert "No fallback try: a skipped entry stays skipped." in html  # Fallback's ⓘ table
+    assert "&lt;table" not in html  # every ⓘ table renders as a table, not as text
+    for row in ("Moved to 5,790 / 5,810.", "Buys 4 ($1,989.20).", "Skipped: up more than 3%."):
+        assert row in html
+
+
+def test_saving_with_a_min_width_and_no_fallback_is_refused(app):
+    data = form(app, min_short_width="20", use_min_short_width="on")
+    r = app.test_client().post("/automation/save", data=data, headers=ORIGIN)
+    assert r.status_code == 400
+    assert "Enter a fallback premium" in r.get_data(as_text=True)
+    with sf(app)() as session:
+        assert session.scalar(select(Bot.id)) is None
+
+
+# #315: Min short width and Keep trying have switches; off keeps the number, unused
+def test_switching_off_min_width_and_keep_trying_keeps_their_numbers(app):
+    data = form(app, keep_trying_minutes="2", min_short_width="20")  # both switches off
+    r = app.test_client().post("/automation/save", data=data, headers=ORIGIN)
+    assert r.status_code == 302, r.get_data(as_text=True)  # no fallback needed while off
+    with sf(app)() as session:
+        bot_id = session.scalar(select(Bot.id))
+    bot = bot_store.load(sf(app), bot_id)
+    assert (bot.min_short_width, bot.keep_trying_minutes) == (Decimal("20"), 2)
+    assert (min_width(bot), keep_trying(bot)) == (None, 0)
+    html = app.test_client().get(f"/automation/{bot_id}").get_data(as_text=True)
+    assert 'name="use_keep_trying" >' in html and 'name="use_min_short_width" data-min-width-switch >' in html
+
+
+def test_a_switch_on_with_no_number_is_refused(app):
+    data = form(app, use_keep_trying="on", use_min_short_width="on")
+    r = app.test_client().post("/automation/save", data=data, headers=ORIGIN)
+    body = r.get_data(as_text=True)
+    assert r.status_code == 400
+    assert "Enter how long to keep trying, or switch it off." in body
+    assert "Enter the min short width, or switch it off." in body

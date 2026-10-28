@@ -90,6 +90,7 @@ The page that replaced Analyze ([decision 0031](../decisions/0031-trade-page-rep
 - **Files** (`static/js/trade/`):
   - Copied from Tracker2's `analyzer/`: `chain_tray.js`, `chain_stats.js`, `chain_earnings.js` and `trade_ticket.js` (the default limit, credit/debit and overnight rules, pure).
   - `chain_panel.js` is an inline copy of Tracker2's `analyzer/chain_panel.js` with its own changes (below).
+  - Ours: `tos_parse.js` (#312, pure: Tracker2's `modeler_tos_parse.js` grammar, plus `firstTosOrder` and `tosTray`, which matches a parsed order's legs to chain rows; all legs or none, no futures or [AM] legs). `trade_page.js`'s **Paste ThinkorSwim order** box switches the ticker, fetches each expiration's rows through `chain_panel`'s `rowsFor` (the panel's broker), sets the tray, then the limit and credit/debit. It never reviews or sends.
   - Ours: `ticket_core.js` (pure: turns the legs into the review request, the risk graph's legs and the spread alert's contracts) and `trade_page.js` (wires the chain, ticket, graph and alert together).
 - **Routes** (`web/routes/trade.py`): `/trade` (`?ticker=`), `/api/trade/review`, `/api/trade/confirm`, `/api/trade/working`, `/api/trade/cancel` and `/api/trade/replace`. The chain's own routes are in `web/routes/chain.py` (above).
 - **Server:** `services/trade_ticket.py` builds the broker-neutral `Order`. `review` sends it through `services/orders.submit` with `origin="you"` and `preview_only=True`.

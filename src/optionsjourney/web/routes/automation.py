@@ -492,7 +492,7 @@ def _manual_form(rules, bot_id=None, problems=None, status=200, posted=None):
         )
         rows = [None] * count
     else:
-        rows = list(rules.alerts) + [None]
+        rows = list(rules.alerts) or [None]
 
     def typed(name, current):
         if name in values:
@@ -625,6 +625,7 @@ def save():
         edited, problems, typed = _edited(bot, op, form_problems, typed)
         return _form(edited, problems, shape_key=None, typed=typed)
     before = bot_store.load(services().session_factory, bot.id) if bot.id else None
+    form_problems = {**bot_store.blank_fallbacks(bot), **form_problems}
     bot_id, problems = bot_store.save(
         services().session_factory,
         bot,

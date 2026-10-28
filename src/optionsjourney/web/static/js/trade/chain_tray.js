@@ -10,6 +10,14 @@ export function emptyTray() { return { legs: [] }; }
 
 export function legKey(l) { return `${l.expiration}|${l.strike}|${l.type}`; }
 
+// The expiration the chain shows for a loaded trade (a pasted order, an idea): the one shown
+// if a leg is in it, else the trade's nearest one the chain lists, else the one shown.
+export function trayExpiration(tray, expirations, current) {
+  const exps = tray.legs.map(l => l.expiration);
+  if (exps.includes(current)) return current;
+  return expirations.find(e => exps.includes(e)) || current;
+}
+
 // A bid cell sells, an ask cell buys. The same cell again removes the leg; the other cell
 // of the same contract flips it (keeping its quantity) rather than adding a second leg.
 export function toggleCell(tray, cell) {

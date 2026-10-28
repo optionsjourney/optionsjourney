@@ -38,6 +38,7 @@ EXHAUST_MODES = ("give_up", "natural_then_leg_out", "keep_conceding")
 SIZINGS = ("contracts", "dollars")  # slice 19: Tracker2's VALID_ALLOCATION_TYPES
 WINDOW_MINUTES = (1, 390)  # slice 19: the entry chase's time limit, at most a session
 NATURAL_MINUTES = (1, 30)  # the natural window's allowed range, in minutes
+KEEP_TRYING_MINUTES = (1, 30)  # #314: how long an entry time keeps trying, in minutes
 # Time actions (Tracker2's time_actions.py): "N days to expiration" or "N days in trade".
 TIME_ACTION_TYPES = ("dte", "dit")
 MAX_TIME_ACTIONS = 10  # validation.MAX_TIME_ACTIONS
@@ -101,6 +102,9 @@ class LegDef:
     # Slice 19: a bought premium leg linked to a sold one (`link`) sits no further than
     # this many points from it (BotLeg.max_strike_offset; puts negative, calls positive).
     max_offset: Decimal | None = None
+    # #314: a sold premium leg's lower target for an entry's last try, used only while
+    # the bot has a min short width (uses_fallback, with_fallback).
+    fallback_target: Decimal | None = None
 
 
 @dataclass(frozen=True)
@@ -366,6 +370,13 @@ class BotDef:
     # None off), and moving a taken or held-against strike one out (resolve_conflicts).
     min_short_width: Decimal | None = None
     move_conflicted_strikes: bool = False
+    # #314: an entry time skipped on its premium bounds or min short width tries again
+    # every few seconds for this many minutes (None: one try).
+    keep_trying_minutes: int | None = None
+    # #315: each one's switch; off keeps the number but doesn't use it. On by default, so a
+    # number from a file or from before the switch counts (min_width, keep_trying).
+    use_min_short_width: bool = True
+    use_keep_trying: bool = True
     # Manual bots (#158): a manual bot's rules copied onto one trade. It never enters
     # (no entry times), is never listed, and only manages the trade it was made for.
     per_trade: bool = False
@@ -589,6 +600,37 @@ def contracts_for(bot: BotDef, hhmm: str) -> tuple[int, int | None]:
             requested = entry.quantity
     sent = min(requested, trade_cap(bot) // largest_ratio(bot))
     return sent, (requested if sent < requested else None)
+
+
+def min_width(bot: BotDef) -> Decimal | None:
+    """#315: the min short width in use: None while it's switched off or blank."""
+    return bot.min_short_width if bot.use_min_short_width else None
+
+
+def keep_trying(bot: BotDef) -> int:
+    """#315: the minutes an entry time keeps trying: 0 while switched off or blank."""
+    return (bot.keep_trying_minutes or 0) if bot.use_keep_trying else 0
+
+
+def uses_fallback(leg: LegDef) -> bool:
+    """#314: a sold leg picked by premium, the kind the min short width moves, takes a
+    fallback premium."""
+    return leg.side is Side.SELL and leg.pick == "premium"
+
+
+def with_fallback(bot: BotDef) -> BotDef | None:
+    """#314: the bot for an entry's last try, each sold premium leg aimed at its fallback
+    premium; None when there's nothing to fall back to (no min short width, or no
+    fallback set). A fallback of 0 is "no fallback try" for that leg."""
+    if min_width(bot) is None:
+        return None
+    legs = tuple(
+        replace(leg, target=leg.fallback_target)
+        if uses_fallback(leg) and leg.fallback_target  # None or 0: none
+        else leg
+        for leg in bot.legs
+    )
+    return replace(bot, legs=legs) if legs != bot.legs else None
 
 
 def iron_condor_skeleton(name: str = "") -> BotDef:

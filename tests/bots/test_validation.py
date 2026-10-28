@@ -15,6 +15,7 @@ from optionsjourney.bots.definition import (
     TimeActionDef,
     iron_condor_skeleton,
     lone_shorts_rest_stops,
+    with_fallback,
 )
 from optionsjourney.bots.validation import PAIR_RESTING, validate
 from optionsjourney.trading.orders import Side
@@ -1259,3 +1260,47 @@ def test_an_entry_chase_cant_ignore_bidless_longs():
     assert "chase_exhaust" in validate(odd, {1})
     ok = replace(good(), exit_chase=replace(good().exit_chase, ignore_bidless_longs=True))
     assert validate(ok, {1}) == {}
+
+
+# #314: a fallback premium for each sold premium leg, and how long an entry keeps trying
+def _fallbacks(bot, value):
+    legs = tuple(replace(leg, fallback_target=value) if leg.position in (0, 2) else leg
+                 for leg in bot.legs)  # fmt: skip
+    return replace(bot, legs=legs, min_short_width=D("20"))
+
+
+def test_a_fallback_premium_is_above_0_and_below_its_target():
+    assert validate(_fallbacks(good(), D("2.00")), {1}) == {}
+    assert validate(_fallbacks(good(), None), {1}) == {}  # a blank one: the form's to refuse
+    assert "below the leg's target" in validate(_fallbacks(good(), D("2.70")), {1})["leg-0"]
+    assert validate(_fallbacks(good(), D("0")), {1}) == {}  # 0: no fallback
+    assert "0 (no fallback) or more" in validate(_fallbacks(good(), D("-1")), {1})["leg-2"]
+
+
+def test_a_fallback_is_not_checked_without_a_min_short_width():
+    bot = replace(_fallbacks(good(), D("9")), min_short_width=None)
+    assert validate(bot, {1}) == {}
+
+
+def test_with_fallback_aims_the_sold_premium_legs_lower_only_with_a_min_width():
+    bot = _fallbacks(good(), D("2.00"))
+    assert [leg.target for leg in with_fallback(bot).legs] == [D("2.00"), D("75"), D("2.00"), D("-75")]
+    assert with_fallback(replace(bot, min_short_width=None)) is None
+    assert with_fallback(_fallbacks(good(), None)) is None
+    assert with_fallback(_fallbacks(good(), D("0"))) is None  # 0: no fallback try
+
+
+@pytest.mark.parametrize(("minutes", "ok"), [(None, True), (1, True), (30, True), (0, False),
+                                             (31, False), (-1, False)])  # fmt: skip
+def test_keep_trying_is_1_to_30_minutes_or_blank(minutes, ok):
+    problems = validate(replace(good(), keep_trying_minutes=minutes), {1})
+    assert ("keep_trying" not in problems) is ok
+
+
+def test_switched_off_a_min_width_and_keep_trying_are_kept_but_unused():
+    from optionsjourney.bots.definition import keep_trying, min_width
+
+    bot = replace(_fallbacks(good(), D("2.00")), keep_trying_minutes=3)
+    assert (min_width(bot), keep_trying(bot)) == (D("20"), 3)
+    off = replace(bot, use_min_short_width=False, use_keep_trying=False)
+    assert (min_width(off), keep_trying(off), with_fallback(off)) == (None, 0, None)

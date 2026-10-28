@@ -870,6 +870,9 @@ form.inline { display: inline; }
   align-items: start; }
 .bot-form__row { display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 0.75rem 1rem; align-items: end; }
 .bot-form .bot-form__row input.narrow { width: auto; }
+/* #315: a switch with its number right beside it (Keep trying, Min short width) */
+.bot-form .switch-number { flex-wrap: wrap; }
+.bot-form .switch-number input.narrow { width: 4.5rem; }
 /* #108: + New tag under a bot's Tag picker */
 .bot-form__row--top { align-items: start; }
 .bot-form__row > .bot-form__grid { gap: 0.4rem; }
@@ -1000,6 +1003,8 @@ form.inline { display: inline; }
 .bot-form .leg-rows input.narrow { width: 4.5rem; }
 .bot-form .leg-rows input.narrow--digits { width: 3.5rem; }  /* #140: ratio and DTE, a digit or two */
 .leg-rows [hidden] { display: none; }
+/* #314: a fallback premium is required while Min short width is set: red until it is typed */
+.bot-form .leg-rows input.leg-fallback:required:invalid { border-color: var(--negative); box-shadow: 0 0 0 1px var(--negative); }
 /* #116: with one group the first column holds only the resting choice and its note */
 .group-exits td:first-child { min-width: 14rem; }
 /* #118: the exits tables' headings carry ⓘ tips; group_exits.js hides unused boxes */
@@ -1165,7 +1170,11 @@ form.inline { display: inline; }
 .icon-button--live { color: var(--positive); border-color: var(--positive); }
 
 /* The bot page's summary cards (Tracker2's config cards) */
-.bot-summary__cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); gap: 0.75rem; margin-bottom: 0.75rem; }
+/* Cards size to their lines; Legs, Exit and Execution never wrap, Entry takes what's left */
+.bot-summary__cards { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-bottom: 0.75rem; }
+.bot-summary__cards > .stat-tile { flex: 1 1 auto; max-width: 100%; overflow-x: auto; }
+.bot-summary__cards > .bot-summary__wrap { flex: 1 1 14rem; }
+.bot-summary__cards .bot-summary__nowrap .small { white-space: nowrap; }
 .bot-summary__cards .stat__label { margin-bottom: 0.25rem; }
 .bot-summary .stats { margin-bottom: 0.75rem; }
 /* #208: the bot's P/L graph, folded until opened */

@@ -31,6 +31,22 @@
         {% if result.buying_power is not none %}<dt class="text-gray-500 dark:text-gray-400">Buying power change {{ info('preview-buying-power', "How much buying power your broker says this order would use, taken from its check of the order. Schwab's check doesn't report it, so a Schwab bot shows no row here.", 'Buying power change', more='/help/automation#preview-order') }}</dt><dd>${{ result.buying_power }}</dd>{% endif %}
         {% if result.exits %}<dt class="text-gray-500 dark:text-gray-400">Exits {{ info('preview-exits', "Each group's stop and profit target as prices on this order, and which one would rest at your broker. Nothing has been placed.", 'Exits', more='/help/automation#preview-order') }}</dt><dd id="preview-exits"><ul>{% for line in result.exits %}<li>{{ line }}</li>{% endfor %}</ul></dd>{% endif %}
     </dl>
+    {# #314: the entry's last try, at the fallback premiums #}
+    {% if result.fallback_legs or result.fallback_problem %}
+    <h2 class="font-semibold mt-4 mb-1">At the fallback premium {{ info('preview-fallback', "If an entry's tries are all skipped on the premium bounds or the min short width, one last try picks the sold legs at their fallback premium, with no premium minimum. This is what it would pick now.", 'At the fallback premium', more='/help/automation#keep-trying') }}</h2>
+    {% if result.fallback_problem %}<p id="preview-fallback">It couldn't pick: {{ result.fallback_problem }}</p>
+    {% else %}
+    <table class="text-sm mb-2" id="preview-fallback">
+        <thead><tr class="text-left text-xs text-gray-500 dark:text-gray-400"><th class="pr-4">Side</th><th class="pr-4">Contract</th><th class="pr-4">Ratio</th><th class="text-right">Mid</th></tr></thead>
+        <tbody>
+        {% for leg in result.fallback_legs %}
+        <tr><td class="pr-4">{{ leg.side | capitalize }}</td><td class="pr-4">{{ leg.strike }} {{ leg.right | capitalize }}{% if leg.expiration %} {{ leg.expiration[5:] }}{% endif %}</td><td class="pr-4">{{ leg.ratio }}</td><td class="text-right">{{ leg.mid }}</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    <p>Price at the mid: {{ result.fallback_price | premium }}{% if result.fallback_price > 0 %} credit{% else %} debit{% endif %}</p>
+    {% endif %}
+    {% endif %}
 </section>
 {% if result.graph %}
 <div id="risk-graph" data-preview="1"

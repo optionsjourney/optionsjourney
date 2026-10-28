@@ -482,14 +482,14 @@ def test_a_close_part_profit_action_closes_one_of_three_and_moves_the_stop_for_t
     assert any("The stop moved 4.80 → 2.45 (profit action 1)." in d for d in details(deps))
 
 
-def test_an_action_that_would_leave_nothing_is_skipped_once(deps, factory):
-    run_id = trade(deps, factory, groups=with_actions(factory, A(D("50"), 50, None)))
+def test_an_action_that_would_leave_nothing_closes_the_whole_side(deps, factory):
+    run_id = trade(deps, factory, groups=with_actions(factory, A(D("50"), 50, D("0"))))
     for seconds in (0, 2, 4, 6):
         pass_at(deps, factory, run_id, "11:00", seconds)
     [profit] = rows(factory, "profit")
-    assert profit.state == "failed" and "leave nothing" in profit.log[0]["notes"][0]
-    assert rows(factory, "close") == []
-    assert titles(deps).count("IC: profit action 1 skipped") == 1
+    assert profit.state == "filled" and "closing 1 of 1" in profit.log[0]["notes"][0]
+    [close] = rows(factory, "close")
+    assert close.contracts == 1 and "then_stop" not in close.log[0]
 
 
 def test_actions_fire_in_order_one_at_a_time(deps, factory):
@@ -733,13 +733,13 @@ def test_deleting_a_done_action_never_skips_the_next(deps, factory):
     assert rows(factory, "stop", 0)[0].trigger == D("1.95")
 
 
-def test_after_an_action_is_blocked_the_later_ones_are_skipped(deps, factory):
+def test_after_an_action_closes_the_whole_side_the_later_ones_dont_run(deps, factory):
     actions = (A(D("25"), 50, None), A(D("50"), 0, D("0")))
     run_id = trade(deps, factory, groups=with_actions(factory, *actions))
     for seconds in range(0, 12, 2):
         pass_at(deps, factory, run_id, "11:00", seconds)
-    assert [p.state for p in rows(factory, "profit")] == ["failed"]
-    assert rows(factory, "stop", 0)[0].trigger == D("4.80")
+    assert [p.log[0]["number"] for p in rows(factory, "profit")] == [1]
+    assert [c.contracts for c in rows(factory, "close")] == [1]
 
 
 def test_exits_turned_off_just_before_a_watch_close_dont_stop_it(deps, factory):

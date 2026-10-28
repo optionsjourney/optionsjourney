@@ -3,6 +3,8 @@ from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from itertools import count
 
+import pytest
+
 from optionsjourney.core.orders import group_fills
 from optionsjourney.core.positions import EventKind, Status, build_positions
 from optionsjourney.core.transactions import (
@@ -89,6 +91,33 @@ def test_open_and_close_a_put_credit_spread():
     assert position.fees == Decimal("4.00")
     assert position.closed_at == later
     assert not book.unmatched
+
+
+@pytest.mark.parametrize(
+    ("calls", "puts", "units", "entry", "exit_"),
+    [
+        (3, 1, 1, "-72.75", "79.75"),  # Tracker2 4576ae8a's 3C:1P double diagonal
+        (6, 2, 2, "-72.75", "79.75"),  # two units of 3C:1P
+        (3, 2, 1, "-85.50", "93.50"),  # one unit: the smallest leg (2) isn't the size
+    ],
+)
+def test_a_ratio_trade_is_priced_per_whole_unit(calls, puts, units, entry, exit_):
+    later = T0 + timedelta(days=3)
+    [position] = book_of(
+        opt(S, OPEN, "CALL", 7700, qty=calls, price="10.00", order="1"),
+        opt(B, OPEN, "CALL", 7700, qty=calls, price="30.00", order="1", expiration=NOV20),
+        opt(S, OPEN, "PUT", 7500, qty=puts, price="10.00", order="1"),
+        opt(B, OPEN, "PUT", 7500, qty=puts, price="22.75", order="1", expiration=NOV20),
+        opt(B, CLOSE, "CALL", 7700, qty=calls, price="5.00", order="2", at=later),
+        opt(S, CLOSE, "CALL", 7700, qty=calls, price="27.00", order="2", at=later,
+            expiration=NOV20),
+        opt(B, CLOSE, "PUT", 7500, qty=puts, price="6.00", order="2", at=later),
+        opt(S, CLOSE, "PUT", 7500, qty=puts, price="19.75", order="2", at=later,
+            expiration=NOV20),
+    ).positions  # fmt: skip
+    assert position.units == units
+    assert position.entry_price == Decimal(entry)
+    assert position.exit_price == Decimal(exit_)
 
 
 def test_partial_closes_stay_one_position():

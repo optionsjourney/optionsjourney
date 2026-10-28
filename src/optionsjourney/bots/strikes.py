@@ -53,6 +53,11 @@ class NoData(NoTrade):
         self.kind = kind
 
 
+class TooNarrow(NoTrade):
+    """#314: no strikes left to reach the min short width. Quotes move, so an entry time
+    tries again (bot_entry._fire), unlike other NoTrade."""
+
+
 class Unsafe(NoTrade):
     """The picked legs fail the sanity check (an in-the-money short, an
     inverted side, the same option twice): a mistake in the setup or the
@@ -371,7 +376,7 @@ def _widen(own: list[LegDef], picked: dict, chains, width: Decimal, said: list) 
         next_put = next((c for c in puts if c[0] < at_put[0]), None)
         next_call = next((c for c in calls if c[0] > at_call[0]), None)
         if next_put is None and next_call is None:
-            raise NoTrade(
+            raise TooNarrow(
                 f"Min short width {width.normalize():f}: no strikes left to widen "
                 f"{start_put.normalize():f}/{start_call.normalize():f}."
             )

@@ -74,6 +74,7 @@ _LEG = {
     "exit_delta_below": "money?",  # slice 19
     "exit_delta_above": "money?",
     "max_offset": "money?",
+    "fallback_target": "money?",  # #314
 }
 _SIDE = {
     "position": "int",
@@ -142,6 +143,8 @@ _BOT = {
     "use_floating_entry": "bool", "floating_start": "text?", "floating_end": "text?",
     "use_exact_dte": "bool",  # slice 14: missing is on, a new bot's default
     "min_short_width": "money?", "move_conflicted_strikes": "bool",  # slice 19
+    "keep_trying_minutes": "int?",  # #314
+    "use_min_short_width": "bool", "use_keep_trying": "bool",  # #315: missing is on
 }  # fmt: skip
 SHARED = frozenset(_BOT)
 # The file says "sides", like the app's pages.

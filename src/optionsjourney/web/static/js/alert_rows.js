@@ -1,6 +1,6 @@
 // The alert rows (#158): + Add alert copies the last row as a blank one (up to the form's
-// data-alert-most) and counts it in the form. Without this script the form shows the saved
-// rows and one blank row, and a saved form adds another.
+// data-alert-most) and counts it in the form. Without this script the form shows only the
+// saved rows (one blank row when there are none).
 import { showsFor } from './filter_fields.js';
 
 // A row's field name moved to row `to`: da-<row>-<part>.

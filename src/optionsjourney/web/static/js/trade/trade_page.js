@@ -6,10 +6,12 @@
 // instead (POST /api/trade/bot-entry), claimed on a one-time token so a second press sends nothing.
 // Trade Ideas (#292): Idea ☆ saves the ticket as an idea (ideas/save.js); /trade?idea=<id> opens
 // one in the ticket, and Send or the bot's Send then carries its id so the server retires it.
+// Paste ThinkorSwim order (#312) fills the ticket from a copied order (tos_parse.js); it never sends.
 import { installChainPanel } from './chain_panel.js';
 import { tourTray, tourTrayFor } from './tour_tray.js';
 import { installIdeaSave, pageIdea, ideaBanner, ideaTray } from '../ideas/save.js';
 import * as T from './chain_tray.js';
+import { firstTosOrder, tosTray } from './tos_parse.js';
 import { trayStats, stripItems } from './chain_stats.js';
 import { tipHtml, tipEngaged } from '../tip.js';
 import { TRADE_TIPS, TRADE_MORE } from './trade_tips.js';
@@ -631,6 +633,46 @@ function openIdea(saved) {
   if (ideaBannerEl) { ideaBannerEl.textContent = ideaBanner(saved); ideaBannerEl.hidden = false; }
   render();
 }
+
+// Paste ThinkorSwim order: the ticker, then the legs matched to its chain, then the order's limit.
+// The whole order goes in or none of it; Review and Send stay yours.
+const tosBox = document.getElementById('tos-paste');
+const tosText = tosBox.querySelector('[data-tos-text]'), tosMsg = tosBox.querySelector('[data-tos-msg]');
+document.getElementById('tos-open').addEventListener('click', () => { tosBox.hidden = false; tosMsg.textContent = ''; tosText.focus(); });
+tosBox.querySelector('[data-tos-cancel]').addEventListener('click', () => { tosBox.hidden = true; });
+tosBox.querySelector('[data-tos-load]').addEventListener('click', async e => {
+  const { order, extra, error } = firstTosOrder(tosText.value);
+  if (error) { tosMsg.textContent = error; return; }
+  e.target.disabled = true;
+  e.target.textContent = 'Loading…';
+  tosMsg.textContent = '';
+  try {
+    if (order.ticker !== ctx.ticker) {
+      document.querySelector('#trade-symbol [name=ticker]').value = order.ticker;
+      history.replaceState(null, '', `/trade?ticker=${encodeURIComponent(order.ticker)}`);
+      stopGraph();
+      await panel.setTicker(order.ticker);
+    }
+    const exps = [...new Set(order.legs.map(l => l.expiry))];
+    const rows = await Promise.all(exps.map(x => panel.rowsFor(x)));
+    const got = tosTray(order, Object.fromEntries(exps.map((x, i) => [x, rows[i]])));
+    if (got.error) { tosMsg.textContent = got.error; return; }
+    panel.setTray(got.tray);
+    price = got.price;
+    effect = got.effect;
+    autoPrice = false;
+    const more = extra ? ` Only the first order was loaded; ${extra} more line${extra > 1 ? 's were' : ' was'} left out.` : '';
+    result = { tone: 'muted', text: `Loaded from ThinkorSwim. Nothing is sent: check it, then Review order.${more}` };
+    tosBox.hidden = true;
+    tosText.value = '';
+    render();
+  } catch (err) {
+    tosMsg.textContent = `Couldn't load it: ${err.message}`;
+  } finally {
+    e.target.disabled = false;
+    e.target.textContent = 'Load';
+  }
+});
 
 render();
 renderWorking();

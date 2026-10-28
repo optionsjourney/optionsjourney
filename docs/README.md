@@ -146,6 +146,8 @@ Documentation is a first-class part of this project. A feature isn't done until 
 | [0118](decisions/0118-journal-close-has-no-market-choice.md) | The journal's Close has no Limit/Market choice | Accepted |
 | [0119](decisions/0119-metrics-tab-and-calendar-drawer.md) | Metrics gets its own tab; the P/L calendar opens a day, week or month by dashboard and account | Accepted |
 | [0120](decisions/0120-only-logged-in-brokers-are-asked.md) | Only brokers you're logged in to are asked | Accepted |
+| [0121](decisions/0121-keep-trying-then-a-fallback-premium.md) | An entry time keeps trying, then tries a fallback premium | Accepted (its blank-means-off replaced by 0122) |
+| [0122](decisions/0122-switches-for-min-width-and-keep-trying.md) | Min short width and Keep trying have on/off switches | Accepted |
 
 ## Writing a new decision
 

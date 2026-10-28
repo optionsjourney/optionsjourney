@@ -127,7 +127,7 @@ Example: the most buying power is `$2,000`. The trade is a 5-wide put credit spr
 The run page says how an entry was sized: the amount, the worst price, and what the broker said one contract needs.
 
 ### Legs: how the strikes are chosen
-Each leg is one row: buy or sell (sold rows are red, bought ones green), call or put, and how its strike is found. A row shows only the boxes its **Pick by** uses: **From** for an offset or a premium leg, **Exact** for an offset, **Max offset** for a premium leg with a From leg. The words beside **Target** say what it's in ($, Δ, or points). The ⓘ on each heading explains it. With two or more groups, the arrows under **Groups** move a leg between them.
+Each leg is one row: buy or sell (sold rows are red, bought ones green), call or put, and how its strike is found. A row shows only the boxes its **Pick by** uses: **From** for an offset or a premium leg, **Exact** for an offset, **Max offset** for a premium leg with a From leg, and **Fallback** for a sold premium leg while **Min short width** is set. The words beside **Target** say what it's in ($, Δ, or points). The ⓘ on each heading explains it. With two or more groups, the arrows under **Groups** move a leg between them.
 
 **🔗 on a leg** adds a leg right below it, measured from it: the other side (a bought wing for a sold leg), the same type, ratio and DTE, picked by offset 5 points further out (puts below, calls above). Change the 5 to the width you want. A leg that is itself an offset has no 🔗.
 
@@ -146,7 +146,8 @@ Each leg is one row: buy or sell (sold rows are red, bought ones green), call or
 The usual setup is the shorts by premium or delta and the wings by offset from their short. Each leg has a **ratio** from 1 to 10 (see [Shapes a bot can trade](#shapes-a-bot-can-trade)) and a **DTE**, its days to expiration: 0 is today, up to 60. Legs with different DTEs make a calendar or a diagonal, and any DTE above 0 means the trade is held overnight (see [Calendars, diagonals and trades held overnight](#calendars-diagonals-and-trades-held-overnight)).
 
 Under **Strike picking**, below the legs: **Exact DTE only** (see [Calendars, diagonals and trades held overnight](#calendars-diagonals-and-trades-held-overnight)) and two more:
-- **Min short width:** with one sold put and one sold call in the same expiration, they're moved apart one listed strike at a time until the call is at least this many points above the put. Each step moves whichever side gives up less of its own target (its premium, or its delta). Example: `20` turns sold strikes at `5,795` and `5,805` into `5,790` and `5,810`. If there aren't enough strikes, the entry is skipped. Blank is off. The wings are placed from where the shorts end up.
+- **Min short width:** switch it on and type the points. With one sold put and one sold call in the same expiration, they're moved apart one listed strike at a time until the call is at least this many points above the put. Each step moves whichever side gives up less of its own target (its premium, or its delta). Example: `20` turns sold strikes at `5,795` and `5,805` into `5,790` and `5,810`. If there aren't enough strikes, the entry is skipped. Switched off, the points are kept but not used, so you can turn it off for a day and back on. The wings are placed from where the shorts end up.
+- **Fallback premium:** while **Min short width** is on, each sold leg picked by premium needs a **Fallback**, a lower premium than its **Target**. Its box is outlined in red until you fill it, and the bot won't save without it. If every try at an entry time is skipped (see [Keep trying](#keep-trying)), one last try aims those legs at their fallback. Example: Target `2.80`, Fallback `2.40`. **Don't want a fallback?** Type `0`: the bot keeps the width, and if the entry is still skipped after its tries, it stays skipped. With **Min short width** off, the box is hidden and not used.
 - **Move conflicted strikes** (new bots start with it on): a leg that lands on an option you already hold the other way would make your broker refuse the whole order, so it moves one strike further out. So does a leg on the same option as another leg of this order. It moves at most one strike: if that one is also taken, held the other way, or has no price, it stays where it is. The app reads your positions for this at each entry; if it can't, it goes on without that check and says so in the run's log.
 
 The run's log says which strikes moved and why.
@@ -270,7 +271,13 @@ If group 2 can't be closed then (the market's regular session is over, a close i
 #### Profit actions
 Once a group has made a set profit, close part of it and/or move its stop closer, to lock in some of the gain. Tick **Use profit actions on this group** and fill in a row (up to 5 per group):
 - **At:** the profit that sets it off, measured like the group's profit target: the % of its entry price made (its credit, or the debit paid), or $ profit per contract if the target is in $. Each row's **At** must be higher than the one before, and below the group's own profit target.
-- **Close %:** this share of the group's contracts at entry, rounded down, at least 1. `0` closes nothing. At least 1 always stays open for the profit target, so a row that would close everything is skipped (you get an alert). All rows together must close less than 100%.
+- **Close %:** this share of the group's contracts at entry, rounded down, at least 1. `0` closes nothing. All rows together must close less than 100%. If a row would leave nothing for the profit target, it closes the whole group instead, and the rows after it don't run:
+
+  | Contracts | Close % | What happens |
+  |---|---|---|
+  | 4 | 25 | closes 1, 3 stay for the target |
+  | 1 | 10 | closes the 1 (the whole trade) |
+  | 2 | 50, then 10 | first closes 1, second closes the last 1 |
 - **Then move the stop to:** the loss you'd accept on what's left, as a % of the group's entry price. `0` is about break-even; `-25` keeps about a quarter of it. A resting stop buys the short back at the credit × (1 + that %), counting the wing as worth nothing; a watched stop moves to that loss on the whole group. Leave it blank to keep the stop where it is.
   - Or pick **$ P&L** beside it: the profit (or, negative, the loss) per contract the stop keeps. On a side that took in `2.45`, `0.40` rests the stop at `2.05`, where buying the short back keeps `0.40`; `-1.00` allows a loss of `1.00`. With a target in $, it must be below the row's **At**.
 
@@ -415,11 +422,34 @@ Example: a window of `11:30` to `11:45` with a VIX maximum of `20`. VIX is `21` 
 #### Entry times
 A list of times in New York time, such as `09:45`, each with an on/off switch. Press **+ Add entry time** for another row and **✕** to remove one. Times run from 09:30 to 15:57. The app doesn't open anything in the last 2 minutes before the close.
 
-You can skip the colon: `945`, `9:45` and `09:45` all mean 09:45, and `1314` is 13:14. The box shows `09:45` once you leave it. (Three digits are read as written: `130` is 01:30, not 13:00.) The entry window's times read the same way.
+Type the time into the box, or click the clock in it to pick the hour, minute and second. The box shows the time the way your computer shows times, so it may read 1:37 PM rather than 13:37; it's the same time. The entry window's times work the same way, in minutes.
 
-**Seconds, if you want them.** An entry time can name a second, in 15-second steps: `9:30:15` or `93015` is 09:30:15, which suits an entry just after the open. Other seconds, like `09:30:10`, aren't accepted. The app's clock checks every 10 seconds, so a time with seconds enters within about 10 seconds of it. The entry window works in whole minutes only.
+**Seconds, if you want them.** An entry time can name a second, in 15-second steps: 09:30:15, for example, which suits an entry just after the open. Other seconds, like `09:30:10`, aren't accepted. The app's clock checks every 10 seconds, so a time with seconds enters within about 10 seconds of it. The entry window works in whole minutes only.
 
 Each time can also have its own **contracts**. Leave contracts blank to use the bot's contracts. A bot sized by buying power has no contracts box on its times. Say the bot's contracts is 2: a `09:45` time with 1 contract buys 1, a `10:30` time with 4 buys 4, and a `11:15` time left blank buys 2.
+
+#### Keep trying
+**Keep trying**, a switch under the entry times, is for two skips that can pass a few seconds later as prices move: the trade's price outside its [Premium bounds](#premium-bounds), and sold strikes that can't be moved **Min short width** apart. When an entry time is skipped for one of those, the bot picks again every 10 seconds for the minutes you type (1 to 30). Off means one try; the minutes are kept for when you switch it back on. The ⓘ beside it has a table of examples. Anything else that skips, such as a filter, a blackout day or **Stop all bots**, still skips at once, and each new try checks those again first.
+
+**Then the fallback.** With **Min short width** on, once the tries are used up, one last try aims each sold leg picked by premium at its **Fallback** premium (see [Strike picking](#legs-how-the-strikes-are-chosen)). The premium **minimum** isn't checked on that try (a lower premium means a smaller credit), but the maximum and everything else are. With Keep trying off, the fallback try comes straight after the first. An entry window tries the fallback on its last minute.
+
+Examples: entry time 10:00, Keep trying on for `2` minutes, Premium bounds at least `5.00`, Min short width `20`, Target `2.80` and Fallback `2.40` on the sold legs.
+
+| At the entry | What the bot does |
+|---|---|
+| Credit 4.70 at 10:00, 5.10 at 10:00:30 | Enters at 10:00:30, its 4th try. |
+| Credit under 5.00 until 10:02 | One last try at 2.40, with no minimum. Enters if that passes; if not, the Reason ends "(tried 14 times, the last at the fallback premium)". |
+| Not enough strikes to put the sold legs 20 apart | The same: tries every 10 seconds, then the fallback. |
+| Credit 5.20 at 10:00 | Enters at once. |
+| A filter fails, or a blackout day | Skipped at once, never retried. |
+| Stop all bots or No new trades at 10:01 | The next try sees it: skipped. |
+| Keep trying off | One try at 2.80, then straight away one at 2.40. |
+| Fallback `0` on the sold legs | Keeps trying at 2.80 until 10:02, then skipped. |
+| Min short width off | Keeps trying at 2.80 until 10:02, with no fallback try. |
+
+The run's log says which try entered.
+
+While it keeps trying, the run counts toward **Max entries per day**.
 
 **The per-trade limit has the last word.** If a time asks for more than the bot's **per trade** limit, the app sends the limit instead and notes on the run that it cut the size down (for example "asked for 4, sent 3"). A time can't ask for more than the bot's **per day** limit, though: the page won't save it ("entry time 09:47: 4 contracts is more than the daily limit of 3"). Contracts must be a whole number from 1 to 100; anything else, such as `two` or `0`, is shown as a problem rather than quietly treated as blank, and the same goes for a premium bound that isn't a number.
 
@@ -554,7 +584,7 @@ Preview order ignores both.
 ## Preview order
 **Preview order** is on the bot's page (and in the bot list). It shows the order the bot would send right now, **without sending it**: it picks strikes from the live option prices, works out the price and size, and asks your broker to check the order. The page shows the strikes it chose, the price (a credit or a debit), how many contracts, what your broker said, each group's **exits** (its stop and profit target as prices on this order, and which one rests at the broker), and a **risk graph** of the trade at the middle prices, the same graph as in the Journal. It works the same for a Live bot and a Paper bot, and sending nothing is guaranteed: it only ever asks the broker to check.
 
-**It saves no run.** Nothing is added to the bot's runs, the Journal or its Paper trades view, and it doesn't count against the bot's daily limit, entries per day or open trades. It ignores blackout days, the schedule, the market filters and premium bounds, but it still obeys Freeze (and your size limits). It works **when the market is closed** too: it picks from the last prices the broker has, so outside market hours the strikes and price are only a guide to what the bot would do at its entry time. Use it to check your settings. Older preview runs from before this button are still in the runs list.
+**It saves no run.** Nothing is added to the bot's runs, the Journal or its Paper trades view, and it doesn't count against the bot's daily limit, entries per day or open trades. It ignores blackout days, the schedule, the market filters and premium bounds, but it still obeys Freeze (and your size limits). It works **when the market is closed** too: it picks from the last prices the broker has, so outside market hours the strikes and price are only a guide to what the bot would do at its entry time. **With a fallback premium** (see [Keep trying](#keep-trying)), it also shows what the last try would pick at the fallback, and its price. That pick is never sent to the broker. Use it to check your settings. Older preview runs from before this button are still in the runs list.
 
 ## Trade now
 A **live** bot's page has **Trade now**: it sends the bot's entry now, off its schedule, as a real order. Type `TRADE` in the box first (and tick the "I understand" box if the app watches this bot's stops).

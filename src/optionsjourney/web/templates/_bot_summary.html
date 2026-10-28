@@ -5,13 +5,13 @@
         <div class="stat-tile"><div class="stat__label">Underlying</div>
             <div class="stat__value">{{ stored.underlying }}</div>
             <div class="muted small">{{ summary.account }}</div></div>
-        <div class="stat-tile"><div class="stat__label">Legs</div>
+        <div class="stat-tile bot-summary__nowrap"><div class="stat__label">Legs</div>
             {% for line in summary.legs %}<div class="small">{{ line }}</div>{% else %}<div class="muted small">No legs</div>{% endfor %}</div>
-        <div class="stat-tile"><div class="stat__label">Entry</div>
+        <div class="stat-tile bot-summary__wrap"><div class="stat__label">Entry</div>
             {% for line in summary.entry %}<div class="small">{{ line }}</div>{% endfor %}</div>
-        <div class="stat-tile"><div class="stat__label">Exit</div>
+        <div class="stat-tile bot-summary__nowrap"><div class="stat__label">Exit</div>
             {% for line in summary.exit %}<div class="small">{{ line }}</div>{% else %}<div class="muted small">No exits</div>{% endfor %}</div>
-        <div class="stat-tile"><div class="stat__label">Execution</div>
+        <div class="stat-tile bot-summary__nowrap"><div class="stat__label">Execution</div>
             {% for phase, lines in summary.execution %}<div class="small"><strong>{{ phase }}</strong></div>{% for line in lines %}<div class="small">{{ line }}</div>{% endfor %}{% endfor %}</div>
     </div>
     {% set st = summary.stats %}

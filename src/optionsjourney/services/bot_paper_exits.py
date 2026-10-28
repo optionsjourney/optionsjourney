@@ -570,20 +570,12 @@ def _fire_profit(deps, paper, group, number, action, outcome, entry, views, now)
     position, why = group.position, f"profit action {number}"
     held = paper.held[position]
     said = {"sig": action.sig, "number": number, "detail": outcome.detail}
-    n = watch.contracts_for(paper.contracts * _own(paper, position)[1], action.close_pct)
-    if n > 0 and held - n < 1:
-        note = (f"skipped: closing {n} of the {held} open would leave nothing for the profit "
-                "target, so this and any later actions on the side won't run")  # fmt: skip
-        _record(deps, paper, position, why, now, **said, blocked=True, note=note)
-        bot_entry.alert(
-            deps, f"Paper: {paper.bot.name} {why} skipped",
-            f"{_group_name(paper, position)}: {outcome.detail}. It was {note}.",
-            f"/automation/{paper.bot.id}/runs", run_id=paper.id, routine=True,
-        )  # fmt: skip
-        return True
+    # An action that would leave 0 for the profit target closes everything still held
+    n = min(watch.contracts_for(paper.contracts * _own(paper, position)[1], action.close_pct),
+            held)  # fmt: skip
     if n > 0 and not _close(deps, paper, position, n, why, now):
         return False
-    if action.moves_stop:
+    if action.moves_stop and n < held:
         said |= _profit_move(deps, paper, position, entry, action, why, views, now)
     _record(deps, paper, position, why, now, **said)
     if n == 0:

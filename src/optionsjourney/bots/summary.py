@@ -5,7 +5,7 @@ from decimal import Decimal
 
 from optionsjourney.bots import schedule
 from optionsjourney.bots.date_lists import DATE_SETS, short_label
-from optionsjourney.bots.definition import BotDef, ChaseDef, GroupDef, LegDef
+from optionsjourney.bots.definition import BotDef, ChaseDef, GroupDef, LegDef, min_width, uses_fallback
 from optionsjourney.trading.orders import Side
 
 
@@ -39,6 +39,8 @@ def leg_line(bot: BotDef, leg: LegDef) -> str:
     side = "short" if Side(leg.side) is Side.SELL else "long"
     if leg.pick == "premium":
         pick = _money(leg.target)
+        if min_width(bot) is not None and uses_fallback(leg) and leg.fallback_target:
+            pick += f", else {_money(leg.fallback_target)}"  # #314
     elif leg.pick == "delta":
         pick = f"Δ{_num(leg.target)}"
     elif leg.pick == "offset":
@@ -142,11 +144,10 @@ def exit_lines(bot: BotDef) -> list[str]:
 
 
 def chase_lines(chase: ChaseDef) -> list[str]:
-    return [
-        f"Adjust {chase.step:.2f} every {chase.interval_seconds} seconds up to "
-        f"{chase.max_tries} tries",
-        f"Starting offset {chase.start_offset:.2f}",
-    ]
+    lines = [f"Adjust {chase.step:.2f} every {chase.interval_seconds} seconds up to {chase.max_tries} tries"]
+    if chase.start_offset:
+        lines.append(f"Starting offset {chase.start_offset:.2f}")
+    return lines
 
 
 def execution(bot: BotDef) -> list[tuple[str, list[str]]]:

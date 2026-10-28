@@ -58,6 +58,23 @@ def test_a_partly_closed_spread():
     assert row.realized_percent == p.realized_pl / Decimal("400") * 100
 
 
+def test_legs_read_highest_strike_first():
+    later = AT + timedelta(days=1)
+    [p] = build_positions(
+        group_fills(
+            [
+                fill(B, Effect.OPEN, 5790, qty=2, price="1.00", order="1"),
+                fill(S, Effect.OPEN, 5800, qty=2, price="3.00", order="1"),
+                fill(S, Effect.CLOSE, 5790, price="0.40", order="2", at=later),
+                fill(B, Effect.CLOSE, 5800, price="1.50", order="2", at=later),
+            ]
+        )
+    ).positions
+    row = row_details(p)
+    assert [leg.label for leg in row.open_legs] == ["5800 P 10/16", "5790 P 10/16"]
+    assert [leg.label for leg in row.closing_orders[0].legs] == ["5800 P 10/16", "5790 P 10/16"]
+
+
 # --- Bots slice 20: the record's P/L % and days in trade (Tracker2's _trade_row) -------
 
 

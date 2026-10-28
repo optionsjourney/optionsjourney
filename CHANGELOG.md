@@ -4,6 +4,25 @@ Notable changes to OptionsJourney. The format follows [Keep a Changelog](https:/
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-28
+
+Paste an order from ThinkorSwim straight into the Trade page, and bots that keep trying for a good entry, with a fallback premium.
+
+### Added
+- **Trade page:** **Paste ThinkorSwim order**: copy an order in ThinkorSwim and paste it to fill the ticket (ticker, legs, quantity, limit). The chain switches to the order's expiration and scrolls to its strikes. Nothing is sent until you review it. The button has the ThinkorSwim logo and a 📋. See the guide's Trade page.
+- **Bots:** **Keep trying**, a switch under Schedule with the minutes to keep trying. An entry time skipped because the price is outside Premium bounds, or the sold strikes can't be moved Min short width apart, tries again every 10 seconds for that long. Its ⓘ has a table of examples.
+- **Bots:** a **Fallback** premium on each sold leg picked by premium, needed while Min short width is on (its box shows in red until filled). If every try is skipped, one last try aims at the fallback, with no premium minimum. A fallback of 0 means no fallback try. Preview order shows what that try would pick.
+
+### Changed
+- **Bots:** **Min short width** has an on/off switch, like Blackout days. Switched off, its points are kept but not used. Bots that already had a width keep it on.
+- **Bots:** a profit action that would leave nothing for the profit target now closes the whole trade, instead of being skipped with an alert.
+- **Bots:** entry times and the entry window have a time picker (click the clock in the box).
+- **Bots:** a bot's alerts list shows only the alerts you saved; **+ Add alert** adds another row.
+- **Journal:** legs read highest strike first.
+
+### Fixed
+- **Journal:** a ratio trade such as 3 calls against 2 puts counted as 2 lots and showed half its entry and exit price. It's now 1 lot at its full price; 1:1, 2:1 and 3:1 trades are unchanged.
+
 ## [0.6.0] - 2026-10-25
 
 A Metrics tab with a P/L calendar you can click into, alerts and closing on several journal trades at once, and the app on your phone.

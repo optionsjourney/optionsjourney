@@ -43,3 +43,9 @@ def test_legs_groups_and_chase_in_a_line_each():
         assert "SL 90%" in lines[0]
     phases = summary.execution(BOT)
     assert [p for p, _ in phases] == ["Entry", "Exit"] and "tries" in phases[0][1][0]
+
+
+def test_a_zero_starting_offset_is_left_out():
+    chase = replace(BOT.entry_chase, start_offset=Decimal("0"))
+    assert not any("offset" in line for line in summary.chase_lines(chase))
+    assert summary.chase_lines(replace(chase, start_offset=Decimal("0.05")))[1] == "Starting offset 0.05"

@@ -2257,3 +2257,108 @@ def test_the_timeline_reads_the_untimed_lead_entries(deps, factory):
     assert _events(run) == ["Capped", "Placed", "Filled"]
     sized = run_of(factory, bot_entry.fire(deps, _dollars(factory, "600"), "09:47"))
     assert _events(sized) == ["Sized by buying power", "Placed", "Filled"]
+
+
+# #314: an entry time keeps trying, then a last try at the fallback premiums
+def _keeps_trying(factory, minutes=1, **more):
+    bot_id = make(factory, live=True)
+    resize(factory, bot_id, use_premium_bounds=True, premium_min=D("50"),
+           keep_trying_minutes=minutes, **more)  # fmt: skip
+    return bot_id
+
+
+def _with_fallbacks(factory, bot_id, fallback=D("1.00")):
+    bot = bot_store.load(factory, bot_id)
+    legs = tuple(replace(leg, fallback_target=fallback) if leg.position in (0, 2) else leg
+                 for leg in bot.legs)  # fmt: skip
+    resize(factory, bot_id, legs=legs, min_short_width=D("5"))
+
+
+def test_an_entry_time_keeps_trying_every_ten_seconds_then_skips(deps, factory):
+    slept = []
+    deps.sleep = slept.append
+    run = run_of(factory, bot_entry.fire(deps, _keeps_trying(factory), "09:47"))
+    assert run.status == "skipped"
+    assert run.reason == "net credit 4.90 < min 50.00 (tried 7 times)"
+    assert slept == [10] * 6
+    assert [c for c in deps.tasty.calls if c[0] == "place"] == []
+
+
+def test_a_later_try_that_passes_enters(deps, factory, monkeypatch):
+    real, seen = bot_entry.filters.premium_problem, []
+
+    def twice_too_low(bot, net, floor=True):
+        seen.append(net)
+        return "net credit too low" if len(seen) < 3 else real(bot, net, False)
+
+    monkeypatch.setattr(bot_entry.filters, "premium_problem", twice_too_low)
+    run = run_of(factory, bot_entry.fire(deps, _keeps_trying(factory), "09:47"))
+    assert run.status == "filled" and len(seen) == 3
+    assert ["try 3"] == next(e["strikes"] for e in run.chase_log if "strikes" in e)
+
+
+def test_stop_all_bots_while_waiting_ends_the_tries(deps, factory):
+    deps.sleep = lambda s: orders.set_switch(factory, "no_new_trades", True)
+    run = run_of(factory, bot_entry.fire(deps, _keeps_trying(factory), "09:47"))
+    assert run.status == "skipped" and run.reason == "No new trades is on."
+
+
+def test_the_last_try_aims_at_the_fallback_premium_with_no_minimum(deps, factory):
+    bot_id = _keeps_trying(factory)
+    _with_fallbacks(factory, bot_id)
+    run = run_of(factory, bot_entry.fire(deps, bot_id, "09:47"))
+    assert run.status == "filled"
+    assert [leg["strike"] for leg in run.legs][0::2] != ["5910", "5690"]  # further out
+    notes = next(e["strikes"] for e in run.chase_log if "strikes" in e)
+    assert notes[0] == "try 8, at the fallback premium"
+
+
+def test_with_no_keep_trying_the_fallback_is_tried_straight_after(deps, factory):
+    bot_id = _keeps_trying(factory, minutes=None)
+    _with_fallbacks(factory, bot_id)
+    run = run_of(factory, bot_entry.fire(deps, bot_id, "09:47"))
+    assert run.status == "filled"
+    notes = next(e["strikes"] for e in run.chase_log if "strikes" in e)
+    assert notes[0] == "try 2, at the fallback premium"
+
+
+def test_a_skipped_fallback_try_says_it_was_tried(deps, factory, monkeypatch):
+    monkeypatch.setattr(bot_entry.filters, "premium_problem", lambda *a: "net credit too high")
+    bot_id = _keeps_trying(factory, minutes=None)
+    _with_fallbacks(factory, bot_id)
+    run = run_of(factory, bot_entry.fire(deps, bot_id, "09:47"))
+    assert run.status == "skipped" and run.reason.endswith(
+        "(tried 2 times, the last at the fallback premium)"
+    )
+
+
+def test_a_window_falls_back_on_its_last_minute_only(deps, factory):
+    bot_id = window_bot(factory, live=True, use_premium_bounds=True, premium_min=D("50"))
+    _with_fallbacks(factory, bot_id)
+    at(deps, "09:49")
+    assert bot_entry.fire_floating(deps, bot_id, "09:49") is None
+    at(deps, "09:50")
+    assert run_of(factory, bot_entry.fire_floating(deps, bot_id, "09:50")).status == "filled"
+
+
+def test_keep_trying_switched_off_tries_once(deps, factory):
+    slept = []
+    deps.sleep = slept.append
+    bot_id = _keeps_trying(factory, use_keep_trying=False)  # #315: the minutes are kept
+    run = run_of(factory, bot_entry.fire(deps, bot_id, "09:47"))
+    assert run.reason == "net credit 4.90 < min 50.00" and slept == []
+
+
+def test_min_width_switched_off_has_no_fallback_try(deps, factory):
+    bot_id = _keeps_trying(factory, minutes=None)
+    _with_fallbacks(factory, bot_id)
+    resize(factory, bot_id, use_min_short_width=False)
+    run = run_of(factory, bot_entry.fire(deps, bot_id, "09:47"))
+    assert run.status == "skipped" and run.reason == "net credit 4.90 < min 50.00"
+
+
+def test_a_fallback_of_0_means_no_fallback_try(deps, factory):
+    bot_id = _keeps_trying(factory, minutes=None)
+    _with_fallbacks(factory, bot_id, fallback=D("0"))
+    run = run_of(factory, bot_entry.fire(deps, bot_id, "09:47"))
+    assert run.status == "skipped" and run.reason == "net credit 4.90 < min 50.00"

@@ -9,10 +9,24 @@
            class="w-28 px-2 py-1 rounded border border-gray-300 dark:border-gray-600 bg-transparent uppercase">
     <button class="px-3 py-1 rounded bg-blue-600 text-white text-sm">Go</button>
     <span class="text-xs text-gray-500 dark:text-gray-400">Click a bid to sell, an ask to buy.</span>
+    <button type="button" id="tos-open" class="ml-auto inline-flex items-center gap-1 px-2 py-1 rounded border border-gray-300 dark:border-gray-600 text-sm font-semibold"
+            title="Paste a ThinkorSwim order: load an order copied from ThinkorSwim into the ticket" aria-label="Paste ThinkorSwim order"><img src="{{ url_for('static', filename='tos-favicon.ico') }}" width="16" height="16" alt="" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/></svg></button>
 </form>
 <div class="grid grid-cols-1 lg:grid-cols-5 gap-4">
     <section id="trade-chain" class="lg:col-span-3 h-[70vh] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden"></section>
     <div class="lg:col-span-2 flex flex-col gap-4">
+        {# Paste a ThinkorSwim order (#312, js/trade/trade_page.js): fills the ticket, never sends. #}
+        <section id="tos-paste" hidden aria-label="Paste a ThinkorSwim order" class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm">
+            <div class="font-semibold mb-1">Paste a ThinkorSwim order</div>
+            <div class="text-xs text-gray-500 dark:text-gray-400 mb-2">In ThinkorSwim, right-click the order and copy it, then paste it here. It fills the ticket; nothing is sent.</div>
+            <textarea data-tos-text rows="2" spellcheck="false" placeholder="SELL -1 VERTICAL SPX 100 (Weeklys) 13 NOV 26 7600/7590 PUT @1.25 LMT"
+                      class="w-full px-1 py-1 rounded border border-gray-300 dark:border-gray-600 bg-transparent font-mono text-xs text-gray-900 dark:text-gray-100"></textarea>
+            <div data-tos-msg class="text-xs text-red-600 dark:text-red-400 mt-1"></div>
+            <div class="flex gap-2 mt-2">
+                <button type="button" data-tos-load class="px-3 py-1 rounded bg-blue-600 text-white disabled:opacity-40">Load</button>
+                <button type="button" data-tos-cancel class="px-3 py-1 rounded border border-gray-300 dark:border-gray-600">Cancel</button>
+            </div>
+        </section>
         {# Trade Ideas (#292): the idea this ticket was opened from (js/trade/trade_page.js fills it). #}
         <div id="idea-banner" hidden class="px-3 py-2 rounded-lg border border-amber-500/60 bg-amber-500/10 text-sm text-gray-800 dark:text-gray-100"></div>
         <section id="trade-ticket" {% if demo_mode %}data-demo="1" {% endif %}{% if tour_tray %}data-tour-tray='{{ tour_tray | tojson }}' {% endif %}{% if idea %}data-idea='{{ idea | tojson }}' {% endif %}class="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3 text-sm"></section>

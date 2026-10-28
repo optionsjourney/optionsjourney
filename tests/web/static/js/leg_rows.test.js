@@ -3,18 +3,25 @@ import assert from 'node:assert/strict';
 import { uses, unitFor, groupsOp } from '../../../../src/optionsjourney/web/static/js/leg_rows.js';
 
 test('an offset reads From and Exact, never a max offset', () => {
-  assert.deepEqual(uses('offset', '0'), { from: true, exact: true, max: false });
+  assert.deepEqual(uses('offset', '0'), { from: true, exact: true, max: false, fallback: false });
 });
 
 test('a premium leg reads a max offset only with a From leg', () => {
-  assert.deepEqual(uses('premium', ''), { from: true, exact: false, max: false });
-  assert.deepEqual(uses('premium', '1'), { from: true, exact: false, max: true });
+  assert.deepEqual(uses('premium', ''), { from: true, exact: false, max: false, fallback: false });
+  assert.deepEqual(uses('premium', '1'), { from: true, exact: false, max: true, fallback: false });
 });
 
 test('delta and spot read none of them', () => {
   for (const pick of ['delta', 'spot']) {
-    assert.deepEqual(uses(pick, '0'), { from: false, exact: false, max: false });
+    assert.deepEqual(uses(pick, '0', 'sell', '20'), { from: false, exact: false, max: false, fallback: false });
   }
+});
+
+test('#314: a sold premium leg takes a fallback only while Min short width is set', () => {
+  assert.equal(uses('premium', '', 'sell', '20').fallback, true);
+  assert.equal(uses('premium', '', 'sell', ' ').fallback, false);
+  assert.equal(uses('premium', '', 'buy', '20').fallback, false);
+  assert.equal(uses('delta', '', 'sell', '20').fallback, false);
 });
 
 test('the unit names what the target is in', () => {

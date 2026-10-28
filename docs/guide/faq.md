@@ -78,7 +78,7 @@ Each sync links a trade to its bot and gives it the bot's name only when the mat
 | already at … entries today / already holding … open trades | **Max entries per day** or **Max open trades** (see [Limits](automation.md#limits-on-entries-and-open-trades)). |
 | VIX level filter: … (or another filter) | A market filter wasn't met, or its prices couldn't be read (see [Market filters](automation.md#market-filters)). |
 
-**After those checks** the bot picks its strikes and prices the trade, and a run can still be skipped then: no strike that fits, deltas or the SPX price not available, a premium outside its bounds, a price too close to even, or a budget that doesn't buy one contract. Each says so in its Reason, and the ones about missing prices also send you one alert that day. A Paper bot's run is also skipped if your broker's check of the order would refuse it.
+**After those checks** the bot picks its strikes and prices the trade, and a run can still be skipped then: no strike that fits, deltas or the SPX price not available, a premium outside its bounds (the reason says "tried 7 times" if it kept trying; see [Keep trying](automation.md#keep-trying)), a price too close to even, or a budget that doesn't buy one contract. Each says so in its Reason, and the ones about missing prices also send you one alert that day. A Paper bot's run is also skipped if your broker's check of the order would refuse it.
 
 **Missed** means the order went out and was chased but never filled, so there's no trade (see [What happens at an entry time](automation.md#what-happens-at-an-entry-time)).
 
@@ -119,6 +119,9 @@ Logging in to Schwab from this app on another computer, or from another program 
 
 ### Why can't I change a bot's order in Pending?
 A bot, or a trade the app manages for you, places and moves its own orders: its stop, its target and its entry chase. If you changed one by hand, the bot would be working against you. So those rows have no buttons, say "Managed by …, use its controls." A bot's row names the bot, and links to its run when known; a managed trade's row says it's managed by the trade's rules. To change what a bot does, use its page, or pause it (see [Pausing trading](pausing-trading.md)). Only orders you sent from the app can be changed or cancelled there; an order placed at your broker or in another app is changed where it came from (see [Pending orders](journal.md#pending-orders)).
+
+### Can I bring in a trade I built in ThinkorSwim?
+Yes. Copy the order in ThinkorSwim, then use the button with the ThinkorSwim logo and a 📋 (Paste ThinkorSwim order) on the [Trade](trade.md#paste-a-thinkorswim-order) page. It fills the ticket; nothing is sent until you review and send it yourself.
 
 ### When does an idea leave my Ideas list?
 Only when you **Delete** it, or when you trade it and your broker accepts the order (or a bot takes it as its entry). A refused order, a preview, or an unclear outcome keeps the idea. An idea whose options have expired stays, with its final result, until you delete it. See [Ideas](ideas.md).

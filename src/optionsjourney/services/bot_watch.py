@@ -700,20 +700,12 @@ def _fire_profit(deps, trade: _Trade, group: GroupDef, number: int, action: Prof
             stop_id, old = (stop.id, stop.trigger) if stop is not None else (None, None)
         entry = {"number": number, "sig": action.sig, "detail": outcome.detail,
                  "rule": f"{why}: {action.label(group.target_unit)}"}  # fmt: skip
-        n = watch.contracts_for(original, action.close_pct)
-        if n > 0 and held - n < 1:
-            # profit_actions.plan: this action, and every later one on the side, skipped
-            note = (f"skipped: closing {n} of the {held} open would leave nothing for the "
-                    "profit target, so this and any later actions on the side won't "
-                    "run")  # fmt: skip
-            _record(deps, trade, position, "profit", "failed",
-                    entry | {"notes": [note], "blocked": True})  # fmt: skip
-            said = f"{name}: {outcome.detail}. It was {note}."
-            _alert(deps, trade.bot, f"{why} skipped", said, run_id=trade.run_id)
-            return
+        # profit_actions.plan: an action that would leave 0 for the profit target (a
+        # 1-lot's 10%) closes everything still held; nothing later on the side runs.
+        n = min(watch.contracts_for(original, action.close_pct), held)
         if n > 0:
             move = bot_exits.then_stop_of(action)  # slice 19: a % or a $ P&L level
-            then = None if move is None else move | {"by": why}
+            then = None if move is None or n == held else move | {"by": why}
             # Written before the claim: if anything breaks after, it never fires twice.
             row_id = _record(deps, trade, position, "profit", "failed",
                              entry | {"notes": ["starting the close"]})  # fmt: skip

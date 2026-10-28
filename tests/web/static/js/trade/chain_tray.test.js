@@ -141,3 +141,12 @@ test('netPrices: a 3x put roll prices one unit, credit positive, Nat/Opp from bi
   assert.deepEqual(debit, { mid: -2.05, nat: -2.3, opp: -1.8, unit: 1 });
   assert.equal(T.netPrices(T.emptyTray()), null);
 });
+
+test('trayExpiration shows a loaded trade\'s expiration (a pasted order)', () => {
+  const exps = ['2026-10-28', '2026-11-13', '2026-11-20'];
+  const tray = { legs: [cell({ expiration: '2026-11-20' }), cell({ expiration: '2026-11-13', strike: 41 })] };
+  assert.equal(T.trayExpiration(tray, exps, '2026-10-28'), '2026-11-13');  // the nearest leg
+  assert.equal(T.trayExpiration(tray, exps, '2026-11-20'), '2026-11-20');  // already showing a leg
+  assert.equal(T.trayExpiration({ legs: [cell({ expiration: '2027-01-15' })] }, exps, '2026-10-28'), '2026-10-28');
+  assert.equal(T.trayExpiration(T.emptyTray(), exps, '2026-10-28'), '2026-10-28');
+});

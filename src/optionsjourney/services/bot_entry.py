@@ -10,7 +10,7 @@ import re
 import threading
 import time as clock
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from decimal import ROUND_FLOOR, Decimal
 from functools import partial
@@ -30,7 +30,14 @@ from optionsjourney.bots import (
     strikes,
     underlyings,
 )  # fmt: skip
-from optionsjourney.bots.definition import contracts_for, largest_ratio, trade_cap
+from optionsjourney.bots.definition import (
+    contracts_for,
+    keep_trying,
+    largest_ratio,
+    min_width,
+    trade_cap,
+    with_fallback,
+)
 from optionsjourney.bots.definition import limits as entry_limits
 from optionsjourney.brokers.credentials import CredentialsUnavailable
 from optionsjourney.brokers.http import BrokerError
@@ -814,9 +821,53 @@ def _fire(
     if problem:
         skip(problem)
         return
+    scheduled = not manual and not trade
+    # #314: an entry time skipped on its premium bounds or min short width keeps trying
+    # for the bot's Keep trying minutes; then, as a window does on its last minute, one
+    # last try at the fallback premiums, with no premium minimum.
+    keep = keep_trying(bot) if scheduled and miss is None else 0
+    tries = 1 + keep * 60 // RETRY_SECONDS
+    last_chance = scheduled and (miss is None or floating.is_final_minute(bot, hhmm))
+    fallback = with_fallback(bot) if last_chance else None
+    for attempt in range(1, tries + 2):
+        at_fallback = attempt > tries
+        waiting: list[str] = []  # a skip that may pass on another try
+        said = [f"try {attempt}" + (", at the fallback premium" if at_fallback else "")]
+        _try_entry(
+            deps, fallback if at_fallback else bot, run_id, manual, live, contracts, capped,
+            owned, handed, skip, waiting.append, miss=miss, trade=trade,
+            strike_notes=said if attempt > 1 else [], floor=not at_fallback,
+        )  # fmt: skip
+        if not waiting:
+            return
+        if attempt < tries:
+            deps.sleep(RETRY_SECONDS)
+            # Stop all bots, the session's end, the limits and filters, as of now
+            problem = _guard(deps, bot, manual, contracts, run_id)
+            if problem:
+                skip(problem)
+                return
+        elif at_fallback or fallback is None:
+            if attempt > 1:
+                fell = ", the last at the fallback premium" if at_fallback else ""
+                skip(f"{waiting[0]} (tried {attempt} times{fell})")
+            else:
+                skip(waiting[0])
+            return
+
+
+RETRY_SECONDS = 10  # #314: how often an entry time that keeps trying picks again
+
+
+def _try_entry(
+    deps, bot, run_id: int, manual: bool, live: bool, contracts: int, capped, owned: list,
+    handed: set, skip, retry, *, miss, trade: bool, strike_notes: list, floor: bool,
+) -> None:  # fmt: skip
+    """One try at the entry: pick, requote, enter. `retry(reason)` takes a skip that may
+    pass on another try (#314: the premium bounds, or no strikes for the min short width);
+    `floor=False` (the fallback try) leaves out the premium minimum."""
     day = deps.now().astimezone(MARKET_TZ).date()
-    strike_notes: list[str] = []  # slice 19: what the pickers moved, for the run's log
-    try:
+    try:  # slice 19: strike_notes takes what the pickers moved, for the run's log
         picked, spot, notes = _find_legs(deps, bot, day, strike_notes)
     except _Missing as e:
         if not e.chain:
@@ -832,6 +883,8 @@ def _fire(
             _no_data(deps, bot, e)
         if isinstance(e, strikes.Unsafe):
             update_run(deps, run_id, status="error", reason=str(e))
+        elif isinstance(e, strikes.TooNarrow):
+            retry(str(e))
         else:
             skip(str(e))
         return
@@ -841,7 +894,7 @@ def _fire(
     enter_picked(
         deps, bot, run_id, picked, contracts, live, owned, handed, skip,
         scheduled=not manual and not trade, dtes=dte_of, spot=spot, capped=capped, notes=notes,
-        by_bot=True, strike_notes=strike_notes, limits=not manual,
+        by_bot=True, strike_notes=strike_notes, limits=not manual, retry=retry, floor=floor,
     )  # fmt: skip
 
 
@@ -908,7 +961,7 @@ def enter_picked(
     deps, bot, run_id: int, picked: tuple, contracts: int, live: bool, owned: list,
     handed: set, skip: Callable[[str], None], *, scheduled: bool, dtes: dict, spot,
     capped: int | None = None, notes=(), lead: dict | None = None, by_bot: bool = False,
-    strike_notes=(), limits: bool | None = None,
+    strike_notes=(), limits: bool | None = None, retry=None, floor: bool = True,
 ) -> None:  # fmt: skip
     """From the picked legs to a settled entry (orchestrator._place_trade): the side (the
     mid's sign) and too close to even, the premium bounds by size (a scheduled entry only),
@@ -932,9 +985,9 @@ def enter_picked(
         skip(problem)
         return
     if scheduled:
-        problem = filters.premium_problem(bot, mid)
+        problem = filters.premium_problem(bot, mid, floor)
         if problem:
-            skip(problem)
+            (retry or skip)(problem)  # #314: an entry time may try again
             return
     credit = mid > 0
     try:  # and each group that works out its stop on its short, on its own
@@ -1091,6 +1144,11 @@ class PreviewResult:
     graph: dict | None
     contracts: int = 0
     exits: tuple[str, ...] = ()
+    # #314: what an entry's last try would pick at the fallback premiums (legs and mid),
+    # or why it couldn't; all blank when the bot has no fallback.
+    fallback_legs: tuple[dict, ...] = ()
+    fallback_price: Decimal | None = None
+    fallback_problem: str | None = None
 
 
 def _no_preview(reason: str, legs: list | None = None, price=None) -> PreviewResult:
@@ -1110,7 +1168,7 @@ def preview_order(deps: BotDeps, bot_id: int) -> PreviewResult:
     if bot is None:
         return _no_preview("That bot isn't there.")
     try:
-        return _preview_order(deps, bot)
+        return _with_fallback_pick(deps, bot, _preview_order(deps, bot))
     except (BrokerError, CredentialsUnavailable) as e:
         logger.exception("bot %s: Preview order couldn't reach the broker", bot.name)
         return _no_preview(f"Couldn't reach the broker: {e}")
@@ -1170,6 +1228,23 @@ def _preview_order(deps: BotDeps, bot) -> PreviewResult:
         _graph(bot, picked, contracts, now, spot) if result.ok else None, contracts,
         _exit_lines(bot, legs, picked, price),
     )  # fmt: skip
+
+
+def _with_fallback_pick(deps, bot, result: PreviewResult) -> PreviewResult:
+    """#314: the preview with what the last try would pick at the fallback premiums, also
+    when the normal pick found nothing (that's when it's used). Picked and priced only,
+    never sent to the broker."""
+    fallback = with_fallback(bot)
+    if fallback is None or underlyings.futures(bot.underlying):
+        return result
+    day = deps.now().astimezone(MARKET_TZ).date()
+    try:
+        picked, _spot, _notes = _find_legs(deps, fallback, day, [])
+    except (_Missing, strikes.NoTrade) as e:
+        return replace(result, fallback_problem=str(e))
+    legs = _leg_rows(picked, {leg.position: leg.dte for leg in bot.legs})
+    return replace(result, fallback_legs=tuple(legs),
+                   fallback_price=strikes.entry_price(picked, Decimal(0)))  # fmt: skip
 
 
 def _exit_lines(bot, legs: list, picked: tuple, price: Decimal) -> tuple[str, ...]:
@@ -1396,7 +1471,7 @@ def _pick(deps, bot, rows: dict, spot, resolved: dict, notes: list | None = None
     held = _held(deps, bot, said) if bot.move_conflicted_strikes else None
     return strikes.pick_legs(
         bot.legs, chains, root=underlyings.root(bot.underlying), underlying=bot.underlying,
-        min_width=bot.min_short_width, held=held, move_conflicted=bot.move_conflicted_strikes,
+        min_width=min_width(bot), held=held, move_conflicted=bot.move_conflicted_strikes,
         notes=said,
     )  # fmt: skip
 

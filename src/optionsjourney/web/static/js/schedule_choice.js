@@ -66,7 +66,7 @@ export function install(doc) {
   const sizing = form.querySelector('select[name="sizing"]');
 
   const clear = row => {
-    row.querySelectorAll('input[type=text], input[type=hidden]').forEach(input => { input.value = ''; });
+    row.querySelectorAll('input[type=text], input[type=time], input[type=hidden]').forEach(input => { input.value = ''; });
     row.querySelector('input[type=checkbox]').checked = true;
   };
   const addRow = () => {

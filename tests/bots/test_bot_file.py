@@ -31,7 +31,11 @@ def good() -> BotDef:
     return replace(
         bot, id=7, tag_id=3, account_number="5WX01234", contracts=2, max_per_trade=4,
         max_per_day=6, live=True, enabled=True, tags=("Mine",),
-        legs=tuple(replace(leg, target=targets[leg.position]) for leg in bot.legs),
+        legs=tuple(replace(leg, target=targets[leg.position],
+                           fallback_target=D("2.10") if leg.position in (0, 2) else None)
+                   for leg in bot.legs),
+        min_short_width=D("20"), keep_trying_minutes=2,  # #314
+        use_keep_trying=False,  # #315
         groups=tuple(replace(g, stop_pct=D("95"), target_pct=D("50"), broker_exit="target")
                      for g in bot.groups[:1])
         + (replace(bot.groups[1], stop_pct=D("95"), target_pct=D("50"), use_profit_actions=True,
@@ -442,3 +446,10 @@ def test_ignore_bidless_longs_round_trips_through_a_bot_file():
     assert bot_file.from_file(json.loads(json.dumps(data))).bot.exit_chase.ignore_bidless_longs
     del data["bot"]["exit_chase"]["ignore_bidless_longs"]  # a file from before it existed
     assert not bot_file.from_file(data).bot.exit_chase.ignore_bidless_longs
+
+
+def test_a_file_from_before_the_switches_keeps_its_min_width_on():
+    raw = bot_file.to_file(good(), NOW)
+    del raw["bot"]["use_min_short_width"]
+    back = bot_file.parse(json.dumps(raw)).bot
+    assert back.use_min_short_width is True and back.min_short_width == D("20")

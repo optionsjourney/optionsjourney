@@ -181,7 +181,14 @@
             <div class="bot-form__fields" data-sizing-choice>
             <label>{{ named('Size each entry by', 'sizing', size_tip) }} {{ leg_select('sizing', [('contracts', 'Contracts'), ('dollars', 'Buying power')], bot.sizing) }}</label>
             <label data-sizing="contracts">{{ named('Contracts per entry', 'contracts', "Each entry is one order, with every leg, for this many contracts, 1 to 100. An entry time in the Schedule can set its own number. Entries you send from the Trade page keep the size you set there.") }} <input type="number" class="w-num" name="contracts" min="1" max="100" value="{{ bot.contracts }}"></label>
-            <label data-sizing="dollars">{{ named('Most buying power per entry ($)', 'buying-power', "Before each entry your broker (TastyTrade or Schwab, whichever the account is at) says what one contract needs on its own at the worst price the entry chase could reach. Credit or debit alike, and nothing else you hold changes it. Example: $2,000 and a spread that needs $497.30 a contract buys 4. If it doesn't cover one, or the broker doesn't answer, the entry is skipped and you get an alert.") }} {{ num('max_per_entry_usd', bot.max_per_entry_usd) }}</label>
+            {% set bp_tip %}<p>Before each entry your broker (TastyTrade or Schwab, whichever the account is at) says what one contract needs on its own at the worst price the entry chase could reach. Credit or debit alike, and nothing else you hold changes it. Examples, with $2,000:</p>
+<table class="tip-table"><thead><tr><th>One contract needs</th><th>What happens</th></tr></thead><tbody>
+<tr><td>$497.30</td><td>Buys 4 ($1,989.20).</td></tr>
+<tr><td>$1,200</td><td>Buys 1.</td></tr>
+<tr><td>$2,400</td><td>Skipped: it doesn't cover one. You get an alert.</td></tr>
+<tr><td>The broker doesn't answer</td><td>Skipped, with an alert.</td></tr>
+</tbody></table>{% endset %}
+            <label data-sizing="dollars">{{ named('Most buying power per entry ($)', 'buying-power', bp_tip) }} {{ num('max_per_entry_usd', bot.max_per_entry_usd) }}</label>
             </div>
             {{ problem('contracts') }}
             {{ problem('sizing') }}
@@ -227,21 +234,21 @@
             {{ named('Use an entry window', 'window', "Instead of fixed entry times, the bot checks once a minute between two times (New York, both included) and enters at the first minute its filters and premium bounds allow, once a day. If a try doesn't fill, the next minute tries again. The entry times are kept but not used, and neither are their contracts. Example: 11:30 to 11:45 with a VIX filter enters at 11:38 if that's the first minute VIX is inside its range.") }}
         </label>
         <div class="inline-form" data-shown-by="use_floating_entry">
-            <label>from <input type="text" name="floating_start" value="{{ bot.floating_start or '' }}" placeholder="11:30" size="6" data-clock></label>
-            <label>to <input type="text" name="floating_end" value="{{ bot.floating_end or '' }}" placeholder="11:45" size="6" data-clock></label>
+            <label>from <input type="time" name="floating_start" value="{{ bot.floating_start or '' }}" data-clock></label>
+            <label>to <input type="time" name="floating_end" value="{{ bot.floating_end or '' }}" data-clock></label>
         </div>
         {{ problem('floating') }}
         {% if floating_last %}<p class="muted small" data-shown-by="use_floating_entry">Last check {{ floating_last[0] }}: {{ floating_last[1] }}</p>{% endif %}
 
         <div data-hidden-by="use_floating_entry">
-        <h3 class="card__subtitle section-gap">Entry times {{ info('bot-times', "New York time, 24-hour. 945, 9:45 and 09:45 all mean 09:45. Seconds are optional, in 15-second steps: 9:30:15 or 93015 is 09:30:15. Untick On to pause a time; ✕ removes it. Contracts sets the size for that time alone (blank: the bot's).", 'Entry times') }}</h3>
+        <h3 class="card__subtitle section-gap">Entry times {{ info('bot-times', "New York time. Type it or pick it from the clock: hours, minutes and seconds. Seconds are optional, in 15-second steps: 09:30:15. Untick On to pause a time; ✕ removes it. Contracts sets the size for that time alone (blank: the bot's).", 'Entry times') }}</h3>
         {% set rows = bot.entry_times | length + blank_times %}
         <input type="hidden" name="times" value="{{ rows }}">
         <div class="entry-times">
         {% for k in range(rows) %}
         {% set row = bot.entry_times[k] if k < bot.entry_times | length else {'time': '', 'enabled': true, 'quantity': none, 'label': none} %}
         <div class="inline-form entry-time" data-entry-time>
-            <input type="text" name="time-{{ k }}" value="{{ row.time }}" placeholder="09:45" size="8" aria-label="Entry time {{ k + 1 }}" data-clock="seconds">
+            <input type="time" name="time-{{ k }}" value="{{ row.time }}" step="15" aria-label="Entry time {{ k + 1 }}" data-clock="seconds">
             <label class="check"><input type="checkbox" name="time-{{ k }}-on" {{ 'checked' if row.enabled }}> On</label>
             <input type="text" name="time-{{ k }}-qty" inputmode="numeric" value="{{ typed('time-%d-qty' % k, row.quantity) }}" placeholder="Contracts" class="narrow" aria-label="Contracts for entry time {{ k + 1 }}" data-sizing="contracts">
             {# Tracker2's form has no box for a time's label: one from before, or from a bot
@@ -253,6 +260,28 @@
         </div>
         <button type="button" class="button button--quiet" data-add-time hidden>+ Add entry time</button>
         {{ problem('times') }}
+        <div class="bot-form__row section-gap">
+            {% set keep_tip %}<p>When an entry time is skipped because the trade's price is outside Premium bounds, or the sold strikes can't be moved Min short width apart, the bot picks again every 10 seconds for this many minutes (1 to 30). Off: one try. With Min short width on, one last try then aims the sold legs at their Fallback premium, with no premium minimum.</p>
+<p>Examples: entry time 10:00, Keep trying 2, Premium bounds at least 5.00, Min short width 20, Target 2.80 and Fallback 2.40 on the sold legs.</p>
+<table class="tip-table"><thead><tr><th>At the entry</th><th>What the bot does</th></tr></thead><tbody>
+<tr><td>Credit 4.70 at 10:00, 5.10 at 10:00:30</td><td>Enters at 10:00:30, its 4th try.</td></tr>
+<tr><td>Credit under 5.00 until 10:02</td><td>One last try at 2.40, with no minimum. Enters if that passes; skipped if not.</td></tr>
+<tr><td>Not enough strikes to put the sold legs 20 apart</td><td>The same: tries every 10 seconds, then the fallback.</td></tr>
+<tr><td>Credit 5.20 at 10:00</td><td>Enters at once. Nothing to retry.</td></tr>
+<tr><td>A filter fails, or a blackout day</td><td>Skipped at once, never retried.</td></tr>
+<tr><td>Stop all bots or No new trades at 10:01</td><td>The next try sees it and stops: skipped.</td></tr>
+<tr><td>Keep trying off</td><td>One try at 2.80, then straight away one at 2.40.</td></tr>
+<tr><td>Fallback 0 on the sold legs</td><td>Keeps trying at 2.80 until 10:02, then skipped: no fallback try.</td></tr>
+<tr><td>Min short width off</td><td>Keeps trying at 2.80 until 10:02, with no fallback try.</td></tr>
+</tbody></table>
+<p>An entry window already tries every minute, so it doesn't use this; it tries the fallback on its last minute.</p>{% endset %}
+            {# #315: a switch, like Blackout days; off keeps the minutes #}
+            <div class="inline-form switch-number">
+                <label class="check"><input type="checkbox" name="use_keep_trying" {{ 'checked' if bot.use_keep_trying and (bot.keep_trying_minutes is not none or problems.get('keep_trying')) }}> {{ named('Keep trying', 'keep-trying', keep_tip) }}</label>
+                <label data-shown-by="use_keep_trying">for {{ whole('keep_trying_minutes', bot.keep_trying_minutes) }} minutes</label>
+            </div>
+        </div>
+        {{ problem('keep_trying') }}
         </div>
 
         {# #140: how often and blackout days side by side #}
@@ -340,6 +369,16 @@
                 <th>{{ col('DTE', 'dte', "Days to expiration, 0 (today) to %d. Give a group's legs different DTEs for a calendar or a diagonal: the nearer leg is the one sold. In a group, a sold leg can't expire after a bought one. Exact DTE only, under Strike picking, says what happens when no expiration is that many days away." % max_dte) }}</th>
                 <th>{{ col('Pick by', 'pick', pick_tip) }}</th>
                 <th>{{ col('Target', 'target', target_leg_tip) }}</th>
+                {% set fallback_tip %}<p>Shown on a sold leg picked by premium while Min short width is on, and needed then. If every try at an entry time is skipped on the premium bounds or the min short width (see Keep trying), one last try aims the leg at this instead of its Target, with no premium minimum.</p>
+<p>Examples, with Target 2.80:</p>
+<table class="tip-table"><thead><tr><th>Fallback</th><th>What happens</th></tr></thead><tbody>
+<tr><td>2.40</td><td>The last try aims at 2.40: further out, a smaller credit.</td></tr>
+<tr><td>0</td><td>No fallback try: a skipped entry stays skipped.</td></tr>
+<tr><td>Blank</td><td>Red: the bot won't save. Type a premium, or 0 for none.</td></tr>
+<tr><td>2.80 or more</td><td>Refused: the fallback is below the Target.</td></tr>
+<tr><td>2.40 on one sold leg, 0 on the other</td><td>The last try lowers only the first; the other stays at its Target.</td></tr>
+</tbody></table>{% endset %}
+                <th data-leg-col="fallback">{{ col('Fallback', 'fallback', fallback_tip) }}</th>
                 <th data-leg-col="from">{{ col('From', 'from', "The leg an Offset is measured from, or the sold leg a bought premium leg's Max offset is measured from. It's a leg of the same type that isn't itself an offset or a linked wing. 🔗 fills it in for you.") }}</th>
                 <th data-leg-col="exact">{{ col('Exact', 'exact', "For an Offset: use only that strike, or skip the trade if it isn't listed. Off, it takes the next listed strike further out.") }}</th>
                 <th data-leg-col="max">{{ col('Max offset', 'max', "For a bought leg picked by premium, with From set to the sold leg of its type: the strike nearest its premium no further than this many points from that leg (a put's negative, a call's positive), so the spread is never wider. Example: a bought put aiming at 0.50 with -25 from a sold put at 5,700 looks only between 5,695 and 5,675; if nothing there has a price, the entry is skipped.") }}</th>
@@ -361,6 +400,7 @@
                 </select></td>
                 {% set shown = '' if leg.target is none else ('{:f}'.format((leg.target * 100).normalize()) if leg.pick == 'delta' else leg.target) %}
                 <td class="nowrap"><input type="text" name="leg-{{ i }}-target" inputmode="decimal" value="{{ typed('leg-%d-target' % i, shown) }}" class="narrow" aria-label="Target"> <span class="small muted" data-leg-unit>{{ units.get(leg.pick, '') }}</span></td>
+                <td data-leg-col="fallback"><input type="text" name="leg-{{ i }}-fallback" inputmode="decimal" value="{{ typed('leg-%d-fallback' % i, leg.fallback_target) }}" class="narrow leg-fallback" aria-label="Fallback premium" data-leg="fallback"></td>
                 <td data-leg-col="from"><select name="leg-{{ i }}-link" aria-label="From leg" data-leg="link">
                     <option value="">-</option>
                     {% for other in bot.legs if other.position != i %}<option value="{{ other.position }}" {{ 'selected' if leg.link == other.position }}>Leg {{ other.position + 1 }}</option>{% endfor %}
@@ -373,7 +413,7 @@
                     {%- if bot.legs | length > 1 %}<button class="button button--danger-text" type="submit" name="op" value="remove-leg-{{ i }}" formnovalidate title="Remove leg {{ i + 1 }}" aria-label="Remove leg {{ i + 1 }}">✕</button>{% endif -%}
                 </td>
             </tr>
-            {% if problems.get('leg-%d' % i) %}<tr><td colspan="10">{{ problem('leg-%d' % i) }}</td></tr>{% endif %}
+            {% if problems.get('leg-%d' % i) %}<tr><td colspan="11">{{ problem('leg-%d' % i) }}</td></tr>{% endif %}
             {% endfor %}
             </tbody>
         </table></div>
@@ -383,7 +423,17 @@
             <input type="hidden" name="exact_dte_shown" value="1">
             <label class="check"><input type="checkbox" name="use_exact_dte" {{ 'checked' if bot.use_exact_dte }}> {{ named('Exact DTE only', 'exact-dte', "On: a leg trades only the expiration exactly its DTE away, and the entry is skipped when there isn't one, so the trade is always the shape you set. Off: it takes the first listed expiration at or after its DTE, never an earlier one.") }}</label>
             <label class="check"><input type="checkbox" name="move_conflicted_strikes" {{ 'checked' if bot.move_conflicted_strikes }}> {{ named('Move conflicted strikes', 'conflicted', "A leg that lands on an option you already hold the other way (your broker would refuse the whole order), or on one another leg of this order uses, moves one strike further out; if that one is taken or has no price, it stays. Your positions are read for this at each entry.") }}</label>
-            <label>{{ named('Min short width (points)', 'min-width', "With one sold put and one sold call in the same expiration, they're moved apart a strike at a time (whichever side gives up less of its target) until the call is at least this many points above the put; blank is off. Example: 20 turns sold strikes at 5,795 and 5,805 into 5,790 and 5,810. If it can't, the entry is skipped.") }} {{ num('min_short_width', bot.min_short_width) }}</label>
+            {# #315: a switch, like Blackout days; off keeps the points (leg_rows.js shows the box) #}
+            {% set width_tip %}<p>With one sold put and one sold call in the same expiration, they're moved apart a strike at a time (whichever side gives up less of its target) until the call is at least this many points above the put. Switched off, the points are kept but not used. On, each sold leg picked by premium needs a Fallback premium, or 0 for none (see Keep trying, under Schedule). Examples, with 20:</p>
+<table class="tip-table"><thead><tr><th>Sold put / call picked</th><th>What happens</th></tr></thead><tbody>
+<tr><td>5,780 / 5,820</td><td>Already 40 apart: left alone.</td></tr>
+<tr><td>5,795 / 5,805</td><td>Moved to 5,790 / 5,810.</td></tr>
+<tr><td>No strikes left to widen</td><td>Skipped (with Keep trying on, it tries again, then the fallback).</td></tr>
+</tbody></table>{% endset %}
+            <div class="inline-form switch-number">
+                <label class="check"><input type="checkbox" name="use_min_short_width" data-min-width-switch {{ 'checked' if bot.use_min_short_width and (bot.min_short_width is not none or problems.get('strikes')) }}> {{ named('Min short width', 'min-width', width_tip) }}</label>
+                <label data-min-width-box>{{ num('min_short_width', bot.min_short_width) }} points</label>
+            </div>
         </div>
         {{ problem('strikes') }}
         {% if bot.legs | selectattr('dte') | list %}
@@ -593,7 +643,7 @@
             <input type="hidden" name="group-{{ g }}-profits" value="{{ profit_rows | length }}" data-profit-count>
             <div data-exit-show="profit">
             <div class="table-scroll"><table class="table table--compact profit-rows">
-                <thead><tr><th>{{ gcol('At', 'pa-at-%d' % g, pa_at_tip) }}</th><th>{{ gcol('Close % (optional)', 'pa-close-%d' % g, "How much of the position to close, as a % of the contracts at entry.\n• Blank or 0: close nothing, only move the stop\n• Rounded down, at least 1\n• At least 1 contract always stays open for the target") }}</th><th>{{ gcol('Then move the stop to (optional)', 'pa-stop-%d' % g, pa_stop_tip) }}</th></tr></thead>
+                <thead><tr><th>{{ gcol('At', 'pa-at-%d' % g, pa_at_tip) }}</th><th>{{ gcol('Close % (optional)', 'pa-close-%d' % g, "How much of the position to close, as a % of the contracts at entry.\n• Blank or 0: close nothing, only move the stop\n• Rounded down, at least 1\n• A row that would leave nothing for the target closes the whole group (1 contract at 10%: closes the 1)") }}</th><th>{{ gcol('Then move the stop to (optional)', 'pa-stop-%d' % g, pa_stop_tip) }}</th></tr></thead>
                 <tbody data-profit-rows>
                 {% for a in profit_rows %}{% set i = loop.index0 %}
                 {% set usd = a and a.stop_usd is not none %}
@@ -607,7 +657,11 @@
                 </tbody>
             </table></div>
             <button class="button button--quiet" type="button" data-add-profit hidden>+ Add profit action</button>
-            <p class="muted small">Example: to move the stop to break-even once it's 75% up, without closing any, enter At 75, leave Close % blank, and Then move the stop to 0 % loss. To close half once it's lost half: At -50, Close % 50. Close % and the new stop are each optional, but a row needs at least one. Fill in a row to add an action; clear it to remove it.</p>
+            <div class="muted small"><table class="tip-table"><thead><tr><th>To</th><th>At</th><th>Close %</th><th>Then move the stop to</th></tr></thead><tbody>
+<tr><td>Move the stop to break-even once it's 75% up, closing none</td><td>75</td><td>blank</td><td>0 % loss</td></tr>
+<tr><td>Close half once it's lost half</td><td>-50</td><td>50</td><td>blank</td></tr>
+</tbody></table>
+            <p>Close % and the new stop are each optional, but a row needs at least one. Fill in a row to add an action; clear it to remove it.</p></div>
             </div>
             </div>
             {{ problem('profit-%d' % g) }}
@@ -657,7 +711,13 @@
         {% endcall %}
 
         <h3 class="card__subtitle section-gap">VIX</h3>
-        {% call setting('use_vix_level', 'VIX level', 'vix-level', 'Enter only while VIX is in a range.', "VIX's latest price when the entry fires. A price exactly on a bound is let in. Example: a maximum of 20 skips an entry while VIX is 21.30.", bot.use_vix_level, 'vix_level') %}
+        {% set vix_tip %}<p>VIX's latest price when the entry fires. A price exactly on a bound is let in. Examples, with at least 12 and at most 20:</p>
+<table class="tip-table"><thead><tr><th>VIX</th><th>What happens</th></tr></thead><tbody>
+<tr><td>21.30</td><td>Skipped: above the maximum.</td></tr>
+<tr><td>20.00</td><td>Enters.</td></tr>
+<tr><td>11.80</td><td>Skipped: below the minimum.</td></tr>
+</tbody></table>{% endset %}
+        {% call setting('use_vix_level', 'VIX level', 'vix-level', 'Enter only while VIX is in a range.', vix_tip, bot.use_vix_level, 'vix_level') %}
             <label>Minimum {{ num('vix_min', bot.vix_min) }}</label>
             <label>Maximum {{ num('vix_max', bot.vix_max) }}</label>
         {% endcall %}
@@ -669,12 +729,22 @@
 <tr><td>Down, min</td><td>Needs a fall of at least this.</td></tr>
 <tr><td>Down, max</td><td>Skips a fall bigger than this. A rise isn't limited.</td></tr>
 </tbody></table>
-<p>With both minimums, either one is enough. Example: yesterday 15.00, today 15.60 is up 4%, so an up max of 3 skips the day.</p>{% endset %}
+<p>With both minimums, either one is enough. Examples, with up max 3, from yesterday's 15.00:</p>
+<table class="tip-table"><thead><tr><th>Today</th><th>Move</th><th>What happens</th></tr></thead><tbody>
+<tr><td>15.60</td><td>Up 4%</td><td>Skipped: up more than 3%.</td></tr>
+<tr><td>15.30</td><td>Up 2%</td><td>Enters.</td></tr>
+<tr><td>14.10</td><td>Down 6%</td><td>Enters: a fall isn't limited.</td></tr>
+</tbody></table>{% endset %}
         {% call setting('use_vix_overnight', 'VIX overnight move', 'vix-overnight', "Limit or require VIX's move since yesterday's close.", overnight_tip, bot.use_vix_overnight, 'vix_overnight') %}
             {{ moves('vix_on', bot.vix_overnight, 'VIX overnight move') }}
         {% endcall %}
 
-        {% call setting('use_vix9d_ratio', 'VIX9D / VIX ratio', 'vix9d', 'Enter only while VIX9D ÷ VIX is in a range.', 'The 9-day VIX divided by VIX, when the entry fires. Example: 14.50 ÷ 16.00 = 0.91, so a maximum of 0.90 skips it.', bot.use_vix9d_ratio, 'vix9d_ratio') %}
+        {% set ratio_tip %}<p>The 9-day VIX divided by VIX, when the entry fires. Examples, with a maximum of 0.90:</p>
+<table class="tip-table"><thead><tr><th>VIX9D ÷ VIX</th><th>Ratio</th><th>What happens</th></tr></thead><tbody>
+<tr><td>14.50 ÷ 16.00</td><td>0.91</td><td>Skipped.</td></tr>
+<tr><td>13.60 ÷ 16.00</td><td>0.85</td><td>Enters.</td></tr>
+</tbody></table>{% endset %}
+        {% call setting('use_vix9d_ratio', 'VIX9D / VIX ratio', 'vix9d', 'Enter only while VIX9D ÷ VIX is in a range.', ratio_tip, bot.use_vix9d_ratio, 'vix9d_ratio') %}
             <label>Minimum {{ num('vix9d_ratio_min', bot.vix9d_ratio_min) }}</label>
             <label>Maximum {{ num('vix9d_ratio_max', bot.vix9d_ratio_max) }}</label>
         {% endcall %}
@@ -707,7 +777,13 @@
             {% endfor %}
         {% endcall %}
 
-        {% call setting('use_intraday_move', 'Intraday movement', 'intraday', "Limit or require " ~ und ~ "'s move since today's open.", und ~ "'s move from today's open (its first 1-minute bar at or after 9:30) to its price when the entry fires, in %, with the same four boxes as the VIX overnight move. Example: open 5,000, now 5,016 is up 0.32%, so an up min of 0.30 lets it enter and 0.50 skips it.", bot.use_intraday_move, 'intraday_move') %}
+        {% set intraday_tip %}<p>{{ und }}'s move from today's open (its first 1-minute bar at or after 9:30) to its price when the entry fires, in %, with the same four boxes as the VIX overnight move. Examples, with today's open at 5,000 and the price now 5,016 (up 0.32%):</p>
+<table class="tip-table"><thead><tr><th>Setting</th><th>What happens</th></tr></thead><tbody>
+<tr><td>Up, min 0.30</td><td>Enters: it's up at least 0.30%.</td></tr>
+<tr><td>Up, min 0.50</td><td>Skipped: not up enough.</td></tr>
+<tr><td>Up, max 0.25</td><td>Skipped: up more than 0.25%.</td></tr>
+</tbody></table>{% endset %}
+        {% call setting('use_intraday_move', 'Intraday movement', 'intraday', "Limit or require " ~ und ~ "'s move since today's open.", intraday_tip, bot.use_intraday_move, 'intraday_move') %}
             {{ moves('intraday', bot.intraday, 'Intraday move') }}
         {% endcall %}
     </section>
@@ -741,7 +817,11 @@
 <tr><td>Move target to %</td><td>Measured like the group's profit target: the share of the credit kept, or the % gained on a debit.</td></tr>
 <tr><td>Close %</td><td>Closes that share of each group's contracts at entry, rounded down, always leaving at least 1 open. The moves happen first, so what's left keeps them.</td></tr>
 </tbody></table>
-<p>Example: "0 days to expiration, 14:00, target 25" closes a put spread that took in 1.00 once it can be bought back for 0.75. Close 50 on a 4-contract trade closes 2 of each group.</p>{% endset %}
+<p>Examples:</p>
+<table class="tip-table"><thead><tr><th>Action</th><th>What it does</th></tr></thead><tbody>
+<tr><td>0 days to expiration, 14:00, target 25</td><td>Closes a put spread that took in 1.00 once it can be bought back for 0.75.</td></tr>
+<tr><td>Close 50 on a 4-contract trade</td><td>Closes 2 of each group.</td></tr>
+</tbody></table>{% endset %}
         {% call setting('use_time_actions', 'Time actions', 'time-actions', 'At a set time, move the stop or target, or close part of the trade.', actions_tip, bot.use_time_actions, 'time_actions', rows=True) %}
             {% set action_rows = (bot.time_actions | list) + [none, none] %}
             <input type="hidden" name="actions" value="{{ action_rows | length }}">
@@ -847,7 +927,7 @@
 </tbody></table>
 <p>They show in the app's alerts and are sent like routine alerts, unless you keep them in the app.</p>{% endset %}
         {% call setting('use_default_alerts', 'Default alerts', 'default-alerts', 'Made for each trade when a live entry fills; cleared when it closes.', alerts_tip, bot.use_default_alerts, 'default_alerts', rows=True) %}
-            {% set alert_rows = (bot.default_alerts | list) + [none] %}{% set alert_most = 10 %}
+            {% set alert_rows = (bot.default_alerts | list) or [none] %}{% set alert_most = 10 %}
             {% include "_alert_rows.html" %}
             <p class="muted small">Clear an alert's number to remove it.</p>
             <div class="bot-filter__head">

@@ -16,6 +16,7 @@ from optionsjourney.bots.definition import (
     EXHAUST_MODES,
     EXIT_UNITS,
     FREQUENCIES,
+    KEEP_TRYING_MINUTES,
     MAX_CONTRACTS,
     MAX_DEFAULT_ALERTS,
     MAX_DTE,
@@ -39,7 +40,9 @@ from optionsjourney.bots.definition import (
     MoveLimits,
     day_cap,
     largest_ratio,
+    min_width,
     trade_cap,
+    uses_fallback,
 )
 from optionsjourney.bots.market_filters import MODES
 from optionsjourney.bots.schedule import SECOND_STEP, clock, is_date
@@ -106,6 +109,7 @@ def validate(bot: BotDef, tag_ids: set[int]) -> dict[str, str]:
     _exhaust(bot, problems)
     _sizing(bot, problems)
     _strike_rules(bot, problems)
+    _keep_trying(bot, problems)
     if underlyings.futures(bot.underlying):
         _futures(bot, problems)
     _floating(bot, problems)
@@ -626,6 +630,31 @@ def _strike_rules(bot: BotDef, problems: dict[str, str]) -> None:
     """Slice 19: the min short width is 0 or more points (Bot.min_short_width)."""
     if bot.min_short_width is not None and bot.min_short_width < 0:
         problems["strikes"] = "The min short width is 0 or more points."
+    # #314: a sold premium leg's fallback premium is below its target (0: no fallback). Here,
+    # not in _legs: its elif chain stops at a leg's first problem. A blank one is refused
+    # by the form only (bot_store._form_problems), so a file with a min width still imports.
+    if min_width(bot) is None or underlyings.futures(bot.underlying):
+        return
+    for leg in bot.legs:
+        fallback = leg.fallback_target
+        if not uses_fallback(leg) or leg.target is None or fallback is None:
+            continue
+        if fallback < 0:
+            problems.setdefault(
+                f"leg-{leg.position}", "The fallback premium is 0 (no fallback) or more."
+            )
+        elif fallback >= leg.target:
+            problems.setdefault(
+                f"leg-{leg.position}", "The fallback premium is below the leg's target."
+            )
+
+
+def _keep_trying(bot: BotDef, problems: dict[str, str]) -> None:
+    """#314: an entry time keeps trying for 1 to 30 minutes, or blank for one try."""
+    minutes = bot.keep_trying_minutes
+    low, high = KEEP_TRYING_MINUTES
+    if minutes is not None and not low <= minutes <= high:
+        problems["keep_trying"] = f"Keep trying is {low} to {high} minutes, or blank for one try."
 
 
 def _expiries(bot: BotDef, problems: dict[str, str]) -> None:

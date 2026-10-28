@@ -42,9 +42,29 @@ export function installChainPanel(el, opts = {}) {
   return {
     setTicker,
     setBroker(next) { if ((next || null) === broker) return; broker = next || null; rows = []; loadChain(); },
-    setTray(next) { tray = next; trayMsg = ''; renderTable(); emit(); },
+    setTray(next) {
+      tray = next; trayMsg = '';
+      const show = T.trayExpiration(tray, expirations, expiration);
+      if (show !== expiration) { expiration = show; rows = []; renderExps(); loadChain().then(showTrayLeg); }
+      else { renderTable(); showTrayLeg(); }
+      emit();
+    },
     info: () => ({ ticker, spot, mult }),
+    rowsFor,
   };
+}
+
+// Scrolls the chain to the loaded trade's first leg in the expiration shown.
+function showTrayLeg() {
+  const leg = tray.legs.find(l => l.expiration === expiration);
+  if (leg) $('table').querySelector(`td[data-strike="${leg.strike}"]`)?.closest('tr')?.scrollIntoView({ block: 'center' });
+}
+
+// One expiration's chain rows for the current ticker, without showing them (a pasted order, #312).
+async function rowsFor(exp) {
+  const r = await fetch(`/api/trade/chain-table?ticker=${encodeURIComponent(ticker)}&expiration=${exp}${broker ? `&broker=${broker}` : ''}`);
+  const d = await r.json();
+  return r.ok && d.status === 'success' ? d.rows || [] : [];
 }
 
 function emit() {

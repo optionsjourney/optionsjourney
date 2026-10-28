@@ -51,10 +51,15 @@ def _label(option: OptionDetails | None) -> str:
     return f"{strike} {option.put_call[0]} {option.expiration:%m/%d}"
 
 
+def _by_strike(option: OptionDetails | None) -> tuple[bool, Decimal]:
+    """Highest strike first, shares last (Tracker2 f55b846a)."""
+    return (option is None, -option.strike if option is not None else ZERO)
+
+
 def row_details(position: Position) -> RowDetails:
     open_legs = [
         LegLine(leg.sign * leg.remaining, _label(leg.option), leg.symbol)
-        for leg in position.live_legs
+        for leg in sorted(position.live_legs, key=lambda leg: _by_strike(leg.option))
         if leg.remaining > 0
     ]
     closing = []
@@ -64,7 +69,7 @@ def row_details(position: Position) -> RowDetails:
             continue
         for order in event.orders:
             legs = []
-            for fill in order.fills:
+            for fill in sorted(order.fills, key=lambda fill: _by_strike(fill.option)):
                 if fill.effect is Effect.OPEN:
                     continue  # a roll's new legs are open legs
                 sign = 1 if fill.side is Side.BUY else -1
