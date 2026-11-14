@@ -20,7 +20,7 @@ DEFAULT_PORT = 2026  # the year the project started
 # The address this computer's own browser uses. By default the app listens
 # only here; LISTEN_ON_NETWORK or the Settings switch opens it (decisions 0063, 0104).
 HOST = "127.0.0.1"
-ALL_INTERFACES = "0.0.0.0"
+ALL_INTERFACES = "0.0.0.0"  # only when the user opens it, never in demo mode  # nosec B104
 
 
 class ConfigError(Exception):

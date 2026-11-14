@@ -144,4 +144,8 @@ def broker_order(raw: dict) -> BrokerOrder:
         replaced_by=str(raw["replacing-order-id"]) if raw.get("replacing-order-id") else None,
         price=_signed_price(raw),
         changing=text in _CHANGING,
+        broker_cancelled=text == "Cancelled"
+        and not raw.get("reject-reason")
+        and not raw.get("replacing-order-id")
+        and not raw.get("cancel-user-id"),
     )

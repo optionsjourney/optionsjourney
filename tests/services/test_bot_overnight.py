@@ -120,9 +120,15 @@ def test_a_resting_stop_cancelled_overnight_is_re_armed_next_morning(deps, facto
     at(deps, ny(2026, 10, 14, 3, 0))
     deps.tasty.cancel_order("5WX01234", first)  # a broker purge overnight
     bot_exits.monitor_pass(deps)
+    # #330: TastyTrade refuses every stop on an index option outside the regular session,
+    # so it's held for the open, not sent to be refused, and not counted as a re-arm
+    (stop,) = exits(factory, "stop")
+    assert stop.state == "pending" and stop.stop_at_open and stop.broker_order_id is None
+    at(deps, ny(2026, 10, 14, 9, 31))
+    bot_exits.monitor_pass(deps)
     (stop,) = exits(factory, "stop")
     assert stop.state == "working" and stop.broker_order_id != first
-    assert stop.rearms == 1
+    assert stop.rearms == 0
     stops = [c[-1] for c in deps.tasty.calls if c[0] == "place" and
              c[-1]["order-type"] == "Stop"]  # fmt: skip
     assert len(stops) == 2 and stops[-1]["time-in-force"] == "GTC"

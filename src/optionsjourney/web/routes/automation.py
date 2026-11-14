@@ -22,6 +22,7 @@ from flask import (
 from sqlalchemy import func, select
 
 from optionsjourney.bots import (
+    after_hours,
     bot_file,
     bot_link,
     day_plan,
@@ -71,6 +72,7 @@ from optionsjourney.services import (
     bot_manage,
     bot_match,
     bot_rearm,
+    bot_scheduled_closes,
     bot_stats,
     bot_store,
     bot_ticket,
@@ -1113,7 +1115,46 @@ def run_context(run_id: int) -> dict | None:
             lambda: bot_trade_settings.watch_view(s.session_factory, run_id, bot),
             None,
         ),
+        # #330: what Close does now off-hours, and a close scheduled for the next session
+        close_when=_safe("when a close runs", lambda: _close_when(run), None),
+        scheduled_close=_safe("the scheduled close", lambda: _scheduled_close(run_id), None),
     )
+
+
+def _close_when(run) -> dict | None:
+    """#330: {kind, words} when a close you ask for now goes overnight or is scheduled
+    (bot_manage.close_window); None in the regular session, or when it's simply refused."""
+    if run.paper or run.status not in bot_manage.HOLDING:
+        return None
+    deps = bot_loops.deps_for(services())
+    window = bot_manage.close_window(deps, run.id)
+    if window.overnight:
+        return {"kind": "overnight", "words": (
+            "The market's overnight session is open for these options: Close sends "
+            "overnight limit orders, starting from the mid, never at market. A close that "
+            "hasn't filled by 09:25 stops, and its stop comes back.")}  # fmt: skip
+    if window.kind == after_hours.SCHEDULE:
+        when = after_hours.when_words(window.start_at, deps.now())
+        return {"kind": "schedule", "words": (
+            f"These options aren't trading now. Close schedules the close for {when}, when "
+            "they trade again; nothing is sent before then.")}  # fmt: skip
+    return None
+
+
+def _scheduled_close(run_id: int) -> dict | None:
+    row = bot_scheduled_closes.latest(services().session_factory, run_id)
+    if row is None:
+        return None
+    return {"id": row.id, "words": bot_scheduled_closes.words(row, _now())}
+
+
+@bp.post("/automation/runs/<int:run_id>/scheduled-close/<int:row_id>/cancel")
+def cancel_scheduled_close(run_id, row_id):
+    """#330: cancel a close scheduled for the next session; nothing was sent for it."""
+    deps = bot_loops.deps_for(services())
+    ok, said = bot_scheduled_closes.cancel(deps, run_id, row_id)
+    flash(said, "success" if ok else "warning")
+    return redirect(_return(url_for("automation.run_page", run_id=run_id, _anchor="manage")))
 
 
 def _closed_how(run, exits, bot) -> dict:
@@ -1445,11 +1486,13 @@ def close_trade(run_id):
     only = {int(g) for g in groups.split(",") if g.strip().isdigit()} or None
     if request.form.get("confirm") != "1":
         what = "this side" if only else "the whole trade"
+        run = bot_store.run(services().session_factory, run_id)
+        when = _safe("when a close runs", lambda: _close_when(run), None) if run else None
         return _confirm(
             f"Close {what}?",
             f"Close every open group of {what} (run {run_id}), one after another, "
             f"{_kind_words(kind)}. It stops at the first group that doesn't close; the rest "
-            "keep their stop and target.",
+            "keep their stop and target." + (f" {when['words']}" if when else ""),
             url_for("automation.close_trade", run_id=run_id),
             [("order_type", kind), ("groups", groups)],
             url_for("automation.run_page", run_id=run_id, _anchor="manage"),

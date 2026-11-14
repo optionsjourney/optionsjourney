@@ -97,6 +97,77 @@ def test_replace_goes_out_on_tick(factory):
     assert float(row.price) == 1.6  # a credit rounds down, never up to 1.65
 
 
+# --- #321: change an opening leg's strike (Tracker2 44173488)
+
+
+def _bodies(tasty):
+    """The bodies the broker was sent: {"preview": [...], "replace": [...]}."""
+    seen = {"preview": [], "replace": []}
+    preview, swap = tasty.preview_order, tasty.replace_order
+
+    def previewed(account, body):
+        seen["preview"].append(body)
+        return preview(account, body)
+
+    def replaced(account, order_id, body):
+        seen["replace"].append(body)
+        return swap(account, order_id, body)
+
+    tasty.preview_order, tasty.replace_order = previewed, replaced
+    return seen
+
+
+def _symbols(body):
+    return [leg["symbol"] for leg in body["legs"]]
+
+
+def test_a_strike_change_moves_only_that_legs_strike(factory):
+    tasty = FakeBroker(held={})
+    _sent(factory, tasty)
+    tasty.working = [_working("777")]
+    sent = _bodies(tasty)
+    moved = trade_orders.replace(factory, [tasty], "tastytrade", "5WX01234", "777", 1.5,
+                                 strikes={"0": 5805})  # fmt: skip
+    assert moved.action == "replace" and moved.ok
+    assert _symbols(sent["replace"][0]) == ["SPXW  261013P05805000", "SPXW  261013P05790000"]
+    with factory() as session:
+        row = session.scalars(select(OrderLog).where(OrderLog.action == "replace")).one()
+    # still yours, with the new strike, for the next change
+    assert row.order["order"]["legs"][0]["symbol"] == "SPXW  261013P05805000"
+
+
+def test_a_strike_preview_replaces_nothing(factory):
+    tasty = FakeBroker(held={})
+    _sent(factory, tasty)
+    tasty.working = [_working("777")]
+    sent = _bodies(tasty)
+    seen = trade_orders.replace(factory, [tasty], "tastytrade", "5WX01234", "777", 1.5,
+                                strikes={"1": 5785.5}, preview=True)  # fmt: skip
+    assert seen.action == "preview" and seen.ok
+    assert not sent["replace"] and not [c for c in tasty.calls if c[0] == "replace"]
+    assert _symbols(sent["preview"][0])[1] == "SPXW  261013P05785500"
+
+
+@pytest.mark.parametrize("strikes", [
+    {"0": 0}, {"0": -5}, {"0": "5805"}, {"0": True}, {"0": float("nan")}, {"0": 5805.0001},
+    {"2": 5805}, {"-1": 5805}, {"x": 5805}, ["5805"], {"0": 5790},  # 5790: the other leg's
+])  # fmt: skip
+def test_a_bad_strike_change_is_refused_and_sends_nothing(factory, strikes):
+    tasty = FakeBroker(held={})
+    _sent(factory, tasty)
+    tasty.working = [_working("777")]
+    result = trade_orders.replace(factory, [tasty], "tastytrade", "5WX01234", "777", 1.5,
+                                  strikes=strikes)  # fmt: skip
+    assert result.action == "refuse" and not result.ok
+    assert not [c for c in tasty.calls if c[0] == "replace"]
+
+
+def test_a_closing_orders_strikes_cant_change(factory):
+    order = Order((Leg("SPXW  261013P05800000", Side.BUY),), 1, False, price=-1)
+    assert trade_orders._restruck(order, {"0": 5805}).message == trade_orders.OPENING_ONLY
+    assert trade_orders._restruck(order, {}) is order
+
+
 def test_a_cancelled_order_is_no_longer_yours(factory):
     tasty = FakeBroker(held={})
     _sent(factory, tasty)

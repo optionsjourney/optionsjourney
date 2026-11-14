@@ -5,7 +5,15 @@ from decimal import Decimal
 
 from optionsjourney.bots import schedule
 from optionsjourney.bots.date_lists import DATE_SETS, short_label
-from optionsjourney.bots.definition import BotDef, ChaseDef, GroupDef, LegDef, min_width, uses_fallback
+from optionsjourney.bots.definition import (
+    BotDef,
+    ChaseDef,
+    GroupDef,
+    LegDef,
+    loss_boost_multiplier,
+    min_width,
+    uses_fallback,
+)
 from optionsjourney.trading.orders import Side
 
 
@@ -83,6 +91,8 @@ def entry(bot: BotDef) -> list[str]:
             for t in on
         ) or "No times"
     lines = [f"{when} · {days}", _size(bot)]
+    if bot.use_loss_boost:  # #328
+        lines.append(f"Boost ×{loss_boost_multiplier(bot)} after a stop")
     if bot.use_premium_bounds and (bot.premium_min is not None or bot.premium_max is not None):
         lines.append(_bounds("Premium", bot.premium_min, bot.premium_max))
     if bot.use_vix_level and (bot.vix_min is not None or bot.vix_max is not None):

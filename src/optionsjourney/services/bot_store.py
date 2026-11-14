@@ -151,6 +151,7 @@ def _to_def(session, bot: Bot) -> BotDef:
         keep_trying_minutes=bot.keep_trying_minutes,
         use_min_short_width=bool(bot.use_min_short_width),
         use_keep_trying=bool(bot.use_keep_trying),
+        use_loss_boost=bool(bot.use_loss_boost), loss_boost_multiplier=bot.loss_boost_multiplier,
         per_trade=bool(bot.per_trade),
     )  # fmt: skip
 
@@ -391,6 +392,8 @@ def save(
         row.move_conflicted_strikes = bot.move_conflicted_strikes
         row.keep_trying_minutes = bot.keep_trying_minutes
         row.use_min_short_width, row.use_keep_trying = bot.use_min_short_width, bot.use_keep_trying
+        row.use_loss_boost = bot.use_loss_boost  # #328
+        row.loss_boost_multiplier = bot.loss_boost_multiplier
         # Final review I1: a per-trade bot stays one; the bot form doesn't carry the flag
         row.per_trade = bot.per_trade or bool(row.per_trade)
         session.flush()
@@ -1302,6 +1305,8 @@ def read_form(form: Mapping) -> tuple[BotDef, dict[str, str]]:
         keep_trying_minutes=_window(form.get("keep_trying_minutes")),  # #314: blank is one try
         use_min_short_width=form.get("use_min_short_width") == "on",  # #315
         use_keep_trying=form.get("use_keep_trying") == "on",
+        use_loss_boost=form.get("use_loss_boost") == "on",  # #328: blank reads 2
+        loss_boost_multiplier=_window(form.get("loss_boost_multiplier")),
     )  # fmt: skip
     return lone_shorts_rest_stops(bot), _form_problems(form, count, group_count)
 
@@ -1349,7 +1354,8 @@ _DECIMAL_BOXES = re.compile(
 )
 _WHOLE_BOXES = re.compile(
     r"time-\d+-qty|ta-\d+-(days|close)|pa-\d+-\d+-close|close_dte|chase-exit-natural|leg-\d+-dte|"
-    r"chase-entry-window|keep_trying_minutes|" + "|".join(field for field, _ in _PERIODS)
+    r"chase-entry-window|keep_trying_minutes|loss_boost_multiplier|"
+    + "|".join(field for field, _ in _PERIODS)
 )
 
 

@@ -47,7 +47,7 @@ export function installChainPanel(el, opts = {}) {
       const show = T.trayExpiration(tray, expirations, expiration);
       if (show !== expiration) { expiration = show; rows = []; renderExps(); loadChain().then(showTrayLeg); }
       else { renderTable(); showTrayLeg(); }
-      emit();
+      emit(); subscribe();
     },
     info: () => ({ ticker, spot, mult }),
     rowsFor,
@@ -116,7 +116,7 @@ function build() {
       side: c.dataset.cell, bid: side.bid, ask: side.ask, stream_symbol: side.stream_symbol, delta: side.delta });
     trayMsg = next === tray ? `The ticket holds at most ${T.MAX_TRAY_LEGS} legs.` : '';
     tray = next;
-    renderTable(); emit();
+    renderTable(); emit(); subscribe();
   });
   if (NARROW && NARROW.addEventListener) NARROW.addEventListener('change', () => renderTable());
 }
@@ -357,7 +357,7 @@ function connect() {
 
 function subscribe() {
   if (!socket || !socket.connected || !rows.length) return;
-  socket.emit('subscribe_risk_quotes', { symbols: T.streamWindow(T.visibleRows(rows, spot, showAll), spot, 64) });
+  socket.emit('subscribe_risk_quotes', { symbols: T.streamSymbols(tray, T.visibleRows(rows, spot, showAll), spot, 64) });
 }
 
 function onQuotes(q) {

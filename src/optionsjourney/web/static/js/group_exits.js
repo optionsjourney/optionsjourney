@@ -16,6 +16,8 @@ export function shows(part, { stop = '', remainder = '', useProfit = false, coMo
     pair: String(stop).trim() !== '',        // only a stop that fills closes another group
     profit: useProfit,
     'co-amount': coMode !== 'off',
+    'co-off': coMode !== 'dynamic',          // #329: a Dynamic stop's amount is its buffer
+    'co-buffer': coMode === 'dynamic',
   }[part] ?? true;
 }
 
@@ -44,6 +46,12 @@ export function coHint(amount) {
   return typed
     ? `Dollars off the whole trade's entry credit: a $5.00 entry would stop at $${(5 - off).toFixed(2)}.`
     : "Dollars off the whole trade's entry credit: a $5.00 entry would stop at $4.80 with 0.20.";
+}
+
+// #329: a Dynamic stop's buffer starts at 0.20 when nothing is typed (Tracker2's default).
+export function coBuffer(mode, amount) {
+  const typed = String(amount ?? '').trim();
+  return mode === 'dynamic' && typed === '' ? '0.20' : typed;
 }
 
 // Some group's "When its stop fills, also close" names the group at `position`.
@@ -85,6 +93,14 @@ export function install(doc) {
     scope.addEventListener('input', update);
     update();
   }
+  // #329: picking Dynamic stop with no amount typed starts its buffer at 0.20
+  doc.querySelectorAll('[data-closing-order]').forEach(box => {
+    const mode = value(box, 'co-mode');
+    const amount = value(box, 'co-amount');
+    mode?.addEventListener('change', () => {
+      if (amount) amount.value = coBuffer(mode.value, amount.value);
+    });
+  });
   // A pairing picked on one group shows the other's remainder: redraw every row.
   const table = doc.querySelector('[data-group-exits]');
   table?.addEventListener('change', () => {

@@ -211,3 +211,67 @@ test('the toolbar button turns red when an account failed', async () => {
   assert.equal(p.opener.textContent, '⚠ 2 pending');
   assert.ok(p.opener.classList.contains('toolbar-pill--warn'));
 });
+
+// #321: new strikes need the broker's preview before Confirm, and only for what it previewed.
+const strike = (p, leg, value) => p.body.listeners.input.forEach(fn => fn({ target: { dataset: { act: 'strike', leg: String(leg) }, value } }));
+const previewing = p => {
+  const real = p.win.fetch;
+  p.win.fetch = async (url, opts) => {
+    const r = await real(url, opts);
+    const body = opts && opts.body ? JSON.parse(opts.body) : {};
+    return body.preview ? { ok: true, json: async () => ({ status: 'success', ok: true, action: 'preview', message: 'Checked by your broker, not sent.' }) } : r;
+  };
+};
+
+test('a moved strike offers Preview, not Confirm, and posts nothing to replace', async () => {
+  const p = await opened([ORDER]);
+  click(p.body, btn('change'));
+  assert.match(p.body.innerHTML, /Leg 1 strike/);
+  strike(p, 0, '7650');
+  assert.match(p.body.innerHTML, /change-preview/);
+  assert.doesNotMatch(p.body.innerHTML, /change-confirm/);
+  click(p.body, btn('change-confirm'));   // a stale Confirm click still sends nothing
+  await tick();
+  assert.equal(posts(p).length, 0);
+});
+
+test('after the preview, Confirm sends exactly the previewed strikes and price', async () => {
+  const p = await opened([ORDER]);
+  previewing(p);
+  click(p.body, btn('change'));
+  strike(p, 0, '7650');
+  click(p.body, btn('change-preview'));
+  await tick(); await tick();
+  assert.deepEqual(JSON.parse(posts(p)[0].opts.body),
+    { account_id: 1, order_id: 'o1', price: 1.25, strikes: { 0: 7650 }, preview: true });
+  assert.match(p.body.innerHTML, /change-confirm/);
+  click(p.body, btn('change-confirm'));
+  await tick(); await tick();
+  assert.deepEqual(JSON.parse(posts(p)[1].opts.body), { account_id: 1, order_id: 'o1', price: 1.25, strikes: { 0: 7650 } });
+});
+
+test('changing a strike after its preview asks for a new preview', async () => {
+  const p = await opened([ORDER]);
+  previewing(p);
+  click(p.body, btn('change'));
+  strike(p, 0, '7650');
+  click(p.body, btn('change-preview'));
+  await tick(); await tick();
+  strike(p, 0, '7655');
+  assert.match(p.body.innerHTML, /change-preview/);
+  type(p, '1.30');
+  click(p.body, btn('change-confirm'));
+  await tick();
+  assert.equal(posts(p).length, 1);   // only the first preview
+});
+
+test('a closing order or one placed outside the app gets no strike boxes', async () => {
+  for (const order of [
+    { ...ORDER, legs: [{ ...ORDER.legs[0], opening: false }] },
+    { ...ORDER, owner: { kind: 'outside' }, can_change: false },
+  ]) {
+    const p = await opened([order]);
+    click(p.body, btn('change'));
+    assert.doesNotMatch(p.body.innerHTML, /data-act="strike"/);
+  }
+});

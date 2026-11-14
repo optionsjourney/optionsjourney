@@ -65,6 +65,8 @@ Each sync links a trade to its bot and gives it the bot's name only when the mat
 - **It's a futures bot.** These enter only from the Trade page.
 - **It uses an entry window** and no minute passed yet. A minute that doesn't pass leaves no run; the bot's page shows the last check and why (see [Entry window](automation.md#entry-window)).
 
+**A morning alert may have warned you.** If your broker couldn't give the expirations or the option chain, the 9:00 check alerts "Market data check: … entries will NOT be placed" (see [The check at 9:00](automation.md#the-check-at-900-can-todays-entries-be-placed)).
+
 **A skipped run** says why in its Reason. The bot checks these in this order, and stops at the first one that says no:
 
 | The Reason says | What it means |
@@ -81,6 +83,9 @@ Each sync links a trade to its bot and gives it the bot's name only when the mat
 **After those checks** the bot picks its strikes and prices the trade, and a run can still be skipped then: no strike that fits, deltas or the SPX price not available, a premium outside its bounds (the reason says "tried 7 times" if it kept trying; see [Keep trying](automation.md#keep-trying)), a price too close to even, or a budget that doesn't buy one contract. Each says so in its Reason, and the ones about missing prices also send you one alert that day. A Paper bot's run is also skipped if your broker's check of the order would refuse it.
 
 **Missed** means the order went out and was chased but never filled, so there's no trade (see [What happens at an entry time](automation.md#what-happens-at-an-entry-time)).
+
+### Why did a bot enter more contracts than usual?
+It has **Boost after a stop** switched on, and its last trade before today closed on its stop, so today's entries are its usual size times the boost. You got an alert saying so, and the run page shows "Boosted after a stop" with the trade that was stopped. **Max contracts per trade** still caps it. Switch the boost off on the bot's page if you don't want it (see [Boost after a stop](automation.md#boost-after-a-stop)).
 
 ### What does "Needs a look" mean?
 While a Live bot has a trade open, the app checks every 30 seconds that each group is protected. Anything it finds shows in **Needs a look** at the top of the Automation page, with a link to its run, and sends you one alert. The trade's **bot** badge in your journal turns red too. It goes by itself once it's sorted. The app never changes an order because of it.
@@ -134,6 +139,29 @@ Only when you **Delete** it, or when you trade it and your broker accepts the or
 - **A timed close is tried once a day per side.** If it didn't go through, it isn't tried again that day.
 
 **What to check:** open the run page. **Orders, step by step** shows every price the close tried, and **Exits** shows where each stop and target stands now. If something is still open that you wanted closed, close it at your broker or from the run page the next trading day.
+
+### Can I close a trade at night?
+Yes, if it's on SPX, SPXW, XSP, VIX or RUT options at **TastyTrade**. Those options trade overnight from 20:15 to 09:25 New York time. **Close** then sends overnight limit orders; clicked between 16:00 and 20:15 (or on a weekend), it's scheduled for when they trade again, and you can cancel it. Other trades close only in the regular session. See [Closing after hours](automation.md#closing-after-hours).
+
+| You click Close at | What happens |
+|---|---|
+| 22:00 on a weekday | Closes now, overnight. |
+| 17:30 | Scheduled for 20:16. |
+| Saturday | Scheduled for Sunday 20:16. |
+| 09:27 | Scheduled for 09:31. |
+
+### Why does my trade have no stop until 09:30?
+Your broker takes no stop orders outside the regular session. When the app has to place a stop then on an index-option trade at TastyTrade (after an overnight close that didn't fill, say), it waits and places it in the first minute after 09:30 (the app checks every 30 seconds). You get an alert saying so, and the side's box on the run page says "placed just after 09:30". If the broker still turns it down, the app tries again at 09:45, then sends a red alert. For the same reason, stop changes on those trades wait until 09:30.
+
+### Why didn't my Dynamic stop move down?
+A [Dynamic stop](automation.md#dynamic-stop-the-credit-plus-the-sides-bought-leg-moving-down) moves only when all of these hold:
+- the market is open, orders aren't frozen, and the app is running (it looks about once a minute);
+- the bought leg and the sold leg both have prices under 30 seconds old, and the bought leg isn't quoted 0 bid / 0 ask;
+- the new stop is at least one price step lower. It never moves up, so a bought leg that gained value leaves it where it is;
+- the new stop would be above the sold leg's ask. If not, it goes one price step above the ask, or stays put;
+- nothing else moved the stop since (a profit action, a time action or your change), and no close is running on that side.
+
+If your broker refused a move, you got an alert saying so, and the old stop is still there. Each move shows on the run page under **Orders, step by step**.
 
 ### Why is nothing syncing?
 **The likely reasons:**

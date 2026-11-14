@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { shows, groupLabel, coHint } from '../../../../src/optionsjourney/web/static/js/group_exits.js';
+import { shows, groupLabel, coHint, coBuffer } from '../../../../src/optionsjourney/web/static/js/group_exits.js';
 
 test('the limit price shows only when the other legs are sold at a limit', () => {
   assert.equal(shows('limit', { remainder: 'close_limit' }), true);
@@ -24,6 +24,17 @@ test('the closing order amount shows unless it is off', () => {
   assert.equal(shows('co-amount', { coMode: 'off' }), false);
   assert.equal(shows('co-amount', { coMode: 'both' }), true);
   assert.equal(shows('co-amount', { coMode: 'tighter' }), true);
+});
+
+test('a Dynamic stop names its amount the buffer and starts it at 0.20', () => {
+  assert.equal(shows('co-amount', { coMode: 'dynamic' }), true);
+  assert.equal(shows('co-buffer', { coMode: 'dynamic' }), true);
+  assert.equal(shows('co-off', { coMode: 'dynamic' }), false);
+  assert.equal(shows('co-buffer', { coMode: 'tighter' }), false);
+  assert.equal(shows('co-off', { coMode: 'tighter' }), true);
+  assert.equal(coBuffer('dynamic', ''), '0.20');
+  assert.equal(coBuffer('dynamic', '0'), '0');
+  assert.equal(coBuffer('tighter', ''), '');
 });
 
 test('an unknown part always shows', () => {

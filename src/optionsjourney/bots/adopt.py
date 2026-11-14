@@ -352,8 +352,9 @@ def plan_exits(bot: BotDef, matched: Matched) -> list[SidePlan]:
             calc, rests = None, "target"
             limit, problem = stops.target_limit(group, entry) if entry is not None else (None, None)
         else:
-            calc, rests = exit_plan.stop_for(plan, legs, fills, matched.credit, bot.stop_co_mode,
-                                             bot.stop_co_amount), plan.rests  # fmt: skip
+            calc = exit_plan.stop_for(plan, legs, fills, matched.credit, bot.stop_co_mode,
+                                      bot.stop_co_amount, matched.legs)  # fmt: skip
+            rests = plan.rests
             limit, problem = exit_plan.target_for(plan, legs, fills)
         out.append(SidePlan(
             group.position, group.name, anchor.symbol if anchor else "",

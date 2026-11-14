@@ -18,7 +18,7 @@ from sqlalchemy.orm import sessionmaker
 from optionsjourney.core import trade_events
 from optionsjourney.core.accounts import BrokerAccount
 from optionsjourney.core.market import MARKET_TZ
-from optionsjourney.db.models import Account, TradeEvent
+from optionsjourney.db.models import Account, BotExit, TradeEvent
 from optionsjourney.services import journal, settings
 
 logger = logging.getLogger(__name__)
@@ -80,22 +80,25 @@ def record(session_factory: sessionmaker, now: datetime, cache=None) -> list[Sho
                 select(TradeEvent.dedupe_key).where(TradeEvent.occurred_at >= since - LOOKBACK)
             ))  # fmt: skip
             new = []
-            for entry in view.entries:
-                for fact in trade_events.events_of(entry.position):
-                    if fact.at < since or fact.dedupe_key in known:
-                        continue
-                    known.add(fact.dedupe_key)
-                    row = TradeEvent(
-                        dedupe_key=fact.dedupe_key, kind=fact.kind,
-                        position_key=fact.position_key, name=entry.name,
-                        bot_name=entry.bot.name if entry.bot else None,
-                        broker=entry.position.broker,
-                        account_number=entry.position.account_number,
-                        amount=fact.amount, occurred_at=fact.at, created_at=now,
-                        detail=fact.detail,
-                    )  # fmt: skip
-                    session.add(row)
-                    new.append(row)
+            facts = [(entry, fact) for entry in view.entries
+                     for fact in trade_events.events_of(entry.position)
+                     if fact.at >= since and fact.dedupe_key not in known]  # fmt: skip
+            exits = _exit_symbols(session, facts)
+            for entry, fact in facts:
+                if fact.dedupe_key in known or trade_events.still_booking(fact, exits):
+                    continue  # a bot exit's other legs book in a later sync (#326)
+                known.add(fact.dedupe_key)
+                row = TradeEvent(
+                    dedupe_key=fact.dedupe_key, kind=fact.kind,
+                    position_key=fact.position_key, name=entry.name,
+                    bot_name=entry.bot.name if entry.bot else None,
+                    broker=entry.position.broker,
+                    account_number=entry.position.account_number,
+                    amount=fact.amount, occurred_at=fact.at, created_at=now,
+                    detail=fact.detail,
+                )  # fmt: skip
+                session.add(row)
+                new.append(row)
             try:
                 session.commit()
             except IntegrityError:  # another process stored them first
@@ -104,6 +107,19 @@ def record(session_factory: sessionmaker, now: datetime, cache=None) -> list[Sho
             new.sort(key=lambda r: r.occurred_at)
             popups = popups_on(session_factory)
             return [shown(r, view.accounts, now, popups) for r in new]
+
+
+def _exit_symbols(session, facts) -> dict[str, frozenset[str]]:
+    """The legs of each bot exit order behind a partial close, by broker order id."""
+    ids = {order_id for _, fact in facts if fact.kind == trade_events.PARTIAL
+           for order_id, _ in fact.booked}  # fmt: skip
+    if not ids:
+        return {}
+    rows = session.scalars(select(BotExit).where(BotExit.broker_order_id.in_(ids)))
+    return {
+        row.broker_order_id: frozenset(leg["symbol"] for leg in row.legs or [])
+        for row in rows if row.legs
+    }
 
 
 def accounts(session_factory: sessionmaker) -> dict:

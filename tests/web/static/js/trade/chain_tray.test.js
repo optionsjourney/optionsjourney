@@ -97,6 +97,12 @@ test('streamWindow takes nearest-to-spot first and caps', () => {
   assert.deepEqual(T.streamWindow(rows, 44, 4), ['P45', 'C45', 'P40', 'C40']);
 });
 
+test('streamSymbols puts the ticket legs first, then the window, to the cap', () => {
+  const tray = { legs: [cell({ stream_symbol: 'P99' }), cell({ stream_symbol: 'C45' })] };
+  assert.deepEqual(T.streamSymbols(tray, rows, 44, 4), ['P99', 'C45', 'P45', 'P40']);
+  assert.deepEqual(T.streamSymbols(T.emptyTray(), rows, 44, 4), T.streamWindow(rows, 44, 4));
+});
+
 test('bpGate ignores a stale response', () => {
   const g = T.bpGate();
   const first = g.next();

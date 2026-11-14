@@ -231,6 +231,7 @@ def replace():
     result = trade_orders.replace(
         s.session_factory, s.broker_clients(), found[0], found[1],
         order_id if isinstance(order_id, str) else "", body.get("price"),
+        strikes=body.get("strikes"), preview=body.get("preview") is True,
     )  # fmt: skip
     return _result(result)
 

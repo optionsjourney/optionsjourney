@@ -20,9 +20,9 @@ from decimal import Decimal
 
 from sqlalchemy import select
 
-from optionsjourney.bots import exit_math, manage, stops, timing, watched_stops
+from optionsjourney.bots import after_hours, exit_math, manage, stops, timing, watched_stops
 from optionsjourney.db.models import BotExit, BotRun, BotTradeOverride
-from optionsjourney.services import bot_exits, orders
+from optionsjourney.services import bot_dynamic_stops, bot_exits, orders
 from optionsjourney.services.bot_chase import read_after_cancel
 from optionsjourney.services.bot_exits import EXITS_LOCK, EXITS_OFF, TURNING_OFF
 from optionsjourney.trading.orders import OrderStatus, Side, plain
@@ -253,6 +253,17 @@ def _stop_typed(text: str, unit: str | None):
     return pct, None, "" if problem else f"stop {manage._num(pct)}%", problem
 
 
+def stops_off_hours(deps, run_id: int) -> bool:
+    """#330 (Tracker2's 0e700c4e): a TastyTrade trade on index options outside the regular
+    session, where the broker refuses every stop. A stop change (cancel, then place) can't
+    finish then, so it's refused before anything is cancelled, never left half done."""
+    run, _ = bot_exits._run_and_bot(deps, run_id)
+    with deps.session_factory() as session:
+        row = session.get(BotRun, run_id)
+        symbols = [leg["symbol"] for leg in (row.legs or ())] if row is not None else []
+    return bot_exits.stops_wait(deps, run.broker, symbols)
+
+
 def change_stop(deps, run_id: int, position: int, text: str, unit: str = "pct") -> Outcome:
     """Move one side's stop to the % you typed (management.apply_override with a
     stop %): checked against the short's fresh ask before anything is cancelled
@@ -265,6 +276,8 @@ def change_stop(deps, run_id: int, position: int, text: str, unit: str = "pct") 
     closing order: the latest change wins."""
     if _futures_run(deps, run_id):
         return _refused(FUTURES_NOT_YET)
+    if stops_off_hours(deps, run_id):
+        return _refused(after_hours.STOP_EDIT_OFF_HOURS)
     pct, usd, what, problem = _stop_typed(text, unit)
     if problem:
         return _refused(problem)
@@ -286,16 +299,31 @@ def set_closing_order(deps, run_id: int, position: int, mode: str,
     stops.stop_calc does (both: the dollars off the entry credit replace it; tighter: they
     win only when lower), then the same live check and move as Change stop. Off puts back
     the group's own number. Only a credit group whose stop rests on its short has one;
-    a $ stop has no overlay."""
+    a $ stop has no overlay.
+
+    #329: mode "dynamic" switches the trade to a Dynamic stop with `amount_text` as its
+    buffer ($0 or more): the stop is re-set ONCE from the long's live mid (Tracker2's
+    drawer switch: it may loosen; refused without a fresh long quote, or when the short's
+    ask is through the level), then the ratchet moves it down. Saving the same buffer on a
+    side whose Dynamic stop rests changes nothing (1a87ccec: never loosened by a re-save)."""
     from optionsjourney.bots.definition import CO_MODES
 
     if _futures_run(deps, run_id):
         return _refused(FUTURES_NOT_YET)
+    if stops_off_hours(deps, run_id):  # #330: it moves the resting stop
+        return _refused(after_hours.STOP_EDIT_OFF_HOURS)
     mode = (mode or "").strip().lower()
     if mode not in CO_MODES:
-        return _refused("Pick Off, Every group or When tighter for the closing order.")
+        return _refused(
+            "Pick Off, Every group, When tighter or Dynamic stop for the closing order."
+        )
+    dynamic = mode == stops.DYNAMIC
     amount = None
-    if mode != "off":
+    if dynamic:
+        amount, problem = manage.read_buffer(amount_text)
+        if problem:
+            return _refused(f"{problem} It's how far below the credit the Dynamic stop sits.")
+    elif mode != "off":
         amount, problem = manage.read_usd(amount_text, "closing order")
         if problem:
             return _refused(f"{problem} The closing order is the dollars off the entry credit.")
@@ -305,26 +333,41 @@ def set_closing_order(deps, run_id: int, position: int, mode: str,
             run.fill_credit if run.fill_credit is not None else run.target_credit
         )  # fmt: skip
     if entry is not None and entry < 0:
+        what = "Dynamic stop" if dynamic else "the closing order"
         return _refused(
-            "This trade opened for a debit: the closing order works only on a credit trade's "
+            f"This trade opened for a debit: {what} works only on a credit trade's "
             "stop on its short."
         )
-    what = "closing order off" if mode == "off" else (
-        f"closing order {manage._money(amount)} ({mode})"
-    )  # fmt: skip
+    if dynamic:
+        same = _same_dynamic(deps, run_id, position, amount)
+        if same is not None:
+            return Outcome(True, same)
+        what = f"Dynamic stop, buffer {manage._money(amount)}"
+    else:
+        what = "closing order off" if mode == "off" else (
+            f"closing order {manage._money(amount)} ({mode})"
+        )  # fmt: skip
 
     def work(group, side):
+        name = "Dynamic stop" if dynamic else "closing order"
         if side.anchor is None:
-            return None, "a group the app watches has no closing order"
+            return None, f"a group the app watches has no {name}"
         if group is None or group.stop_value is None:
-            return None, "the group has no stop to overlay"
+            return None, "the group has no stop to overlay" if not dynamic else (
+                "the group has no stop: set one first"
+            )  # fmt: skip
         if group.stop_unit == "usd":
-            return None, "a $ stop has no closing order; set a % stop first"
+            return None, f"a $ stop has no {name}; set a % stop first"
         fill = bot_exits._fill_of(side.fills, side.anchor.symbol)
         if fill is None:
             return None, "the short has no fill price"
+        long = {}
+        if dynamic:
+            long = bot_dynamic_stops.live_long(deps, run_id, side.run.legs, group)
+            if long is None:
+                return None, DYNAMIC_NO_QUOTE
         calc = stops.stop_calc(group, mode, amount, side.anchor.symbol, fill, side.entry_credit,
-                               ratio=side.anchor.ratio)  # fmt: skip
+                               ratio=side.anchor.ratio, **long)  # fmt: skip
         if calc.problem is not None:
             return None, calc.problem
         entry = calc.as_log()
@@ -332,6 +375,37 @@ def set_closing_order(deps, run_id: int, position: int, mode: str,
         return (calc, entry), None
 
     return _set_stop(deps, run_id, position, what, {"co_mode": mode, "co_amount": amount}, work)
+
+
+DYNAMIC_NO_QUOTE = (
+    "there's no fresh price for the long, so a Dynamic stop can't be set from it. Nothing "
+    "was changed; try again in a moment"
+)
+
+
+def _same_dynamic(deps, run_id: int, position: int, amount) -> str | None:
+    """What to say when this trade's side already runs a Dynamic stop with this buffer and
+    one rests (1a87ccec: the save compares the RESTING stop, never one recomputed from the
+    live long), else None."""
+    _, bot = bot_exits._run_and_bot(deps, run_id)
+    with deps.session_factory() as session:
+        side = _read(session, run_id, position)
+        if side is None:
+            return None
+        live = side.latest("stop", *bot_exits.STOP_LIVE)
+        mine = bot_exits.trade_group(session, run_id, position)
+    if mine is not None and mine.co_mode is not None:
+        mode, buffer = mine.co_mode, mine.co_amount
+    else:
+        mode, buffer = bot.stop_co_mode, bot.stop_co_amount
+    if mode != stops.DYNAMIC or buffer is None or Decimal(buffer) != amount:
+        return None
+    if live is None or not bot_exits.is_dynamic(live):
+        return None
+    return (
+        f"The stop is already a Dynamic stop with a {manage._money(amount)} buffer, resting "
+        f"at {live.trigger}; it moves down as the long decays. Nothing was changed."
+    )
 
 
 def _set_stop(deps, run_id: int, position: int, what: str, fields: dict, work) -> Outcome:
@@ -403,7 +477,15 @@ def _set_stop(deps, run_id: int, position: int, what: str, fields: dict, work) -
             )
         with deps.session_factory() as session:
             after = session.get(BotExit, target_id).trigger
-        if after != before:  # the stop now carries your level, placed or waiting
+        if after == before and moved and found is not None and found[0].basis == stops.DYNAMIC:
+            # #329: a Dynamic stop that works out at the stop's own level takes it over
+            # as it is (the ratchet owns it from now on): nothing to send
+            with deps.session_factory() as session:
+                row = session.get(BotExit, target_id)
+                bot_exits._log(row, deps, event="now a Dynamic stop", **found[1])
+                session.commit()
+            _save(deps, run_id, position, what, note, **fields)
+        elif after != before:  # the stop now carries your level, placed or waiting
             _save(deps, run_id, position, what, note, **fields)
     return Outcome(moved, _sentence(note))
 
@@ -962,6 +1044,8 @@ def _switch_on(deps, run_id: int, position: int, text: str, *, stop: bool,
                target: bool) -> Outcome:  # fmt: skip
     if _futures_run(deps, run_id):
         return _refused(FUTURES_NOT_YET)
+    if stop and stops_off_hours(deps, run_id):  # #330: it would place a stop
+        return _refused(after_hours.STOP_ON_OFF_HOURS)
     both = stop and target
     stays = "Exits stay off" if both else "The stop stays off"
     pct = None
@@ -1204,18 +1288,49 @@ def _how(kind: str, legs) -> str:
     return "by the bot's exit chase (a group of more than one leg is never sent at market)"
 
 
-def _can_close(deps, run_id: int, kind: str) -> str | None:
-    """Why no close you ask for may start on this run now, or None (manual_close's
-    "Refused before anything is touched")."""
+def close_window(deps, run_id: int) -> after_hours.Window:
+    """The window a close you ask for on this run falls in now (#330, decision 0133):
+    a TastyTrade trade on Cboe index options also closes overnight, and is scheduled when
+    no session it trades in is open; any other closes only in the regular session."""
+    run, _ = bot_exits._run_and_bot(deps, run_id)
+    with deps.session_factory() as session:
+        row = session.get(BotRun, run_id)
+        symbols = [leg["symbol"] for leg in (row.legs or ())] if row is not None else []
+    return after_hours.close_window(run.broker, symbols, deps.now())
+
+
+def _can_close(deps, run_id: int, kind: str) -> tuple[str | None, after_hours.Window | None]:
+    """(why no close you ask for may start on this run now, or None; the window it falls
+    in) (manual_close's "Refused before anything is touched"). #330: off-hours a trade on
+    index options at TastyTrade closes overnight or is scheduled (close_window); at Market
+    only in the regular session."""
     if _futures_run(deps, run_id):
-        return FUTURES_NOT_YET
-    if not bot_exits._session_open(deps):
-        return "You can close only while the market is open (its regular session)."
+        return FUTURES_NOT_YET, None
+    window = close_window(deps, run_id)
+    if window.kind == after_hours.CLOSED:
+        return window.message, window
     if bot_exits._frozen(deps):
-        return "Orders are frozen (Freeze is on), so nothing can be closed now."
+        return "Orders are frozen (Freeze is on), so nothing can be closed now.", window
+    if kind == "market" and window.kind != after_hours.REGULAR:
+        return after_hours.MARKET_OVERNIGHT, window
     if kind == "market" and not _run_0dte(deps, run_id):
-        return MARKET_0DTE
-    return None
+        return MARKET_0DTE, window
+    return None, window
+
+
+def _scheduled(deps, run_id: int, window: after_hours.Window, **request) -> Outcome:
+    """#330: a close asked for while no session it trades in is open: scheduled for the
+    next one (bot_scheduled_closes), nothing sent now."""
+    from optionsjourney.services import bot_scheduled_closes
+
+    ok, said = bot_scheduled_closes.schedule(deps, run_id, start_at=window.start_at, **request)
+    return Outcome(ok, said)
+
+
+OVERNIGHT_NOTE = (
+    " The market's overnight session is open for these options: it closes with overnight "
+    "limit orders, never at market, and stops at 09:25 if it hasn't filled."
+)
 
 
 def _run_0dte(deps, run_id: int) -> bool:
@@ -1238,7 +1353,7 @@ def close_part(deps, run_id: int, position: int, text: str, order_type: str = "l
     kind, problem = _order_type(order_type)
     if problem:
         return _refused(problem)
-    why = _can_close(deps, run_id, kind)
+    why, window = _can_close(deps, run_id, kind)
     if why:
         return _refused(why)
     with deps.session_factory() as session:
@@ -1260,8 +1375,10 @@ def close_part(deps, run_id: int, position: int, text: str, order_type: str = "l
     quantity, problem = manage.quantity_problem(text, held)
     if problem:
         return _refused(problem)
-    if bot_exits.fire_close(deps, run_id, position, quantity, side.size,
-                            order_type=kind) is None:  # fmt: skip
+    if window.kind == after_hours.SCHEDULE:  # #330: nothing sent now
+        return _scheduled(deps, run_id, window, position=position, quantity=text, order_type=kind)
+    if bot_exits.fire_close(deps, run_id, position, quantity, side.size, order_type=kind,
+                            overnight=window.overnight) is None:  # fmt: skip
         return _refused(
             "This group couldn't be claimed: a close is running on it, or it just closed. "
             "Nothing was sent."
@@ -1269,7 +1386,7 @@ def close_part(deps, run_id: int, position: int, text: str, order_type: str = "l
     return Outcome(
         True,
         f"Closing {quantity} of {held} on this group {_how(kind, side.legs)}, in the "
-        f"background.{_rest_note(side)}",
+        f"background.{_rest_note(side)}{OVERNIGHT_NOTE if window.overnight else ''}",
     )
 
 
@@ -1294,7 +1411,7 @@ def close_trade(deps, run_id: int, order_type: str = "limit",
     kind, problem = _order_type(order_type)
     if problem:
         return _refused(problem)
-    why = _can_close(deps, run_id, kind)
+    why, window = _can_close(deps, run_id, kind)
     if why:
         return _refused(why)
     with deps.session_factory() as session:
@@ -1331,6 +1448,8 @@ def close_trade(deps, run_id: int, order_type: str = "limit",
             plan.append((position, held, side.size))
     if not plan:
         return _refused("Your broker shows nothing of this trade held, so nothing was sent.")
+    if window.kind == after_hours.SCHEDULE:  # #330: nothing sent now
+        return _scheduled(deps, run_id, window, groups=only, order_type=kind)
     try:
         deps.background(_close_trade_job, deps, run_id, plan, kind)
     except Exception:  # noqa: BLE001 -- nothing was claimed yet: nothing to put back
@@ -1341,7 +1460,8 @@ def close_trade(deps, run_id: int, order_type: str = "limit",
         True,
         f"Closing {'this side' if only is not None else 'the whole trade'} in the background, "
         f"one group at a time ({names}), "
-        f"{'at market where a group is one leg' if kind == 'market' else 'from the mid'}.",
+        f"{'at market where a group is one leg' if kind == 'market' else 'from the mid'}."
+        f"{OVERNIGHT_NOTE if window.overnight else ''}",
     )
 
 
@@ -1370,8 +1490,15 @@ def _close_trade_job(deps, run_id: int, plan, kind: str) -> None:
             if held is not None and held < 1:
                 done.append(f"{name} (nothing held)")
                 continue
+            # #330: each group in the window it starts in; one the session ended before
+            # isn't started (the groups after it keep their stop and target)
+            window = close_window(deps, run_id)
+            if not window.can_close_now:
+                held = None
+                why_not = window.message or "the session it trades in ended"
             exit_id = None if held is None else bot_exits.fire_close(
                 deps, run_id, position, held, side.size, order_type=kind, wait=True,
+                overnight=window.overnight,
             )  # fmt: skip
             state = None
             if exit_id is not None:
@@ -1379,7 +1506,9 @@ def _close_trade_job(deps, run_id: int, plan, kind: str) -> None:
                     state = session.get(BotExit, exit_id).state
             if state not in ("filled", "expired"):
                 rest = [bot_exits._group_name(bot, p) for p, _, _ in plan[i + 1 :]]
-                if held is None:
+                if held is None and not window.can_close_now:
+                    what = f"wasn't started: {why_not}"
+                elif held is None:
                     what = "couldn't be sized: your positions couldn't be read, so nothing was sent"
                 elif exit_id is None:
                     what = "couldn't be claimed (a close is running on it, or it just closed)"
@@ -1590,7 +1719,10 @@ def sides(session_factory, run_id: int, bot) -> list[SideView]:
             )  # the close handed its leg to a wing order that's still working (#179)
             out.append(SideView(
                 position, name, "selling" if selling else side.state, side.off,
-                stop.trigger if stop else None, stop.state if stop else None,
+                stop.trigger if stop else None,
+                # #330: a stop held for the open reads "at_open", not "pending"
+                ("at_open" if stop.state == "pending" and stop.stop_at_open else stop.state)
+                if stop else None,
                 target.limit if target else None, side.size,
                 _side_chips(bot, run, position, side.rows, override),
                 _maybe_live(side), side.watched, bool(run.pt_only),

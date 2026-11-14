@@ -16,9 +16,10 @@ from sqlalchemy import select
 
 from optionsjourney.core import pending
 from optionsjourney.core.market import market_date
+from optionsjourney.core.symbols import parse_occ
 from optionsjourney.db.models import Account, Bot, OrderLog
 from optionsjourney.services import bot_adopt, orders
-from optionsjourney.trading.orders import BrokerOrder, Order, OrderStatus
+from optionsjourney.trading.orders import BrokerOrder, Order, OrderError, OrderStatus
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,9 @@ UNKNOWN_PART = (
     "Change or cancel it at your broker."
 )
 CHANGING = "Your broker is already changing this order."
+BAD_STRIKE = "A new strike must be a number above 0."
+OPENING_ONLY = "Only an order that opens a trade can have its strikes changed."
+NO_FUTURES_STRIKES = "A futures option's strike can't be changed here."
 # The external identifier services/orders puts on every TastyTrade attempt (uuid4 hex[:20])
 APP_TAG = re.compile(r"[0-9a-f]{20}")
 
@@ -264,15 +268,49 @@ def cancel(
     return orders.cancel(session_factory, clients, broker, account, order_id, "you", now=now)
 
 
+def _restruck(order: Order, strikes) -> Order | orders.Result:
+    """#321 (Tracker2 44173488): the order with some legs moved to new strikes, {leg
+    index: strike}. Only an opening order's option legs; each new symbol is the leg's own
+    with only its 8-digit strike field changed, never a symbol from the page. Expiry,
+    put/call, side, ratio and quantity stay as they are."""
+    if not strikes:
+        return order
+    if not isinstance(strikes, dict):
+        return orders.Result("refuse", False, BAD_STRIKE)
+    if not order.opening:
+        return orders.Result("refuse", False, OPENING_ONLY)
+    legs = list(order.legs)
+    for key, value in strikes.items():
+        index = int(key) if isinstance(key, (int, str)) and str(key).isdigit() else -1
+        if not 0 <= index < len(legs):
+            return orders.Result("refuse", False, BAD_STRIKE)
+        if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
+            return orders.Result("refuse", False, BAD_STRIKE)
+        leg = legs[index]
+        if leg.futures or parse_occ(leg.symbol) is None:
+            return orders.Result("refuse", False, NO_FUTURES_STRIKES)
+        thousandths = Decimal(str(value)) * 1000
+        if thousandths != thousandths.to_integral_value() or thousandths >= 10**8:
+            return orders.Result("refuse", False, BAD_STRIKE)
+        legs[index] = dataclasses.replace(leg, symbol=f"{leg.symbol[:-8]}{int(thousandths):08d}")
+    try:
+        return dataclasses.replace(order, legs=tuple(legs))
+    except OrderError as e:
+        return orders.Result("refuse", False, str(e))
+
+
 def replace(
-    session_factory, clients, broker: str, account: str, order_id: str, price, now=None
-) -> orders.Result:
-    """Change the limit price of an order you placed. The legs, quantity and
-    opening/closing stay as they are, so a partly filled order is never replaced
+    session_factory, clients, broker: str, account: str, order_id: str, price, now=None,
+    strikes=None, preview: bool = False,
+) -> orders.Result:  # fmt: skip
+    """Change the limit price of an order you placed, and with `strikes` (#321) the
+    strikes of an opening order's legs. The quantity and opening/closing stay as they
+    are, so a partly filled order is never replaced
     (it would go back out at the full size; bot_chase does the same): it's read
     fresh from the broker first. Your order is rebuilt from the log, never from the
     broker's copy; any other order is refused (#293). orders.replace puts the price
-    on tick."""
+    on tick. `preview` runs every check and the broker's own, and replaces nothing:
+    the page offers Confirm for new strikes only after one."""
     who = _logged(session_factory, broker, account, order_id)
     if who is not None and not who.changeable:
         return orders.Result("refuse", False, who.refusal)
@@ -297,6 +335,8 @@ def replace(
         return orders.Result("refuse", False, CHANGING)
     if _part_filled(found):
         return orders.Result("refuse", False, PART_FILLED)
-    new_order = dataclasses.replace(order, price=Decimal(str(price)))
-    request = orders.Request(broker, account, "you", new_order)
+    new_order = _restruck(dataclasses.replace(order, price=Decimal(str(price))), strikes)
+    if isinstance(new_order, orders.Result):
+        return new_order
+    request = orders.Request(broker, account, "you", new_order, preview_only=preview)
     return orders.replace(session_factory, clients, request, order_id, now=now)

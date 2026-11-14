@@ -25,6 +25,7 @@ from optionsjourney.bots import (
     expirations,
     filters,
     floating,
+    loss_boost,
     schedule,
     sizing,
     strikes,
@@ -49,7 +50,14 @@ from optionsjourney.core.sessions import session_now
 from optionsjourney.core.symbols import occ_symbol
 from optionsjourney.core.transactions import InstrumentType, OptionDetails
 from optionsjourney.db.models import Bot, BotExit, BotRun
-from optionsjourney.services import bot_filters, bot_paper, bot_store, economic_events, orders
+from optionsjourney.services import (
+    bot_filters,
+    bot_loss_boost,
+    bot_paper,
+    bot_store,
+    economic_events,
+    orders,
+)
 from optionsjourney.services.bot_chase import chase_entry
 from optionsjourney.services.user_alerts import Fired
 from optionsjourney.trading import ticks
@@ -773,15 +781,21 @@ class _Missing(Exception):
         self.reason, self.chain = reason, chain
 
 
-def _find_legs(deps, bot, day, strike_notes: list) -> tuple[tuple, object, list]:
+def _find_legs(
+    deps, bot, day, strike_notes: list, backup: list | None = None
+) -> tuple[tuple, object, list]:
     """The strikes for today's entry: the listed expirations, a chain for each, the
     underlying's price, then `_pick`. Returns (picked, spot, expiration notes); raises
     _Missing, or strikes.NoTrade from the pickers. The scheduled entry and Preview order
-    both pick here."""
+    both pick here. `backup` takes the broker that listed the expirations when TastyTrade
+    couldn't (#327: "Schwab"), for the run's log."""
     clients = deps.clients()
     # Bots slice 14: each leg's DTE as a listed expiration (resolver.resolve_trade: never
     # today + DTE), and a chain for each.
-    listed = deps.chain.expirations(clients, bot.underlying).get("expirations", [])
+    found = deps.chain.expirations(clients, bot.underlying)
+    listed = found.get("expirations", [])
+    if found.get("backup") and backup is not None:
+        backup.append(found["backup"])
     dtes = {leg.dte for leg in bot.legs}
     resolved, problems, notes = expirations.resolve_legs(dtes, listed, day, bot.use_exact_dte)
     if problems:
@@ -809,8 +823,13 @@ def _fire(
         else:
             update_run(deps, run_id, status="skipped", reason=reason)
 
+    # #328: after a stopped trade, the loss boost multiplies the size (Max per trade caps it)
+    boost = boost_for(deps, bot)
+    factor = boost.multiplier if boost else 1
     # A window's minutes never take an entry time's own quantity (floating.py)
-    contracts, capped = contracts_for(bot, None if manual or trade or miss is not None else hhmm)
+    contracts, capped = contracts_for(
+        bot, None if manual or trade or miss is not None else hhmm, boost=factor
+    )
     if bot.sizing == "dollars":  # slice 19: sized once priced; the guards need room for one
         contracts, capped = 1, None
     problem = (
@@ -836,7 +855,7 @@ def _fire(
         _try_entry(
             deps, fallback if at_fallback else bot, run_id, manual, live, contracts, capped,
             owned, handed, skip, waiting.append, miss=miss, trade=trade,
-            strike_notes=said if attempt > 1 else [], floor=not at_fallback,
+            strike_notes=said if attempt > 1 else [], floor=not at_fallback, boost=boost,
         )  # fmt: skip
         if not waiting:
             return
@@ -859,16 +878,29 @@ def _fire(
 RETRY_SECONDS = 10  # #314: how often an entry time that keeps trying picks again
 
 
+def boost_for(deps, bot) -> loss_boost.Boost | None:
+    """#328: the loss boost for the bot's entry today, or None. A lookup that fails boosts
+    nothing (logged): the entry goes out at its usual size."""
+    try:
+        day = deps.now().astimezone(MARKET_TZ).date()
+        return bot_loss_boost.boost_for(deps.session_factory, bot, day)
+    except Exception:  # noqa: BLE001 -- never a reason not to trade
+        logger.exception("bot %s: couldn't check the loss boost", bot.name)
+        return None
+
+
 def _try_entry(
     deps, bot, run_id: int, manual: bool, live: bool, contracts: int, capped, owned: list,
     handed: set, skip, retry, *, miss, trade: bool, strike_notes: list, floor: bool,
+    boost: loss_boost.Boost | None = None,
 ) -> None:  # fmt: skip
     """One try at the entry: pick, requote, enter. `retry(reason)` takes a skip that may
     pass on another try (#314: the premium bounds, or no strikes for the min short width);
     `floor=False` (the fallback try) leaves out the premium minimum."""
     day = deps.now().astimezone(MARKET_TZ).date()
+    backup: list = []  # #327: the broker that listed the expirations instead
     try:  # slice 19: strike_notes takes what the pickers moved, for the run's log
-        picked, spot, notes = _find_legs(deps, bot, day, strike_notes)
+        picked, spot, notes = _find_legs(deps, bot, day, strike_notes, backup)
     except _Missing as e:
         if not e.chain:
             skip(e.reason)
@@ -895,6 +927,8 @@ def _try_entry(
         deps, bot, run_id, picked, contracts, live, owned, handed, skip,
         scheduled=not manual and not trade, dtes=dte_of, spot=spot, capped=capped, notes=notes,
         by_bot=True, strike_notes=strike_notes, limits=not manual, retry=retry, floor=floor,
+        boost=boost,
+        expirations_from=backup[0] if backup else None,
     )  # fmt: skip
 
 
@@ -962,6 +996,8 @@ def enter_picked(
     handed: set, skip: Callable[[str], None], *, scheduled: bool, dtes: dict, spot,
     capped: int | None = None, notes=(), lead: dict | None = None, by_bot: bool = False,
     strike_notes=(), limits: bool | None = None, retry=None, floor: bool = True,
+    boost: loss_boost.Boost | None = None,
+    expirations_from: str | None = None,
 ) -> None:  # fmt: skip
     """From the picked legs to a settled entry (orchestrator._place_trade): the side (the
     mid's sign) and too close to even, the premium bounds by size (a scheduled entry only),
@@ -972,7 +1008,9 @@ def enter_picked(
     each leg's DTE by position, for the run's legs; `spot`: the underlying's price
     at the entry (None: not known); `lead`: a first entry for the run's log. `by_bot`:
     the bot's own entry (scheduled, its window, Preview now, Trade now), which a bot sized
-    by dollars sizes here (slice 19); the Trade page's keeps the size you reviewed."""
+    by dollars sizes here (slice 19); the Trade page's keeps the size you reviewed.
+    `boost`: the loss boost (#328), already in `contracts`; a bot sized by dollars
+    multiplies its budget by it here."""
     problem = tick_problem(deps, bot)
     if problem:
         skip(f"{problem} Not entered.")
@@ -1002,7 +1040,8 @@ def enter_picked(
     sized = None
     if by_bot and bot.sizing == "dollars":
         # Decision 0050: a credit or a debit, sized by the buying power one unit needs
-        sized = _size_by_buying_power(deps, bot, picked, price, cap)
+        sized = _size_by_buying_power(deps, bot, picked, price, cap,
+                                      boost.multiplier if boost else 1)  # fmt: skip
         if sized.problem:
             title = ("the budget buys nothing" if sized.too_small  # allocation_too_small
                      else "its buying power couldn't be worked out")  # fmt: skip
@@ -1053,6 +1092,15 @@ def enter_picked(
         except Exception:  # noqa: BLE001 -- the chain's spot stays the base
             logger.exception("couldn't subscribe %s for the entry's price", bot.underlying)
 
+    def reprice():
+        """#317: the first price again from fresh quotes, for an entry the broker
+        cancelled on its own (None when it can't be opened at that price)."""
+        fresh = _requote(deps, bot, picked, [])
+        again, _, problem = _opening_price(deps, bot, fresh, contracts, credit)
+        return None if problem else again
+
+    if boost is not None and (live or scheduled):  # not for Preview now: nothing is entered
+        _say_boost(deps, bot, run_id, boost, contracts, capped, live)
     outcome = chase_entry(
         deps,
         request,
@@ -1060,14 +1108,19 @@ def enter_picked(
         bot.entry_chase,
         partial(strikes.next_price, debit_max=cap),
         on_tranche,
-        on_fill,  # fmt: skip
+        on_fill,
+        reprice,  # fmt: skip
     )
     if capped is not None:
         outcome.log.insert(0, {"capped": capped, "to": contracts})
     if sized is not None:
         outcome.log.insert(0, sized.record)
+    if boost is not None:
+        outcome.log.insert(0, boost.record())
     if notes:  # an expiration moved off another's date (resolve_leg_expirations)
         outcome.log.insert(0, {"expirations": notes})
+    if expirations_from:  # #327: Schwab listed them because TastyTrade couldn't
+        outcome.log.insert(0, {"expirations_from": expirations_from})
     if strike_notes:  # slice 19: a short widened or a strike moved off a conflict
         outcome.log.insert(0, {"strikes": list(strike_notes)})
     if lead is not None:
@@ -1076,6 +1129,19 @@ def enter_picked(
         _paper_entry(deps, run_id, outcome, legs_json, contracts)
         return
     _settle(deps, bot, run_id, outcome, tranches, handed)
+
+
+def _say_boost(deps, bot, run_id: int, boost, contracts: int, capped, live: bool) -> None:
+    """#328 (Tracker2's "Boosted Nx after a stop" alert): the entry is boosted, and why."""
+    size = f"{contracts} contract{'' if contracts == 1 else 's'}"
+    if capped is not None:
+        size += f" ({capped} cut to {contracts} by Max contracts per trade)"
+    title = f"{bot.name}: entry boosted ×{boost.multiplier} after a stop"
+    alert(
+        deps, title if live else f"Paper: {title}",
+        f"Entering {size}: run {boost.after_run} on {boost.after_day:%Y-%m-%d} hit its stop.",
+        f"/automation/{bot.id}/runs", run_id=run_id, routine=True,
+    )  # fmt: skip
 
 
 def _leg_rows(picked: tuple, dtes: dict) -> list[dict]:
@@ -1179,7 +1245,9 @@ def preview_order(deps: BotDeps, bot_id: int) -> PreviewResult:
 
 def _preview_order(deps: BotDeps, bot) -> PreviewResult:
     now = deps.now()
-    contracts, _ = contracts_for(bot, None)
+    boost = boost_for(deps, bot)  # #328: the size it would send now, boosted after a stop
+    factor = boost.multiplier if boost else 1
+    contracts, _ = contracts_for(bot, None, boost=factor)
     if bot.sizing == "dollars":  # sized once priced; the guards need room for one
         contracts = 1
     problem = _guard(deps, bot, True, contracts, 0, require_open=False)
@@ -1206,7 +1274,7 @@ def _preview_order(deps: BotDeps, bot) -> PreviewResult:
     if problem:
         return _no_preview(problem, legs, price)
     if bot.sizing == "dollars":
-        sized = _size_by_buying_power(deps, bot, picked, price, cap)
+        sized = _size_by_buying_power(deps, bot, picked, price, cap, factor)
         if sized.problem:
             return _no_preview(f"{sized.problem} Not entered.", legs, price)
         contracts = sized.contracts
@@ -1331,11 +1399,13 @@ def stamp_spot(deps, bot, run_id: int) -> None:
 UNKNOWN_WORST = "Couldn't work out the worst price this entry could reach."
 
 
-def _size_by_buying_power(deps, bot, picked: tuple, price: Decimal, cap) -> sizing.Sized:
+def _size_by_buying_power(deps, bot, picked: tuple, price: Decimal, cap,
+                          boost: int = 1) -> sizing.Sized:  # fmt: skip
     """Slice 19, decision 0050: the units the bot's budget buys, by the buying power one
     unit needs on its own at the worst price its entry chase could reach (on the order's
     own ticks, the tables the chase reads), as the bot's account's broker reports it.
-    Anything that can't be worked out refuses the entry: never a guess."""
+    Anything that can't be worked out refuses the entry: never a guess. `boost` (#328)
+    multiplies the budget; Max per trade still caps the units."""
     if bot.max_per_entry_usd is None:
         return sizing.Sized(0, problem=UNKNOWN_WORST)
     legs = tuple(Leg(p.symbol, p.side, p.ratio) for p in picked)
@@ -1367,7 +1437,7 @@ def _size_by_buying_power(deps, bot, picked: tuple, price: Decimal, cap) -> sizi
         return sizing.Sized(0, problem=f"{broker}'s preview couldn't be read "
                             f"({e.__class__.__name__}).")  # fmt: skip
     return sizing.buying_power_size(
-        bot.max_per_entry_usd, cost, worst, max_per_trade=trade_cap(bot),
+        bot.max_per_entry_usd * boost, cost, worst, max_per_trade=trade_cap(bot),
         ratio=largest_ratio(bot), broker=broker,
     )  # fmt: skip
 
@@ -1445,7 +1515,7 @@ def _pick(deps, bot, rows: dict, spot, resolved: dict, notes: list | None = None
             kind=f"{bot.underlying} price",
         )
     # #206: a short placed by an offset may land in the money; its delta is the check
-    deltas = any(leg.pick == "delta" or strikes.offset_short(leg) for leg in bot.legs)
+    deltas = strikes.reads_deltas(bot.legs)
     # Streamed rows count while TastyTrade's stream is up and the underlying is updating
     # through it: DXLink sends on change, so a quiet option's quote isn't a stale one.
     status = deps.hub.status() if hasattr(deps.hub, "status") else {}

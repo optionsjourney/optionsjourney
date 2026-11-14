@@ -80,6 +80,7 @@ Every field in Basics has an **ⓘ** beside its name: point at it, tab to it or 
   - **Contracts per entry**, from 1 to 100. Say it's 3: each entry is one order, with every leg, for 3 contracts. See [Bigger entries and partial fills](#bigger-entries-and-partial-fills).
   - **Most buying power per entry**: the app asks your broker what one contract needs and buys as many as that covers. See [Sizing by buying power](#sizing-by-buying-power).
 - Under **Size and limits**, two contract limits, **Max contracts per trade** and **Max contracts per day**, counted in **contracts in the largest leg**. **You can leave both blank** for **Auto**: per trade is the biggest entry the bot makes on its own (its contracts, or an entry time's own number); per day is what the entry times that are on add up to (an entry window counts as one entry), no more than **Max entries per day** of them. The box shows the number it uses, for example "Auto: 6". Every order the bot sends is still checked against them, so if something went wrong and an entry fired twice, it couldn't repeat all day. Blank limits don't hold back entries you start yourself (Trade now, the Trade page, taking over a trade): those are capped only at 100 contracts and don't count toward the bot's own day. Type a number to set a limit of your own; it then applies to everything. For a shape where every ratio is 1, like an iron condor, that's simply the contracts. A butterfly whose middle leg is sold 2 at a time uses 2 for each contract you enter: 3 contracts per entry need a limit of at least 6. Contracts per entry × the largest ratio can't be more than either limit (picking a shape raises the limits for you if they're too low). Only the orders that **open** a trade count toward them; the bot's own stops and closes don't. When the app re-sends the unfilled rest of a partly filled entry, that doesn't count a second time.
+- **Boost after a stop**, a switch under the size, with its multiplier: after a trade that closed on its stop, the next entries are bigger. See [Boost after a stop](#boost-after-a-stop).
 - **Max entries per day** and **Max open trades.** Both are optional: leave them blank for no limit. See [Limits on entries and open trades](#limits-on-entries-and-open-trades).
 - **Tags** (at least one): your journal tags for this bot, like `Iron Condors`, `0DTE` and `FOMC`. Every one goes on the trades the bot places or is matched to, so a Journal view filtered by any of them shows those trades, and the Automation list filters by them too. The bot's tags show as chips; press **×** on one to take it off. **Pick tags** lists your journal's tags, to tick; to make a new one, type it in the **New tag** box and press **Add** (or Enter, which never saves the bot). A new tag is added to **Journal → Tags**, where you can rename it. Changing a bot's tags changes them on its past trades too. Tags never change how a bot trades and are never in a shared bot file. See [Tags](#tags).
   - **Main tag:** shown under the box. It's the bot's first tag, and it also brings into the bot's record the trades with that tag in its account that no bot is linked to, such as ones you opened by hand. It stays the main tag while it's on the bot; take it off and another of the bot's tags takes over. While the bot exists, its main tag can't be deleted from Journal → Tags.
@@ -125,6 +126,25 @@ Example: the most buying power is `$2,000`. The trade is a 5-wide put credit spr
 - It's yours: a shared bot file never carries it.
 
 The run page says how an entry was sized: the amount, the worst price, and what the broker said one contract needs.
+
+#### Boost after a stop
+Switch on **Boost after a stop** and, when the bot's last trade before today closed on its stop, **today's entries are bigger**: their usual size times the number beside the switch, from 2 to 10 (blank means 2). It multiplies the contracts, or for a bot [sized by buying power](#sizing-by-buying-power), the most buying power per entry.
+
+- **Which trade counts:** the bot's most recent trade that filled, on an earlier day. A Paper bot looks at its last paper trade, a Live bot at its last live one. A trade you sent from the Trade page doesn't count; a trade you handed over to the bot, or started with Trade now, does.
+- **What counts as a stop:** any group of that trade closed by its stop, whether the stop rested at your broker or the app watched it. A profit target, a timed close, a watch rule or a close you asked for doesn't.
+- **Only what has happened by the entry counts.** A stop that fills later today boosts the next day's entries, not today's.
+- **Your limits still apply.** **Max contracts per trade** cuts a boosted entry down to it, and an entry that would pass **Max contracts per day** is skipped, as always. With both blank (**Auto**), they make room for the boosted size, so the "Auto" number in each box already counts the boost.
+- **You get an alert** when an entry is boosted, saying how many contracts and which trade hit its stop. The run page shows it too, as "Boosted after a stop". **Preview order** shows the boosted size.
+
+| Usual entry | Boost | Max contracts per trade | Entry after a stop |
+|---|---|---|---|
+| 1 contract | ×2 | Auto | 2 contracts |
+| 1 contract | ×3 | 2 | 2 contracts: cut by the cap |
+| 2 contracts | ×2 | 3 | 3 contracts |
+| $2,000 of buying power | ×2 | Auto | up to $4,000 of buying power |
+| Last trade hit its target | ×2 | any | the usual size |
+
+The boost travels in a shared bot file, as the bot's design. A bigger entry after a loss also means a bigger loss if that one is stopped too: try it on a Paper bot first.
 
 ### Legs: how the strikes are chosen
 Each leg is one row: buy or sell (sold rows are red, bought ones green), call or put, and how its strike is found. A row shows only the boxes its **Pick by** uses: **From** for an offset or a premium leg, **Exact** for an offset, **Max offset** for a premium leg with a From leg, and **Fallback** for a sold premium leg while **Min short width** is set. The words beside **Target** say what it's in ($, Δ, or points). The ⓘ on each heading explains it. With two or more groups, the arrows under **Groups** move a leg between them.
@@ -232,12 +252,40 @@ In every case the trigger is rounded **down** to a price your broker accepts ($0
 #### The closing order: Replaces each stop, or Whichever fires first
 On the bot's page this is **Advanced closing orders (optional)**, under the groups' panels, and it shows only with **Use leg groups** on: with one group, the trade's credit is that group's, and the stop's own **closing order ($)** basis does the same. (A one-group bot that already uses it still shows it.)
 
-The **closing order** is one dollar amount off the whole entry credit. It is used only on a credit trade's stop on a sold leg; on a debit fill it is ignored and you're told. It sits under the sides and has three settings:
+The **closing order** is one dollar amount off the whole entry credit. It is used only on a credit trade's stop on a sold leg; on a debit fill it is ignored and you're told. It sits under the sides and has four settings (the fourth, **Dynamic stop**, is explained just below):
 - **Off:** each side uses only its own stop.
 - **Replaces each stop:** every side whose stop isn't a **$ loss per contract** stop (that is, any of the first three styles) uses the closing order instead of its own number.
 - **Whichever fires first:** a side uses the closing order only if it is lower than the side's own stop (it's reached first); otherwise it keeps its own.
 
 Example: the entry brought in `4.90` and the closing order is `0.15`, which gives `4.75` (then rounded down to the tick, `4.70`). Call side's own stop works out at `4.60`: with **Whichever fires first** it keeps `4.60`, because that is lower. Put side's own stop is `5.40`: it uses the closing order, `4.70` after rounding. With **Replaces each stop** both would use `4.70`. A **$ loss per contract** stop ignores the closing order.
+
+#### Dynamic stop: the credit plus the side's bought leg, moving down
+**Dynamic stop** is the fourth choice in the same list. It is meant for iron condors. Instead of a dollar amount off the credit, you type a **buffer** (0.20 to start, and 0 is allowed). Each side's stop on its sold leg is then:
+
+> the whole trade's entry credit + what that side's bought leg (its wing) is worth − the buffer
+
+So a side stops when the side as a whole (sold leg minus bought leg) is worth about the whole credit. With an expensive wing, the plain closing order stops a side far too early; this one counts the wing.
+
+**How it moves.** It starts with the bought leg at its fill price. Then, about once a minute while the market is open, the bot looks at the bought leg's price now and, if the stop works out at least one price step lower, moves it down. **It never moves up**: if the bought leg gains value, the stop stays where it is. Worked through: the condor took in `3.30`, a side's bought leg filled at `1.00`, buffer `0.20`.
+
+| Bought leg now | Sum | The side's stop |
+|---|---|---|
+| 1.00 (its fill) | 3.30 + 1.00 − 0.20 | 4.10 |
+| 0.50 | 3.30 + 0.50 − 0.20 | 3.60 (moved down) |
+| 0.90 | 3.30 + 0.90 − 0.20 | stays 3.60 (never up) |
+| 0 (worthless) | 3.30 + 0 − 0.20 | 3.10 (the lowest it can go) |
+
+After one side stops, the other side keeps its Dynamic stop, still based on the whole original credit.
+
+**What it's careful about:**
+- It moves only on fresh prices (under 30 seconds old) for the bought leg and the sold leg. A bought leg quoted 0 bid / 0 ask has no market, so that doesn't count as worthless. Without fresh prices the stop just stays.
+- It never moves to a price the sold leg is already at or past: it stops one price step above the sold leg's ask instead. The same goes when the stop is first placed or put back.
+- A stop resting at your broker is moved in one step (your broker replaces the order), so the side is never without a stop. If your broker refuses the move, the old stop stays, you get one alert that day, and the bot tries again each minute. A stop the app watches just changes the level it watches.
+- Moves are quiet: no alert, but each one shows on the run page (Orders, step by step, and the stop's **How**).
+- It's the stop's own rule until something else moves the stop: a profit action, a time action, or a change you make on the run page. From then on, that rule's stop stays.
+- Which bought leg counts: the bought leg in the same group as the sold leg. If the group has none, the bought leg of the group its stop also closes (**When its stop fills, also close**). With neither, the bought leg counts as 0.
+- A side still needs a stop set (any value) to get a stop. A **$ loss per contract** stop keeps its dollars, and a group with more than one sold leg keeps its own stop. On a debit fill it's ignored and you're told.
+- Paper bots use it too: the pretend stop moves down the same way, once a minute, from the stream's prices.
 
 #### Profit targets: % or $
 - **% of the credit kept, or gained on the debit.** On a trade that filled for a credit, the credit is what the group brought in, what was sold minus what was bought. A group brought in `2.00` and the target is **50%**: the group closes when closing it would cost no more than `1.00`. On a debit, the group closes once it can be sold for this much more than it cost: a call spread bought for `2.00` with a **50%** target closes once it can be sold for `3.00`. Allowed from 1 to 1000 on the bot's page. **On a credit a target of 100% or more can't be reached,** so that trade gets no target and you're told. (On the run page, a target change is 1 to 99 on a credit and 1 to 1000 on a debit.)
@@ -530,6 +578,16 @@ Orders are chased: the app starts at the fair price, and every few seconds, if i
 
 **Stop after (minutes)**, on the entry row, ends an entry's chase after that long even if it has tries left: the order is cancelled, the cancel confirmed, and whatever filled is kept. Example: `3` with 10-second steps stops after about 18 tries. Blank: only the tries count.
 
+**If your broker cancels an order on its own.** Now and then TastyTrade cancels an order the moment it arrives and gives no reason. The app sends it again instead of giving up:
+
+| The order | What the app does |
+|---|---|
+| An entry, nothing filled | Reads fresh prices and sends it again from the fair price, up to **twice**. These sends don't use up your tries, and each one goes through the same checks as any order. An entry you cancel yourself in TastyTrade is never sent again. |
+| A close, on its first check | Sends it again **once**, at the same price. |
+| Rejected, or changed in TastyTrade's own app | Nothing more is sent. |
+
+The run's order log shows each extra send, for example "the broker cancelled 4182 with no reason; sent it again (1/2)". Outside market hours, or once **Stop after** has run out, nothing is sent again.
+
 #### If a close hasn't filled after the last try
 This is what happens when a side's profit target is reached and the closing order still hasn't filled after the exit chase's last try. You choose one of three under **Then** (the minutes box shows only for the natural price):
 
@@ -582,7 +640,7 @@ Both are checked at each scheduled entry, after the daily contract limit, and bo
 Preview order ignores both.
 
 ## Preview order
-**Preview order** is on the bot's page (and in the bot list). It shows the order the bot would send right now, **without sending it**: it picks strikes from the live option prices, works out the price and size, and asks your broker to check the order. The page shows the strikes it chose, the price (a credit or a debit), how many contracts, what your broker said, each group's **exits** (its stop and profit target as prices on this order, and which one rests at the broker), and a **risk graph** of the trade at the middle prices, the same graph as in the Journal. It works the same for a Live bot and a Paper bot, and sending nothing is guaranteed: it only ever asks the broker to check.
+**Preview order** is on the bot's page (and in the bot list). It shows the order the bot would send right now, **without sending it**: it picks strikes from the live option prices, works out the price and size (with [Boost after a stop](#boost-after-a-stop), the boosted size), and asks your broker to check the order. The page shows the strikes it chose, the price (a credit or a debit), how many contracts, what your broker said, each group's **exits** (its stop and profit target as prices on this order, and which one rests at the broker), and a **risk graph** of the trade at the middle prices, the same graph as in the Journal. It works the same for a Live bot and a Paper bot, and sending nothing is guaranteed: it only ever asks the broker to check.
 
 **It saves no run.** Nothing is added to the bot's runs, the Journal or its Paper trades view, and it doesn't count against the bot's daily limit, entries per day or open trades. It ignores blackout days, the schedule, the market filters and premium bounds, but it still obeys Freeze (and your size limits). It works **when the market is closed** too: it picks from the last prices the broker has, so outside market hours the strikes and price are only a guide to what the bot would do at its entry time. **With a fallback premium** (see [Keep trying](#keep-trying)), it also shows what the last try would pick at the fallback, and its price. That pick is never sent to the broker. Use it to check your settings. Older preview runs from before this button are still in the runs list.
 
@@ -643,6 +701,8 @@ A bot only runs at its entry times while it is **armed**. Arm and disarm it on i
 7. **When a resting stop fills,** the app cancels that group's target, and closes the group it was set to close, if any, as that group says: sold now, at a limit, chased or left open (see [When another group's stop closes it](#when-another-groups-stop-closes-it-how-its-legs-are-closed)). A stop the app watches closes the whole group instead. The other groups aren't touched. (A trade opened before 15 October 2026 with a spread resting its stop deals with the spread's wing the same way.)
 8. **When a target is reached,** the app cancels that side's stop and closes the side. It checks the target on two fresh price readings in a row, using the cost to buy the short back at its asking price less what the wing would sell for. If the close doesn't fill, it does what you chose in [If a close hasn't filled](#if-a-close-hasnt-filled-after-the-last-try): puts the stop back, goes to the natural price and then legs out, or keeps lowering the price until it fills. The close runs on its own, so the app keeps watching your other trades meanwhile. While it runs you can **cancel** it from the run page (see below).
 9. **If a stop disappears** without the app cancelling it (the broker cancelled it, say), the app puts it back, up to 3 times a day per group, sized to what's still open. It's put back only while you still hold the stop's option **sold**: if it's gone, or you now hold it bought, there's nothing for a stop to protect and none is sent. After 3 times it tells you and leaves it to you.
+
+   **If it was changed, not cancelled.** When a stop or a resting profit target is changed in TastyTrade (in its app, say), TastyTrade cancels the old order and puts a new one in its place. The app follows the new order instead of putting the old one back, so the side never gets two closing orders, and tells you in a routine alert. A changed target shows its new price on the run page; for a changed stop the run page still shows the old trigger, because the app can't read the new one: check it in TastyTrade. If the new order can't be read, or doesn't close this side's options, nothing is put back: the run is marked **Needs you** and you get an urgent alert to check TastyTrade.
 10. **On the evening the options expire**, after the market closes, your broker expires the stops along with the options. The app marks them **expired** and doesn't put them back or alert you.
 
 **A trade keeps the setting it started with.** If you switch a Live bot to Paper, or change its account, while one of its trades is open, that trade's stops, targets and wing sales still happen for real, in the account it was opened in. The switch only affects the bot's next entries. (The other way round, switching a Paper bot to Live ends its open paper trades; see [Live and Paper](#live-and-paper).)
@@ -751,13 +811,15 @@ Then the old stop is cancelled, the app checks with your broker that it's gone, 
 
 **Closing order.** A side whose stop rests at TastyTrade and that took in a credit can have its own **closing order** on this trade: Off, Replaces each stop or Whichever fires first, and the dollars off the entry credit. For example, a trade that took in 5.00 with **Every group, 1.00** puts the stop where buying it back costs 4.00. **When tighter** uses that only if it's lower than the side's own stop. Pressing **Set** moves the stop now, with the same live-price check and the same steps as Change stop. **Off** puts back the side's own number. A stop in $ has no closing order.
 
+**Switching an open trade to a Dynamic stop.** Pick **Dynamic stop** in the same list, type the buffer (0.20, say) and press **Set**. The stop is set once from the bought leg's price **now**, so it may go up: a trade that took in 3.30 with its bought leg now at 0.80 gets a stop at 3.30 + 0.80 − 0.20 = 3.90, even if its old stop was 3.10. From then on it only moves down (see [Dynamic stop](#dynamic-stop-the-credit-plus-the-sides-bought-leg-moving-down)). The switch is refused, with nothing changed, when there's no fresh price for the bought leg, or when the sold leg's ask is already at or past the new stop (close it yourself instead). Pressing **Set** again with the same buffer changes nothing: it never undoes the moves the stop has made. A new buffer sets it again from the price now. Switching back to Off or another choice sets the stop once by that rule. This changes only this trade, not the bot.
+
 **After the stop.** For a side whose stop rests at the broker and that has other legs (the wing), you can choose what this trade does with them when the stop fills: sell now, sell at a limit (your price, or the bid), chase, or leave open. It's the same choice as the bot's, for this trade only. **Back to the bot's** undoes it. It can't be changed once the stop has filled.
 
 **Profit actions for this trade.** Open it under the side to give this trade its own profit actions on that side, in place of the bot's: the same rows as on the bot's page (the level, the close %, where the stop moves to). They're checked the same way, against this trade's target. An action that already ran stays as it was: you can add rows or change the ones still to come, but not remove one that ran, and once one has run you can't go back to the bot's list.
 
 **Change target.** Type the % of the side's credit to keep and press **Change target**. For example, a side that took in 1.00 with **25%** closes once it costs 0.75 or less to buy back. A side with no target gets one.
 
-**Close.** Choose how many contracts of that side to close (it starts at all of them), **Limit** or **Market**, and press **Close**. This works only while the market is open, with Freeze off, and never for more than your broker shows you hold. The close works like a timed close:
+**Close.** Choose how many contracts of that side to close (it starts at all of them), **Limit** or **Market**, and press **Close**. This works while the market is open (and overnight on index options at TastyTrade: see [Closing after hours](#closing-after-hours)), with Freeze off, and never for more than your broker shows you hold. The close works like a timed close:
 - the side's stop is cancelled first (and checked)
 - the close starts at the middle price and steps toward a fill, using the bot's exit chase settings
 - you can **Cancel** it from the run page while it runs
@@ -771,6 +833,32 @@ If you close only part, the stop and the target come back for exactly what's lef
 **Market** is for trades where every leg expires today (0DTE). On a side of a single option (a short put, say) it sends one market order once the stop is cancelled. A side of two or more options is never sent at market as one order: Market there closes it the same way Limit does, with the bot's exit chase.
 
 **Close entire trade** is above the sides. It closes every open side, one after another, Limit or Market. Like a Market close and Close selected, it first asks you to confirm in a sentence saying what it will do. If one side doesn't fully close, it stops there, alerts you, and the sides it didn't reach keep their stop and target.
+
+### Closing after hours
+SPX, SPXW, XSP, VIX and RUT options also trade overnight, in the market's overnight session from 20:15 to 09:25 New York time. For a trade on those options at **TastyTrade**, **Close** and **Close entire trade** work outside the regular session too. Above the sides, the Manage box says what Close will do right now.
+
+| When you click Close (New York time) | What happens |
+|---|---|
+| 09:30 to 16:00, the regular session | Closes now, as always. |
+| 20:15 to 09:25, the overnight session | Closes now, with overnight limit orders. |
+| 16:00 to 20:15 | Scheduled for 20:16. Nothing is sent before then. |
+| 09:25 to 09:30 | Scheduled for 09:31. |
+| Friday night, the weekend, a market holiday | Scheduled for the next overnight session, for example Sunday at 20:16. |
+| Every option in the trade has expired | Refused: there's nothing left to trade. |
+| A trade at Schwab, or on stock or ETF options | Only in the regular session, as before. |
+
+**An overnight close** works like a close in the day: the stop is cancelled first, then the close starts at the middle price and steps toward a fill. The differences:
+- every order is an overnight limit order, never a market order. **Market** is refused outside the regular session: use Limit;
+- it stops at 09:25, when the overnight session ends;
+- after its last try it doesn't go to the natural price or sell the legs one by one. It cancels its order, and the stop and target come back.
+
+**A scheduled close** changes nothing at your broker when you click: the stop and target stay as they are. The Manage box shows "Close scheduled" with when it starts, and a **Cancel the scheduled close** button. A trade has one scheduled close at a time. When the time comes, the app starts the close as if you had clicked then: it checks Freeze, the market and what you hold again. If the trade closed in the meantime (its target filled, say), nothing happens. If it can't start, you get an alert and the trade stays open. **Stop all bots (Freeze) cancels a scheduled close**: if Freeze is on when its time comes, it isn't tried again, so schedule it again (or close it) once Freeze is off. If the app was off when its time came and it's now another gap (09:27, say), it's rescheduled for the next start and you're told so. You get an alert when it's scheduled and when it starts. It survives the app restarting.
+
+**Stops wait for 09:30.** TastyTrade takes no stop orders outside the regular session. So when the app would place a stop then (a close that didn't fill puts the stop back, or your broker dropped one overnight), it holds it and places it in the **first minute after 09:30** (the app checks every 30 seconds), when the regular session opens. Until then that side has **no stop at your broker**: the alert says so, and the side's box says "placed just after 09:30". If the broker turns it down then, the app tries again from 09:45; if that fails too, you get a red alert saying the side has no stop. Freeze holds it until you turn Freeze off. A stop the app watches itself (see [Which exit rests at the broker](#which-exit-rests-at-the-broker)) isn't affected.
+
+**Stop changes wait for 09:30 too.** On these trades, **Change stop**, the **closing order** (and switching to a Dynamic stop) and **switching a stop back on** are refused outside the regular session, because the new stop couldn't be placed. Your stop stays as it is. **Stop off** still works. A Dynamic stop only moves in the regular session.
+
+Overnight entries aren't available: **Trade now** and a bot entry from the Trade page work in the regular session only. To open a trade overnight, send a plain limit order from the Trade page with **GTC overnight**.
 
 **Missing exits: Check and Restore.** Sometimes a stop or target goes missing: the broker cancelled it, it was refused, or it was re-placed 3 times that day already. **Check** lists what each side should have and doesn't, with the level it would go back at. It sends nothing. **Restore missing exits** puts them back:
 - a stop goes back at its last level, after the same live-price check as Change stop, and never for more than your broker shows you hold. If it can't be placed, it's left off and listed, and nothing places it later on its own. A stop whose last send was unclear, or a watched stop that already closed its side 3 times today, is left to you;
@@ -793,7 +881,7 @@ With the stop off, **the app doesn't protect that side from a loss**, and tells 
 
 **Switching back on.** **Switch the stop back on** (or **Turn exits back on**, with both off) puts the stop back at its old level, or at a new % you type. The same live-price check comes first: if the stop would fire at once, or there's no fresh price, the stop stays off and the page says why. You can then set a higher stop, or close the side. **Switch the target back on** arms the target again (a target that rested at your broker is placed there again).
 
-**Chips.** A changed trade shows what's different from its bot, on its journal row and on the run page. For example **Stop 200%**, with "bot: 150%" when you point at it, or **Stop $1.50 a contract**, **Closing order $1.00 (both)**, **After the stop: leave open**, **Profit actions: this trade's**, **Target 25%**, **Closed 1 of 3**, **Stop off: no stop**, **Target off** or **Exits off: not protected**. A split iron condor shows each half's own chips. Type the bot's own number again and its chip goes away.
+**Chips.** A changed trade shows what's different from its bot, on its journal row and on the run page. For example **Stop 200%**, with "bot: 150%" when you point at it, or **Stop $1.50 a contract**, **Closing order $1.00 (both)**, **Dynamic stop (buffer $0.20)**, **After the stop: leave open**, **Profit actions: this trade's**, **Target 25%**, **Closed 1 of 3**, **Stop off: no stop**, **Target off** or **Exits off: not protected**. A split iron condor shows each half's own chips. Type the bot's own number again and its chip goes away.
 
 **When the app holds back.** If a close or a stop change on a side may still be working at your broker, the app refuses to change that side's stop or close it. This happens when a close ended unclear, or when a stop move or "turn exits off" was cut off by a restart. The page says "A close or stop move on this side may still be working at your broker: check your broker first." Nothing is sent, because a second stop or a second close could close too much. That includes the timed close.
 
@@ -897,7 +985,7 @@ A bot can trade **futures options** on TastyTrade: type a futures root like **/E
 - **If part of your entry fills**, the bot waits 60 seconds during regular market hours for the rest, then cancels it. The filled part gets its profit target, and the rest is sent again at the same price as a new run. Outside regular hours it does this at once.
 - **Changing the target from the run page:** type a new % and press **Change target**. The app cancels the resting order at TastyTrade, checks the cancel went through, then places the new one, so there are never two targets at once; for a second or two there's none. For example, a 30% target on a 12.50 credit is placed as a buy at 8.75. A target that has partly filled isn't changed: do that at TastyTrade. If the cancel isn't confirmed, or the new order's answer is unclear, the app stops touching that target, marks the run **Needs you** and tells you to check your broker. If the new one can't be placed, you're told at once: the trade has no exit until you press **Restore missing exits**.
 - **Target off** cancels the resting target (the page asks first, because with no stop the trade then has no exit at all). It's switched off only once TastyTrade confirms the cancel. **Switch the target back on** places it again at its last price.
-- **If you cancel or change the profit target at TastyTrade**, the app tells you at once with an urgent alert: the trade has no exit. It doesn't put the target back by itself: press **Restore missing exits** on the run page to place it again at its last price. Adding a stop or closing part of a futures trade from the run page isn't built yet: do it at TastyTrade.
+- **If you change the profit target at TastyTrade**, the app follows the new order and its price, and tells you. **If you cancel it**, the app tells you at once with an urgent alert: the trade has no exit. It doesn't put the target back by itself: press **Restore missing exits** on the run page to place it again at its last price. Adding a stop or closing part of a futures trade from the run page isn't built yet: do it at TastyTrade.
 - **Modify a resting entry:** while the entry rests, type a new limit beside **Cancel entry** and press **Modify**. The order is replaced at TastyTrade at the new price. If it filled (or partly filled) first, the app records that, protects what filled, and doesn't modify anything (a partly filled entry's rest goes back at the new price).
 - **If you change the entry at TastyTrade**, TastyTrade names the new order, and the bot follows it: its fill gets the profit target as usual. If the new order isn't the same legs and size, the app stops watching the run, marks it **Needs you** and tells you. **If the entry is cancelled at TastyTrade** with no new order, the run ends and you're told.
 - **A futures trade you opened yourself** can be handed to a futures bot from the journal the same day, at any hour, as for other trades. It gets its profit target and no stop.
@@ -1008,6 +1096,26 @@ A file made by a newer version of the app is turned away with "This bot was save
 **Needs a look.** While your bots have trades open, the app checks every 30 seconds for a side left without protection: a stop that filled with nothing done about its wing, a stop shown as working that has no order number, an open side with no stop at all, or a side whose exits you turned off. Each one shows in a **Needs a look** box at the top of the Automation page, with a link to its run, and sends you one alert. In your journal, the trade's **bot** badge turns red and pulses, with what was found when you hover over it; click it to open the run. It disappears once it's sorted. The app never changes an order because of these: check your broker.
 
 **When the bots' clock stops.** The app keeps checking that the parts that run your bots are working: the clock that fires entries, the watch on profit targets and the exit monitor. If one stops, a **Bots may not run** warning shows at the top of the Automation page (for example "The bot clock has stopped since 10:31: no bot will fire.") and, on a market day from 09:20 New York time, you get one alert a day. Check the app's log and restart the app.
+
+## The check at 9:00: can today's entries be placed?
+Before the market opens, the app checks that your brokers can give your bots what their entries need. At **9:00 AM New York time** on each trading day, for each stock or index an armed bot (Live or Paper) trades that day:
+
+- it asks **TastyTrade** and **Schwab** for the list of expirations. A bot picks its expiration from TastyTrade's list, and uses Schwab's if TastyTrade can't give one;
+- for **SPX and XSP**, whose options trade overnight, it also reads the option chain for the nearest expiration, and checks it has deltas if one of those bots picks strikes by delta. Other stocks and ETFs have no option prices before 9:30, so their chain isn't checked then.
+
+**You only hear about it if something's wrong.** No alert means every check passed. Otherwise you get one alert:
+
+| Alert | What it means | What to do |
+|---|---|---|
+| **Market data check: SPX entries will NOT be placed** | Neither broker listed SPX's expirations, there was no option chain, or the chain had no deltas for a bot that picks by delta. Entries on SPX would be skipped. | Check that your brokers show **Connected** in **Settings → Brokers**, and reconnect if not. The alert says what failed for each one. |
+| **Market data degraded: entries will use a backup source** | Something failed but the other broker covers it: TastyTrade couldn't list the expirations and Schwab did, or Schwab's chain failed and TastyTrade's prices will be used. Also sent when Schwab can't list expirations, so there's no backup that day. | Nothing has to be done for today's entries. Worth checking the broker named. |
+
+Good to know:
+- **One broker is fine.** If you've connected only TastyTrade, or only Schwab, the check doesn't complain about the one you haven't.
+- **If the app starts after 9:00**, it runs the check then (once a day), for the bots that still have an entry to come. After 9:30 it reads every underlying's chain.
+- Weekends, market holidays, a bot's days off and its blackout days are skipped. Futures bots aren't checked.
+- It only reads. It never sends, changes or cancels an order.
+- **Expirations from Schwab.** If an entry used Schwab's list because TastyTrade couldn't give one, the run's page shows a step **Expirations from Schwab**: "TastyTrade couldn't list them; Schwab's list was used".
 
 ## Deleting a bot
 Deleting a bot disarms it and hides it. Its past runs and journal trades keep their link. To put a bot away and keep it to hand, archive it instead.

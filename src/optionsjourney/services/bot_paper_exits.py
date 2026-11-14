@@ -29,6 +29,7 @@ from optionsjourney.core.sessions import naive_et, session_now
 from optionsjourney.core.symbols import parse_occ
 from optionsjourney.db.models import BotRun, BotTradeOverride, PaperFill
 from optionsjourney.services import (
+    bot_dynamic_stops,
     bot_entry,
     bot_exits,
     bot_store,
@@ -61,6 +62,7 @@ _lock = threading.Lock()
 _streaks: dict[tuple, tuple[int, datetime | None]] = {}
 _last: datetime | None = None  # the last paper watch pass in the session
 _said: set[tuple] = set()  # one-off alerts already sent
+_ratcheted: dict[tuple[int, int], datetime] = {}  # (run, group) -> its Dynamic stop's last look
 
 
 def reset() -> None:
@@ -69,6 +71,7 @@ def reset() -> None:
     with _lock:
         _streaks.clear()
         _said.clear()
+        _ratcheted.clear()
         _last = None
 
 
@@ -392,6 +395,7 @@ def _watch_run(deps, paper: _Paper, now, opening: bool) -> None:
     for position in paper.open_groups():
         if paper.held[position] <= 0:
             continue
+        _dynamic(deps, paper, position, now)
         if _stop(deps, paper, position, now) or _target(deps, paper, position, now):
             continue
         _profit(deps, paper, position, now, opening)
@@ -444,10 +448,84 @@ def _stop_level(paper: _Paper, position: int) -> tuple[Decimal, bool] | None:
         return None
     own, _ = _own(paper, position)
     calc = exit_plan.stop_for(plan, own, paper.fills, paper.entry_credit, paper.bot.stop_co_mode,
-                              paper.bot.stop_co_amount)  # fmt: skip
+                              paper.bot.stop_co_amount, paper.legs)  # fmt: skip
     if calc is None or calc.problem is not None or calc.trigger is None:
         return None
+    if calc.basis == stops.DYNAMIC and calc.trigger <= calc.short_fill:
+        # #329: live rests it one tick above the short's ask at the fill; paper has the
+        # fill (its pretend fill is the mid) to go by, so one tick above that
+        anchor = exit_math.anchor_of(own)
+        return stops.tick_above(anchor.symbol, calc.short_fill), plan.on_short
     return calc.trigger, plan.on_short
+
+
+def _dynamic_calc(paper: _Paper, position: int):
+    """The group's Dynamic stop on its fill (exit_plan.stop_for), or None when it has none:
+    not the mode, not on a credit's one short, or the stop switched off."""
+    if position in paper.stop_off or paper.bot.stop_co_mode != stops.DYNAMIC:
+        return None
+    plan = _plan(paper, position)
+    if plan is None or not plan.on_short:
+        return None
+    own, _ = _own(paper, position)
+    calc = exit_plan.stop_for(plan, own, paper.fills, paper.entry_credit, paper.bot.stop_co_mode,
+                              paper.bot.stop_co_amount, paper.legs)  # fmt: skip
+    if calc is None or calc.basis != stops.DYNAMIC or calc.problem is not None:
+        return None
+    return calc
+
+
+def _dynamic(deps, paper: _Paper, position: int, now) -> None:
+    """#329, as the live ratchet (bot_dynamic_stops) moves a Dynamic stop: at most once a
+    minute, the long at its fresh, usable mid; the stop moved down only, by a tick, never
+    to the short's ask or below; quietly (an "action" row with the new stop). A stop any
+    other rule moved since (a profit or time action) is that rule's."""
+    moved = paper.stops.get(position)
+    if moved and not moved.get("dynamic"):
+        return
+    calc = _dynamic_calc(paper, position)
+    if calc is None:
+        return
+    key = (paper.id, position)
+    last = _ratcheted.get(key)
+    if last is not None and now - last < bot_dynamic_stops.INTERVAL:
+        return
+    _ratcheted[key] = now
+    level = _stop_level(paper, position)
+    if level is None:
+        return
+    long = Decimal(0)
+    group = calc.long_group
+    if calc.long_legs and (group is None or paper.held.get(group, 0) > 0):
+        quotes = _quotes(deps, [symbol for symbol, _ in calc.long_legs])
+        for symbol, ratio in calc.long_legs:
+            quote = quotes[symbol]
+            mid = bot_dynamic_stops.usable_mid(quote)
+            if mid is None or not watched_stops.quote_fresh(quote, now, paper.filled_at):
+                return  # no fresh, usable price for the long: the stop stays
+            long += mid * ratio
+    own, _ = _own(paper, position)
+    anchor = exit_math.anchor_of(own)
+    ask = _strict_ask(deps, paper, anchor.symbol, now)
+    if ask is None:
+        return
+    raw = stops.dynamic_trigger(calc.entry_credit, long, calc.co_amount) / anchor.ratio
+    tick, computed = exit_math.round_stop(anchor.symbol, raw)
+    target = stops.next_trigger(level[0], computed, ask, calc.short_fill, tick, anchor.symbol)
+    if target is None:
+        return
+    _record(deps, paper, position, "Dynamic stop moved down", now,
+            sig=f"dynamic:{now.isoformat()}",
+            stop={"trigger": f"{target:f}", "on": "short", "dynamic": True},
+            notes=[f"Dynamic stop {level[0]} → {target}: the long at {long:f}"])  # fmt: skip
+
+
+def _strict_ask(deps, paper: _Paper, symbol: str, now) -> Decimal | None:
+    """The short's ask from a quote under 30 s old (the live ratchet's bot_exits._quote)."""
+    quote = _quotes(deps, [symbol])[symbol]
+    if not watched_stops.quote_fresh(quote, now, paper.filled_at):
+        return None
+    return quote.ask if quote.ask is not None and quote.ask > 0 else None
 
 
 def _anchor(paper: _Paper, position: int, on_short: bool):

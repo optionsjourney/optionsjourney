@@ -44,8 +44,8 @@ def upgrade() -> None:
             "WHERE g.broker_exit = 'stop')"
         ).bindparams(notice=NOTICE)
     )
-    op.execute(
-        "UPDATE bot_leg_groups SET broker_exit = 'target' WHERE EXISTS (SELECT 1 FROM ("
+    op.execute(  # constant SQL: MULTI is a fixed string above
+        "UPDATE bot_leg_groups SET broker_exit = 'target' WHERE EXISTS (SELECT 1 FROM ("  # nosec B608
         + MULTI
         + ") m WHERE m.bot_id = bot_leg_groups.bot_id AND m.group_position = "
         "bot_leg_groups.position)"

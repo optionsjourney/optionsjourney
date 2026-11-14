@@ -264,6 +264,9 @@ class BrokerOrder:
     # Signed like Order.price (+ is a credit); None when the sign can't be told.
     price: Decimal | None = None
     changing: bool = False  # a cancel or replace is already under way at the broker
+    # #317 (Tracker2 9b49dfea), TastyTrade only: Cancelled with no reject reason, no
+    # replacing order and no cancelling user. The broker killed it on its own.
+    broker_cancelled: bool = False
 
     @property
     def working(self) -> bool:

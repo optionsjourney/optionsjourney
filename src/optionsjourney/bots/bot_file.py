@@ -145,6 +145,7 @@ _BOT = {
     "min_short_width": "money?", "move_conflicted_strikes": "bool",  # slice 19
     "keep_trying_minutes": "int?",  # #314
     "use_min_short_width": "bool", "use_keep_trying": "bool",  # #315: missing is on
+    "use_loss_boost": "bool", "loss_boost_multiplier": "int?",  # #328: missing is off
 }  # fmt: skip
 SHARED = frozenset(_BOT)
 # The file says "sides", like the app's pages.

@@ -20,6 +20,7 @@ from optionsjourney.core.sessions import session_close
 from optionsjourney.db.models import Bot, BotExit, BotRun, OrderLog
 from optionsjourney.services import (
     bot_audit,
+    bot_dynamic_stops,
     bot_entry,
     bot_exits,
     bot_expiry,
@@ -27,8 +28,10 @@ from optionsjourney.services import (
     bot_integrity,
     bot_limit,
     bot_manage,
+    bot_market_check,
     bot_overnight,
     bot_paper_exits,
+    bot_scheduled_closes,
     bot_settle,
     bot_store,
     bot_timed,
@@ -524,13 +527,16 @@ def _monitor(deps) -> None:
         ("resting entries", bot_limit.check_pass),  # slice 17: at every hour
         ("exits", check_exits),
         ("manage with", manual_attach.pending_pass),  # #158: ticket rules once it fills
-        ("monitor", bot_exits.monitor_pass),
+        ("monitor", bot_exits.monitor_pass),  # #330: and the stops held for the open
+        ("scheduled closes", bot_scheduled_closes.fire_due),  # #330: from their start time
+        ("dynamic stops", bot_dynamic_stops.ratchet_pass),  # #329: once a minute, down only
         ("exits off", bot_manage.recover),  # a cut-off "turn exits off" (slice 6)
         ("settle", bot_settle.settle_pass),  # slice 14: far legs after the near ones expired
         ("expiry", bot_expiry.warn_pass),  # slice 16: American-style legs held into expiry
         ("timed close", bot_timed.timed_pass),
         ("time actions", bot_timed.actions_pass),
         ("pre-open", bot_overnight.preopen_pass),  # slice 14: held trades, from 09:20
+        ("market data", bot_market_check.check_pass),  # #327: today's entries, from 09:00
         ("integrity", bot_integrity.check),  # last: it only reads and alerts
     ), deps)  # fmt: skip
 

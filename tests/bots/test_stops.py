@@ -263,3 +263,95 @@ def test_the_closing_order_overlay_on_a_percent_of_the_entry_lost_keeps_the_trad
         "lower wins: the side's own",
         "→ 4.20",
     ]
+
+
+# --- Dynamic stop (#329): entry credit + the paired long's value - the buffer ---------
+
+PUT = "SPXW  261106P07270000"
+
+
+def dynamic(long_value, credit="3.30", buffer="0.20", fill="2.90", group=SIDE, ratio=1):
+    credit = None if credit is None else D(credit)
+    return stops.stop_calc(group, "dynamic", D(buffer), PUT, D(fill), credit, ratio=ratio,
+                           long_value=long_value)  # fmt: skip
+
+
+def test_a_dynamic_stop_is_the_credit_plus_the_long_less_the_buffer():
+    # The worked example: a 3.30 condor, the put side's long filled at 1.10, the call's at 1.00
+    put, call = dynamic(D("1.10")), dynamic(D("1.00"), fill=D("2.50"))
+    assert (put.basis, put.raw, put.trigger, put.problem) == ("dynamic", D("4.20"), D("4.20"), None)
+    assert (call.trigger, call.long_value, call.co_amount) == (D("4.10"), D("1.00"), D("0.20"))
+    assert not put.co_won and put.co_raw is None  # it replaces the style: no overlay
+
+
+def test_a_dynamic_stop_ignores_the_groups_own_style_and_rounds_down_once():
+    entry = replace(SIDE, stop_basis="entry_premium", stop_pct=D("40"))
+    assert dynamic(D("0.97"), group=entry).trigger == D("4.00")  # 4.07 on the 0.10 tick
+    assert dynamic(D("0.12")).trigger == D("3.20")  # 3.22
+
+
+def test_a_dynamic_stop_below_the_shorts_fill_is_not_a_problem_here():
+    # The caller rests it above the short's ask instead (never refused for the fill)
+    low = dynamic(D("0"), credit=D("3.00"), fill=D("2.90"))  # 2.80 <= 2.90
+    assert (low.trigger, low.problem) == (D("2.80"), None)
+
+
+def test_a_dynamic_stop_needs_the_credit_and_must_be_above_zero():
+    assert dynamic(D("1"), credit=None).problem.startswith("the run has no entry credit")
+    zero = dynamic(D("0"), credit=D("0.20"))
+    assert zero.trigger == D("0") and "not above 0" in zero.problem
+
+
+def test_a_dollar_stop_keeps_its_dollars_under_a_dynamic_stop():
+    usd = replace(SIDE, stop_unit="usd", stop_usd=D("2.00"), stop_pct=None)
+    assert dynamic(D("1.10"), group=usd).basis == "usd"
+    assert dynamic(D("1.10"), group=replace(SIDE, stop_pct=None)) is None
+
+
+def test_a_ratio_2_short_prices_a_dynamic_stop_per_contract():
+    assert dynamic(D("1.10"), ratio=2).trigger == D("2.10")  # 4.20 / 2
+
+
+def test_the_dynamic_arithmetic_reads_as_one_line():
+    log = dynamic(D("0.97")).as_log()
+    calc = log["stop_calc"]
+    assert (calc["basis"], calc["long_value"]) == ("dynamic", "0.97")
+    assert stops.describe(calc) == [
+        "credit 3.30 + long 0.97 − buffer 0.20 = 4.07",
+        "→ 4.00 (rounded down to the 0.10 tick)",
+    ]
+    noted = dict(calc, note="raised above the short's ask 4.15", trigger="4.20")
+    assert "raised above the short's ask 4.15" in stops.describe(noted)
+
+
+def test_tick_above_lands_on_a_valid_tick_across_spxs_tier():
+    assert stops.tick_above(PUT, D("2.92")) == D("2.95")
+    assert stops.tick_above(PUT, D("2.95")) == D("3.00")
+    assert stops.tick_above(PUT, D("3.00")) == D("3.10")  # 3.05 isn't a tick at 3.00 and up
+    assert stops.tick_above(PUT, D("3.02")) == D("3.10")
+    assert stops.tick_above(PUT, D("4.15")) == D("4.20")
+
+
+T = D("0.10")
+
+
+def test_the_ratchet_moves_only_down_and_by_a_whole_tick():
+    assert stops.next_trigger(D("4.20"), D("4.10"), None, D("2.90"), T, PUT) == D("4.10")
+    assert stops.next_trigger(D("4.20"), D("4.30"), None, D("2.90"), T, PUT) is None
+    assert stops.next_trigger(D("4.20"), D("4.20"), D("2.00"), D("2.90"), T, PUT) is None
+    assert stops.next_trigger(D("4.20"), D("4.15"), D("2.00"), D("2.90"), T, PUT) is None
+
+
+def test_the_ratchet_never_moves_to_a_level_the_short_trades_through():
+    # at or below the ask: one tick above the ask, if that's still a tick lower
+    assert stops.next_trigger(D("4.20"), D("3.80"), D("3.90"), D("2.90"), T, PUT) == D("4.00")
+    assert stops.next_trigger(D("4.20"), D("3.80"), D("4.15"), D("2.90"), T, PUT) is None
+    # no ask: only above the short's fill
+    assert stops.next_trigger(D("4.20"), D("2.80"), None, D("2.90"), T, PUT) is None
+    assert stops.next_trigger(D("4.20"), D("3.00"), None, D("2.90"), T, PUT) == D("3.00")
+
+
+def test_a_clamp_crossing_spxs_three_dollar_tier_lands_on_the_dime():
+    # computed below 3.00 (a 0.05 tick), the ask at 3.00: 3.05 isn't a tick there
+    assert stops.next_trigger(D("3.60"), D("2.80"), D("3.00"), D("2.50"), D("0.05"),
+                              PUT) == D("3.10")  # fmt: skip

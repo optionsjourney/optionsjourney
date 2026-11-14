@@ -9,15 +9,23 @@ Three stop styles read the same amount (Tracker2 reuses stop_loss_pct):
 A $ stop (stop_unit "usd") is the short's fill + the dollars; it skips the styles
 and the overlay. The closing-order overlay ("both" or "tighter") is one dollar
 amount off the entry credit; "tighter" compares raw numbers and a tie keeps the
-side's own. The trigger is rounded once, at the end, down to the short's tick."""
+side's own. The trigger is rounded once, at the end, down to the short's tick.
+
+A Dynamic stop (the closing-order mode "dynamic", #329, decision 0131) replaces the
+side's own style: the entry credit + the paired long's value - the buffer (the mode's
+amount), so a side stops when its spread is worth about the whole credit. It starts from
+the long's fill and moves down as the long decays (next_trigger), never up."""
 
 from dataclasses import dataclass
-from decimal import Decimal
+from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal
 
 from optionsjourney.bots.definition import GroupDef
 from optionsjourney.bots.exit_math import round_stop
+from optionsjourney.trading import ticks
+from optionsjourney.trading.orders import Leg, Order, OrderType, Side
 
 OVERLAY_ON = ("both", "tighter")
+DYNAMIC = "dynamic"  # the closing-order mode that is a Dynamic stop (#329)
 
 
 def leg_trigger(short_fill: Decimal, pct: Decimal) -> Decimal:
@@ -39,6 +47,46 @@ def usd_trigger(short_fill: Decimal, usd: Decimal, ratio: int = 1) -> Decimal:
     """exits.usd_stop_trigger for a single short at P&L level -usd. A single-leg order
     is priced per contract, so a ratio-2 anchor divides the dollars by 2."""
     return short_fill + usd / ratio
+
+
+def dynamic_trigger(entry_credit: Decimal, long_value: Decimal, buffer: Decimal) -> Decimal:
+    """exits.dynamic_trigger, raw: a 3.30 condor whose side's long is worth 1.00, with a
+    0.20 buffer, stops that side's short at 4.10."""
+    return entry_credit + long_value - buffer
+
+
+def _tick_at(symbol: str, price: Decimal) -> Decimal:
+    probe = Order((Leg(symbol, Side.BUY),), 1, False, OrderType.MARKET)
+    return ticks.order_tick(probe, price, {})
+
+
+def tick_above(symbol: str, price: Decimal) -> Decimal:
+    """The first valid tick for a buy stop on `symbol` strictly above `price`, put on the
+    tick for its own price (dynamic_stop's clamp: SPX ticks 0.05 below 3.00 and 0.10 from
+    3.00 up, so above an ask of 3.00 is 3.10, never 3.05)."""
+    tick = _tick_at(symbol, price)
+    above = (price / tick).to_integral_value(rounding=ROUND_FLOOR) * tick + tick
+    own = _tick_at(symbol, above)
+    return (above / own).to_integral_value(rounding=ROUND_CEILING) * own
+
+
+def next_trigger(
+    current: Decimal, computed: Decimal, short_ask: Decimal | None, short_fill: Decimal,
+    tick: Decimal, short_symbol: str,
+) -> Decimal | None:  # fmt: skip
+    """dynamic_stop.next_trigger: the level to move a resting dynamic stop to, or None to
+    leave it. Only DOWN, by at least one tick (`tick`: the computed level's). A level at or
+    below the short's ask would fire at once, so it's clamped to the first tick above the
+    ask (tick_above) and dropped if that's no longer a tick lower; with no ask, a level at
+    or below the short's fill is skipped."""
+    if computed > current - tick:
+        return None
+    if short_ask is not None:
+        if computed <= short_ask:
+            computed = tick_above(short_symbol, short_ask)
+    elif computed <= short_fill:
+        return None
+    return computed if computed <= current - tick else None
 
 
 def _text(value: Decimal | None) -> str | None:
@@ -66,6 +114,13 @@ class StopCalc:
     trigger: Decimal | None
     problem: str | None = None
     group_entry: Decimal | None = None  # entry_lost: the group's own entry per unit
+    # A Dynamic stop (#329): the long's value per unit it was worked out on, the long legs
+    # the ratchet prices ((symbol, ratio) per unit), the group they're in when it isn't
+    # the short's own (close on stop), and a note on how it was worked out
+    long_value: Decimal | None = None
+    long_legs: tuple[tuple[str, int], ...] = ()
+    long_group: int | None = None
+    note: str | None = None
 
     def as_log(self) -> dict:
         """Every number as text, for the stop's JSON log."""
@@ -88,6 +143,13 @@ class StopCalc:
         }
         if self.group_entry is not None:  # only entry_lost: other logs stay as they were
             log["stop_calc"]["group_entry"] = _text(self.group_entry)
+        if self.basis == DYNAMIC:  # only a Dynamic stop's: other logs stay as they were
+            log["stop_calc"] |= {
+                "long_value": _text(self.long_value),
+                "long_legs": [{"symbol": s, "ratio": r} for s, r in self.long_legs],
+                "long_group": self.long_group,
+                "note": self.note,
+            }
         return log
 
 
@@ -100,12 +162,18 @@ def stop_calc(
     entry_credit: Decimal | None,
     ratio: int = 1,
     group_entry: Decimal | None = None,
+    long_value: Decimal | None = None,
+    long_legs: tuple[tuple[str, int], ...] = (),
+    long_group: int | None = None,
+    note: str | None = None,
 ) -> StopCalc | None:
     """The side's stop, or None if it has none. `entry_credit` is the whole
     trade's credit per unit: its fill, else its order price
     (exits._entry_credit_for_basis). `group_entry`: the group's own entry per unit, for
     the group_entry style on a short (decision 0048: the % of the group's entry lost,
-    counting the wing as worthless, as level_calc does; "entry_lost" in the log)."""
+    counting the wing as worthless, as level_calc does; "entry_lost" in the log).
+    `co_mode` DYNAMIC: a Dynamic stop on the long's value `long_value` (dynamic_calc), the
+    other long_* and `note` for its log; a $ stop keeps its dollars."""
     value = group.stop_value
     if value is None:
         return None
@@ -116,6 +184,11 @@ def stop_calc(
         return StopCalc(
             "usd", value, short_fill, None, raw, "off", None, None, False, raw, tick, trigger,
             problem,
+        )  # fmt: skip
+    if co_mode == DYNAMIC:
+        return dynamic_calc(
+            value, co_amount or Decimal(0), short_symbol, short_fill, entry_credit,
+            long_value or Decimal(0), ratio, long_legs, long_group, note,
         )  # fmt: skip
     basis = group.stop_basis
     overlay = co_mode in OVERLAY_ON and co_amount is not None
@@ -159,6 +232,50 @@ def stop_calc(
         "entry_lost" if lost else basis, value, short_fill, entry_credit, configured, co_mode,
         co_amount, co_raw, co_won, raw, tick, trigger, problem, group_entry if lost else None,
     )  # fmt: skip
+
+
+def dynamic_calc(
+    configured: Decimal, buffer: Decimal, short_symbol: str, short_fill: Decimal,
+    entry_credit: Decimal | None, long_value: Decimal, ratio: int = 1,
+    long_legs: tuple[tuple[str, int], ...] = (), long_group: int | None = None,
+    note: str | None = None,
+) -> StopCalc:  # fmt: skip
+    """A Dynamic stop (exits._place_stop_loss's dynamic branch): (credit + long - buffer),
+    per contract of a ratio anchor, rounded down once to the short's tick. It replaces the
+    group's own style (`configured` is kept for the record). Never refused for being at
+    or below the short's fill: the caller rests it above the short's ask instead. A
+    problem with no entry credit, or at or below 0."""
+    if entry_credit is None:
+        return StopCalc(
+            DYNAMIC, configured, short_fill, None, None, DYNAMIC, buffer, None, False, None, None,
+            None, "the run has no entry credit to base the stop on", None, long_value, long_legs,
+            long_group, note,
+        )  # fmt: skip
+    raw = dynamic_trigger(entry_credit, long_value, buffer) / ratio
+    tick, trigger = round_stop(short_symbol, raw)
+    problem = None if trigger > 0 else f"the stop works out at {trigger:f}, not above 0"
+    return StopCalc(
+        DYNAMIC, configured, short_fill, entry_credit, raw, DYNAMIC, buffer, None, False, raw,
+        tick, trigger, problem, None, long_value, long_legs, long_group, note,
+    )  # fmt: skip
+
+
+def dynamic_moved(calc: dict, long_value: Decimal, raw: Decimal, tick: Decimal,
+                  trigger: Decimal, note: str | None = None) -> dict:  # fmt: skip
+    """A dynamic stop's logged arithmetic once the ratchet (or a raise above the short's
+    ask) moved it: the same sum at the long's new value, still basis DYNAMIC, so the ratchet
+    keeps owning it."""
+    return dict(calc) | {
+        "long_value": _text(long_value), "raw": _text(raw), "configured_raw": _text(raw),
+        "tick": _text(tick), "trigger": _text(trigger), "note": note, "problem": None,
+    }  # fmt: skip
+
+
+def raised(calc: dict, trigger: Decimal, floor: Decimal, what: str) -> dict:
+    """A dynamic stop's log once it was rested one tick above the short's `what` ("ask"
+    or "fill") at `floor`, so it doesn't fire the moment it's placed (1a87ccec)."""
+    return dict(calc) | {"trigger": _text(trigger),
+                         "note": f"raised above the short's {what} {floor:f}"}  # fmt: skip
 
 
 def level_calc(
@@ -367,7 +484,14 @@ def describe(calc: dict | None) -> list[str]:
         parts.append(f"moved by {calc['moved_by']}")
     if basis.startswith("group_"):
         return parts + _describe_watched(calc)
-    if basis == "usd":
+    if basis == DYNAMIC:
+        parts.append(
+            f"credit {_money(calc['entry_credit'])} + long {_money(calc['long_value'])} − "
+            f"buffer {_money(calc['co_amount'])} = {_money(own)}"
+        )
+        if calc.get("note"):
+            parts.append(calc["note"])
+    elif basis == "usd":
         parts.append(
             f"short {_money(calc['short_fill'])} + ${_money(calc['configured'])} = {_money(own)}"
         )
@@ -412,7 +536,9 @@ def describe(calc: dict | None) -> list[str]:
             won = calc.get("winner") == "co"
             parts.append("lower wins: " + ("closing order" if won else "the side's own"))
     trigger = _money(calc["trigger"])
-    if Decimal(calc["raw"]) != Decimal(calc["trigger"]):
+    if Decimal(calc["trigger"]) > Decimal(calc["raw"]):  # a dynamic stop raised (its note)
+        parts.append(f"→ {trigger}")
+    elif Decimal(calc["raw"]) != Decimal(calc["trigger"]):
         parts.append(f"→ {trigger} (rounded down to the {_money(calc['tick'])} tick)")
     else:
         parts.append(f"→ {trigger}")

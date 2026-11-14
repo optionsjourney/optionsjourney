@@ -1,6 +1,6 @@
 [project]
 name = "optionsjourney"
-version = "0.7.0"
+version = "0.8.0"
 description = "A local-first options trading journal and automation app."
 readme = "README.md"
 license = "LicenseRef-PolyForm-Noncommercial-1.0.0"
@@ -14,7 +14,7 @@ dependencies = [
     "keyring>=25.7.0",
     "markdown-it-py>=4.2.0",
     "mdit-py-plugins>=0.6.1",
-    "pillow>=12.3.0",
+    "pillow>=13.0.0",
     "platformdirs>=4.12.4",
     "pystray>=0.19.5",
     "python-dotenv>=1.2.4",
@@ -55,6 +55,8 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM"]
 
 [dependency-groups]
 dev = [
+    "bandit>=1.9.4",
+    "pip-audit>=2.10.1",
     "pytest>=9.1.1",
     "ruff>=0.17.0",
 ]

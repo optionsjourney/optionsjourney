@@ -2,7 +2,7 @@
 analyzer data, with Tracker2's answers (core/chain.py).
 
 - Expirations: TastyTrade's nested chain (the weekly root for SPX and RUT),
-  Schwab's as the backup.
+  Schwab's as the backup (the answer says so, #327).
 - Chains: Schwab's chain snapshot (one call, every strike, with greeks), or
   without Schwab, TastyTrade's live quotes through the quote hub.
 - Futures (/ES, #53): TastyTrade's series and DXLink quotes, with its REST
@@ -15,6 +15,7 @@ from collections.abc import Callable
 from datetime import UTC, date, datetime
 
 from optionsjourney.bots import futures as bot_futures
+from optionsjourney.bots.market_check import Listing
 from optionsjourney.brokers.credentials import CredentialsUnavailable
 from optionsjourney.brokers.http import BrokerError
 from optionsjourney.core import black_scholes as math_
@@ -121,32 +122,71 @@ class ChainData:
                 "expirations": live,
                 "series": {d: core_chain.series_info(e) for d, e in series.items()},
             }
-        return {"expirations": self._expirations(clients, ticker)}
+        found = self._expirations(clients, ticker)
+        if not found:
+            return {"expirations": []}
+        out = {"expirations": found["days"]}
+        if found.get("backup"):  # #327: Schwab stood in for a connected TastyTrade
+            out["backup"] = found["backup"]
+        return out
 
-    def _expirations(self, clients: list, ticker: str) -> list[str]:
+    @staticmethod
+    def _tasty_days(client, ticker: str) -> list[date]:
+        item = _root_item(client.option_chain(ticker), ticker)
+        return [
+            date.fromisoformat(e["expiration-date"]) for e in (item or {}).get("expirations", [])
+        ]
+
+    def _expirations(self, clients: list, ticker: str) -> dict | None:
+        """{"days": [...], "backup": "Schwab" when TastyTrade is connected but couldn't
+        list them}, kept an hour together with where they came from (#327)."""
+
         def produce():
             tasty = _tasty(clients)
             if tasty is not None:
                 try:
-                    item = _root_item(tasty.option_chain(ticker), ticker)
-                    days = [
-                        date.fromisoformat(e["expiration-date"])
-                        for e in (item or {}).get("expirations", [])
-                    ]
+                    days = core_chain.filter_expirations(self._tasty_days(tasty, ticker), _today())
                     if days:
-                        return core_chain.filter_expirations(days, _today())
-                except _UNAVAILABLE as e:
-                    logger.info("TastyTrade expirations for %s unavailable: %s", ticker, e)
+                        return {"days": days}
+                # Any failure, not only an outage: on 2026-11-09 Tracker2's TastyTrade side
+                # couldn't read the response, and two entries were lost to it (#327)
+                except Exception as e:  # noqa: BLE001
+                    logger.warning("TastyTrade expirations for %s unavailable: %s", ticker, e)
             schwab = _schwab(clients)
             if schwab is not None:
                 try:
-                    days = schwab.option_expirations(ticker)
-                    return core_chain.filter_expirations(days, _today())
-                except _UNAVAILABLE as e:
+                    listed = schwab.option_expirations(ticker)
+                    days = core_chain.filter_expirations(listed, _today())
+                    if days and tasty is not None:
+                        logger.warning("expirations for %s from Schwab: TastyTrade couldn't "
+                                       "list them", ticker)  # fmt: skip
+                        return {"days": days, "backup": "Schwab"}
+                    if days:
+                        return {"days": days}
+                except Exception as e:  # noqa: BLE001
                     logger.info("Schwab expirations for %s unavailable: %s", ticker, e)
             return None
 
-        return self.cache.get(("exp", ticker), EXPIRATIONS_TTL, produce) or []
+        return self.cache.get(("exp", ticker), EXPIRATIONS_TTL, produce)
+
+    def broker_expirations(self, clients: list, ticker: str) -> dict[str, Listing]:
+        """Each broker's own expiration list, asked now (never the cache), for the pre-open
+        check (#327): {"tastytrade": Listing, "schwab": Listing}. Never raises."""
+
+        def ask(client, read) -> Listing:
+            if client is None:
+                return Listing(False)
+            try:
+                days = core_chain.filter_expirations(read(client), _today())
+            except Exception as e:  # noqa: BLE001 -- said in the check, never raised
+                logger.warning("pre-open check: expirations for %s: %r", ticker, e)
+                return Listing(True, (), str(e).strip() or e.__class__.__name__)
+            return Listing(True, tuple(date.fromisoformat(d) for d in days))
+
+        return {
+            "tastytrade": ask(_tasty(clients), lambda c: self._tasty_days(c, ticker)),
+            "schwab": ask(_schwab(clients), lambda c: c.option_expirations(ticker)),
+        }
 
     def _schwab_rows(self, client, ticker: str, expiration: str) -> dict | None:
         """strike -> {"call": contract, "put": contract}: Schwab's contracts on
@@ -225,6 +265,11 @@ class ChainData:
         expiration, for the bots: the same chain the Trade page reads."""
         rows, _ = self._rows(clients, hub, ticker, expiration)
         return rows
+
+    def option_rows_from(self, clients: list, hub, ticker: str, expiration: str) -> tuple:
+        """(option_rows, the broker that answered: "schwab" or "tastytrade"), or (None,
+        None): the pre-open check's chain (#327)."""
+        return self._rows(clients, hub, ticker, expiration)
 
     def chain_table(
         self, clients: list, hub, ticker: str, expiration: str, prefer: str | None = None

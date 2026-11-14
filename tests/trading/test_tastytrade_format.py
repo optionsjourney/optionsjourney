@@ -125,6 +125,17 @@ def test_a_replaced_order_names_its_replacement():
     assert broker_order({"id": 41, "status": "Cancelled", "legs": []}).replaced_by is None
 
 
+def test_a_cancel_with_no_reason_user_or_successor_is_the_brokers():
+    """#317 (Tracker2 9b49dfea): only a bare Cancelled is the broker's own doing."""
+    bare = {"id": 41, "status": "Cancelled", "legs": []}
+    assert broker_order(bare).broker_cancelled
+    for extra in ({"reject-reason": "Exchange closed"}, {"replacing-order-id": 42},
+                  {"cancel-user-id": 7}):  # fmt: skip
+        assert not broker_order({**bare, **extra}).broker_cancelled
+    for status in ("Rejected", "Removed", "Live", "Filled"):
+        assert not broker_order({**bare, "status": status}).broker_cancelled
+
+
 def _raw(**extra):
     leg = {"symbol": "SPXW  261016P05800000", "action": "Sell to Open", "quantity": 1,
            "instrument-type": "Equity Option"}  # fmt: skip

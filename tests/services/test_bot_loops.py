@@ -638,6 +638,7 @@ def test_the_monitor_runs_each_step_on_its_own_and_ends_with_integrity(monkeypat
     monkeypatch.setattr(bot_loops, "check_exits", step("check_exits"))
     monkeypatch.setattr(bot_loops.manual_attach, "pending_pass", step("manage with"))
     monkeypatch.setattr(bot_loops.bot_exits, "monitor_pass", step("monitor"))
+    monkeypatch.setattr(bot_loops.bot_dynamic_stops, "ratchet_pass", step("dynamic", fails=True))
     monkeypatch.setattr(bot_loops.bot_manage, "recover", step("exits off", fails=True))
     monkeypatch.setattr(bot_loops.bot_timed, "timed_pass", step("timed", fails=True))
     monkeypatch.setattr(bot_loops.bot_timed, "actions_pass", step("actions", fails=True))
@@ -648,6 +649,7 @@ def test_the_monitor_runs_each_step_on_its_own_and_ends_with_integrity(monkeypat
         "check_exits",
         "manage with",
         "monitor",
+        "dynamic",  # #329: the Dynamic stops' ratchet, after the exits are read
         "exits off",
         "timed",
         "actions",

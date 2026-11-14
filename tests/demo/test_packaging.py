@@ -109,6 +109,7 @@ ROOT_RUN = (
     "pf_steps",
     "pf_on",
     "firewall_check",
+    "firewall_boot",
     "up",
     "down",
     "loaded",
@@ -191,19 +192,22 @@ def test_the_dry_run_keeps_logs_in_roots_folder_and_the_updater_low():
         check=True,
     )
     out = done.stdout
-    assert out.count("<string>/Library/Logs/optionsjourney-demo/com.optionsjourney.demo") == 6
+    assert out.count("<string>/Library/Logs/optionsjourney-demo/com.optionsjourney.demo") == 8
     assert "<key>LowPriorityIO</key><true/>" in out
     assert out.count("<key>Nice</key><integer>10</integer>") == 2
     assert "would look up SwiftBar" in out  # not looked up for real in a dry run
 
 
 # The only root-run lines that name the logs without running as ojdemo: making the
-# folder and replacing a missing or linked log file. Reading one is as ojdemo.
+# folder, replacing a missing or linked log file, and making the boot job's own log.
+# Reading one is as ojdemo.
 LOGS_SETUP = (
     'run /usr/bin/install -d -m 755 -o root -g wheel "$LOGS"',
     'if [ -n "$DRY" ] || [ -L "$LOGS/$label.log" ] || [ ! -f "$LOGS/$label.log" ]; then',
     'run /bin/rm -f "$LOGS/$label.log"',
     'run /usr/bin/install -m 644 -o "$DEMO_USER" -g "$group" /dev/null "$LOGS/$label.log"',
+    'run /bin/rm -f "$LOGS/$FIREWALL.log"',
+    'run /usr/bin/install -m 644 -o root -g wheel /dev/null "$LOGS/$FIREWALL.log"',
 )
 
 
@@ -237,7 +241,8 @@ def test_the_demo_user_gets_no_input_and_its_output_is_cleaned():
     assert "uv sync" not in "\n".join(bodies["install_demo"])  # only through sync_app
     text = OJ_DEMO.read_text()
     tail = text[text.index("as_demo /usr/bin/tail") :].splitlines()[1]
-    assert tail.strip() == "clean_lines 300 ;;"
+    assert tail.strip() == "clean_lines 300"
+    assert '-u "$FIREWALL" | clean_lines 300' in text  # Linux: journalctl, cleaned too
     assert "clean_lines() { LC_ALL=C /usr/bin/tr -cd '[:print:]\\n' |" in text
 
 
@@ -386,8 +391,15 @@ def test_firewall_check_is_a_command_but_not_a_passwordless_one():
     # ojdemo's curl reads no ~/.curlrc and uses no proxy; root never connects itself
     assert check.count("as_demo /usr/bin/curl -q ") == 2
     assert check.count("--noproxy '*'") == 2
-    assert "/usr/sbin/lsof -nP -t -iTCP" in check
+    assert '"$LSOF" -nP -t -iTCP' in check
     assert "_seat/health" in check
+
+
+def test_firewall_check_finds_lsof_on_each_system():
+    text = OJ_DEMO.read_text()
+    # lsof lives in /usr/sbin on macOS and /usr/bin on Ubuntu
+    assert "\nLSOF=/usr/sbin/lsof" in text
+    assert "    LSOF=/usr/bin/lsof" in text
 
 
 def _verdict(code: int) -> subprocess.CompletedProcess:
@@ -447,3 +459,62 @@ def test_the_firewall_keeps_the_demo_user_off_the_home_network():
     lines = _anchor(_dry("install", env={"OJ_DEMO_RESOLVERS": ""}).stdout).splitlines()
     assert not any("port 53" in line and "any to {" in line for line in lines)
     assert first("self,") < first("from any to any port 53")
+
+
+FIREWALL_PLIST = "/Library/LaunchDaemons/com.optionsjourney.demo-firewall.plist"
+
+
+def test_install_writes_a_boot_daemon_that_runs_only_the_root_copy():
+    """Decision 0126: at boot, as root, the root-owned copy turns pf on or stops the demo."""
+    out = _dry("install").stdout
+    start = out.index(f"--- would write {FIREWALL_PLIST} (644, root:wheel)\n")
+    plist = out[start : out.index("</plist>", start)]
+    assert "<key>UserName</key><string>root</string>" in plist
+    assert "<key>RunAtLoad</key><true/>" in plist
+    assert "<key>KeepAlive</key>" not in plist  # once per boot
+    root_copy = "/usr/local/libexec/optionsjourney-demo/oj-demo"
+    assert f"<array><string>{root_copy}</string><string>firewall-boot</string></array>" in plist
+    assert "/Users/" not in plist and "ojdemo" not in plist
+    # its log is root's, not the demo user's
+    log = "/Library/Logs/optionsjourney-demo/com.optionsjourney.demo-firewall.log"
+    assert f"install -m 644 -o root -g wheel /dev/null {log}" in out
+    sudoers = next(line for line in out.splitlines() if "NOPASSWD" in line)
+    assert "firewall-boot" not in sudoers
+
+
+def _boot(pf_on: bool) -> subprocess.CompletedProcess:
+    """firewall_boot with pf and launchd stubbed: what it stops, and its exit code."""
+    funcs = _functions(OJ_DEMO.read_text())
+    script = "\n".join([
+        "PF_NAME=optionsjourney-demo-test-only BIN=oj-demo",
+        "PROXY=proxy MANAGER=manager UPDATER=updater",
+        f"pf_on() {{ {'true' if pf_on else 'false'}; }}",
+        'down() { echo "down $1"; }',
+        'say() { echo "$*"; }',
+        "clean_lines() { cat; }",
+        "firewall_boot() {", *funcs["firewall_boot"], "}",
+        "firewall_boot",
+    ])  # fmt: skip
+    return subprocess.run(["bash", "-c", script], capture_output=True, text=True, check=False)
+
+
+def test_at_boot_the_demo_keeps_running_when_the_firewall_is_on():
+    done = _boot(pf_on=True)
+    assert done.returncode == 0
+    assert "down " not in done.stdout
+
+
+def test_at_boot_the_demo_is_stopped_when_the_firewall_is_off():
+    """Fail closed: a missing anchor (a macOS update rewrote pf.conf) stops the demo,
+    Caddy first since it's what the tunnel reaches, and it stays stopped until start."""
+    done = _boot(pf_on=False)
+    assert done.returncode == 1
+    assert done.stdout.splitlines()[-3:] == ["down proxy", "down manager", "down updater"]
+    assert "OFF" in done.stdout
+
+
+def test_start_refuses_while_the_firewall_is_off():
+    text = OJ_DEMO.read_text()
+    arm = text[text.index("    start) as_root start") : text.index("    stop) ")]
+    assert arm.index("if ! pf_on; then") < arm.index("up $MANAGER")
+    assert "exit 1" in arm

@@ -28,7 +28,7 @@ BROKER_EXITS = ("stop", "target")
 STOP_BASES = ("leg_premium", "entry_premium", "closing_order", "group_entry")
 RESTING_BASES = ("leg_premium", "entry_premium", "closing_order")  # single_short only
 WATCHED_BASES = ("group_entry",)  # watched only
-CO_MODES = ("off", "both", "tighter")  # VALID_STOP_LOSS_CO_MODES
+CO_MODES = ("off", "both", "tighter", "dynamic")  # VALID_STOP_LOSS_CO_MODES; dynamic: #329
 EXIT_UNITS = ("pct", "usd")  # VALID_EXIT_UNITS; "usd" is option price per contract
 REMAINDERS = ("close_market", "close_limit", "close_chase", "leave")  # on_stop_remainder
 # What a close does after its last try (exit_chase.ChaseSettings.exhaust_mode): "give_up"
@@ -39,6 +39,10 @@ SIZINGS = ("contracts", "dollars")  # slice 19: Tracker2's VALID_ALLOCATION_TYPE
 WINDOW_MINUTES = (1, 390)  # slice 19: the entry chase's time limit, at most a session
 NATURAL_MINUTES = (1, 30)  # the natural window's allowed range, in minutes
 KEEP_TRYING_MINUTES = (1, 30)  # #314: how long an entry time keeps trying, in minutes
+# #328 (Tracker2's loss_boost_multiplier): the entry after a stop is this many times the
+# size, a whole number from 2 to 10; blank reads 2.
+LOSS_BOOST = (2, 10)
+LOSS_BOOST_DEFAULT = 2
 # Time actions (Tracker2's time_actions.py): "N days to expiration" or "N days in trade".
 TIME_ACTION_TYPES = ("dte", "dit")
 MAX_TIME_ACTIONS = 10  # validation.MAX_TIME_ACTIONS
@@ -293,8 +297,8 @@ class BotDef:
     specific_dates: tuple[str, ...] = ()  # "YYYY-MM-DD"
     use_blackout_days: bool = False
     blackout_days: tuple[str, ...] = ()  # "YYYY-MM-DD"
-    stop_co_mode: str = "off"  # the closing-order overlay: one of CO_MODES
-    stop_co_amount: Decimal | None = None  # dollars off the whole entry credit
+    stop_co_mode: str = "off"  # the closing-order overlay: one of CO_MODES, or Dynamic stop
+    stop_co_amount: Decimal | None = None  # dollars off the whole entry credit; dynamic: buffer
     # Market filters (slice 5; Tracker2's Bot columns). Each applies only while its
     # use_* box is ticked; unticked, its numbers are kept but ignored.
     use_vix_level: bool = False
@@ -377,6 +381,11 @@ class BotDef:
     # number from a file or from before the switch counts (min_width, keep_trying).
     use_min_short_width: bool = True
     use_keep_trying: bool = True
+    # #328 (Tracker2's use_loss_boost): when the bot's previous filled trade hit a stop, its
+    # next entry's contracts (or buying power) are multiplied by loss_boost_multiplier
+    # (None reads 2), still capped by Max per trade (bots/loss_boost.py).
+    use_loss_boost: bool = False
+    loss_boost_multiplier: int | None = None
     # Manual bots (#158): a manual bot's rules copied onto one trade. It never enters
     # (no entry times), is never listed, and only manages the trade it was made for.
     per_trade: bool = False
@@ -440,8 +449,8 @@ def largest_ratio(bot: BotDef) -> int:
 def trade_cap(bot: BotDef) -> int:
     """Most contracts per trade, counted in the largest leg (decision 0058): the bot's
     own limit, or when blank the biggest entry it makes by itself: its contracts or an
-    entry time's own count, times the largest ratio. Sized by buying power, the
-    contract ceiling (MAX_CONTRACTS) times the ratio."""
+    entry time's own count (boosted, with the loss boost on: #328), times the largest
+    ratio. Sized by buying power, the contract ceiling (MAX_CONTRACTS) times the ratio."""
     if bot.max_per_trade is not None:
         return bot.max_per_trade
     return max(_entry_sizes(bot)) * largest_ratio(bot)
@@ -478,10 +487,15 @@ def _entry_sizes(bot: BotDef, each: bool = False) -> list[int]:
         size = MAX_CONTRACTS
         times = [] if bot.use_floating_entry else [t for t in bot.entry_times if t.enabled]
         return [size] * max(1, len(times)) if each else [size]
+    # #328: with the loss boost on, an entry it makes by itself may be boosted, so Auto
+    # makes room for that size (never past the contract ceiling)
+    boost = loss_boost_multiplier(bot)
     base = max(bot.contracts, 1)
     if bot.use_floating_entry:  # once a day, at the bot's contracts
-        return [base]
-    sizes = [t.quantity or base for t in bot.entry_times if t.enabled]
+        return [min(base * boost, MAX_CONTRACTS)]
+    sizes = [min((t.quantity or base) * boost, MAX_CONTRACTS)
+             for t in bot.entry_times if t.enabled]  # fmt: skip
+    base = min(base * boost, MAX_CONTRACTS)
     if each:
         return sizes or [base]
     return [base, *sizes]
@@ -590,14 +604,16 @@ def normalize_delta(value: Decimal | None) -> Decimal | None:
     return size if size <= 1 else size / 100
 
 
-def contracts_for(bot: BotDef, hhmm: str) -> tuple[int, int | None]:
+def contracts_for(bot: BotDef, hhmm: str, boost: int = 1) -> tuple[int, int | None]:
     """(contracts to send, the amount asked for if it was cut down, else None)
-    for the entry at `hhmm`: that time's own quantity or the bot's contracts,
-    never more than the bot's per-trade limit counted in its largest leg."""
+    for the entry at `hhmm`: that time's own quantity or the bot's contracts, times
+    `boost` after a stop (#328), never more than the bot's per-trade limit counted in its
+    largest leg."""
     requested = bot.contracts
     for entry in bot.entry_times:
         if entry.time == hhmm and entry.quantity is not None:
             requested = entry.quantity
+    requested *= max(boost, 1)
     sent = min(requested, trade_cap(bot) // largest_ratio(bot))
     return sent, (requested if sent < requested else None)
 
@@ -610,6 +626,13 @@ def min_width(bot: BotDef) -> Decimal | None:
 def keep_trying(bot: BotDef) -> int:
     """#315: the minutes an entry time keeps trying: 0 while switched off or blank."""
     return (bot.keep_trying_minutes or 0) if bot.use_keep_trying else 0
+
+
+def loss_boost_multiplier(bot: BotDef) -> int:
+    """#328: the loss boost's multiplier in use: 1 while it's switched off, 2 when blank."""
+    if not bot.use_loss_boost:
+        return 1
+    return max(bot.loss_boost_multiplier or LOSS_BOOST_DEFAULT, 1)
 
 
 def uses_fallback(leg: LegDef) -> bool:

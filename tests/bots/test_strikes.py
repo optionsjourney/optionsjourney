@@ -661,3 +661,32 @@ def test_requote_with_the_same_prices_says_nothing():
     same = {p.symbol: (p.mid - D("0.05"), p.mid + D("0.05")) for p in picked}
     got, notes = requote(picked, same)
     assert got == picked and notes == []
+
+
+# --- #327: the pre-open check's delta test, the same as a delta leg's --------------------
+
+from optionsjourney.bots.strikes import chain_has_deltas, reads_deltas  # noqa: E402
+
+
+def test_a_chain_has_deltas_when_both_sides_cover_their_out_of_the_money_strikes():
+    assert chain_has_deltas(delta_chain())
+    assert not chain_has_deltas(chain())  # no deltas at all
+
+
+def test_a_chain_missing_more_than_the_coverage_has_no_deltas():
+    out = sum(1 for (k, side) in chain().quotes if side == "put" and k < SPOT)
+    assert chain_has_deltas(delta_chain(without=int(out * 0.05)))
+    assert not chain_has_deltas(delta_chain(without=int(out * 0.05) + 1))
+
+
+def test_a_chain_with_no_spot_or_no_quotes_has_no_deltas():
+    assert not chain_has_deltas(Chain(None, {}))
+    assert not chain_has_deltas(Chain(SPOT, {}))
+
+
+def test_a_bot_reads_deltas_for_a_delta_leg_or_a_short_placed_by_an_offset():
+    by_premium = (LegDef(0, Side.SELL, "put", pick="premium"),
+                  LegDef(1, Side.BUY, "put", pick="offset", link=0))  # fmt: skip
+    assert not reads_deltas(by_premium)
+    assert reads_deltas((LegDef(0, Side.SELL, "put", pick="delta"),))
+    assert reads_deltas((LegDef(0, Side.SELL, "put", pick="offset", link=1),))

@@ -5,7 +5,10 @@ Work happens in a private repository. Each release copies a clean snapshot to th
 ## Steps
 1. Move the `[Unreleased]` notes in `CHANGELOG.md` under a new version heading, and set `version` in `pyproject.toml` to match (the only place it is set: the app reads it from there).
 2. Commit, then tag: `git tag v0.2.0`.
-3. Build and test the public copy: `uv run python scripts/publish_public.py v0.2.0`. It prints where the copy is, so you can look through it.
+3. Build and test the public copy: `uv run python scripts/publish_public.py v0.2.0`. It prints where the copy is, so you can look through it. Before the tests it runs the security checks (decision 0127), and any failure stops it:
+   - **Secrets:** no key, token or `.env` file in the copy.
+   - **pip-audit:** no known hole in a package the app ships. It needs the network. To fix a finding, upgrade the package (`uv lock --upgrade-package <name>`), commit, and tag again.
+   - **bandit:** no medium-or-worse finding in `src/`. If a finding is safe, mark it on its line with the reason first, then `# nosec <id>`.
 4. Publish: `uv run python scripts/publish_public.py v0.2.0 --push`. This commits `Release v0.2.0` to the public repo, tags it and pushes. Then it builds the Release file, `dist/v0.2.0/OptionsJourney.zip` (the public repo at the tag, in one folder `OptionsJourney-v0.2.0/`), and prints the commands for step 5. To build only that file from a tag already in the public repo: `uv run python scripts/publish_public.py v0.2.0 --zip-only`.
 5. On GitHub, create the Release from the tag, with `OptionsJourney.zip` attached (decision 0116). Generate its notes first: `uv run python scripts/announce_release.py v0.2.0 --notes > notes.md` prints the version's changelog section, then a **Screenshots** section showing each `docs/guide/images/v0.2.0-*.png` from the public repo at that tag (step 4 copied them: `docs/guide/` is public). Then create it as a draft, upload the file, and publish:
    ```

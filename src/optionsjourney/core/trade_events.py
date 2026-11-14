@@ -24,6 +24,8 @@ class TradeEventFacts:
     at: datetime
     amount: Decimal  # the cash of these fills: + received, - paid
     detail: str = ""  # a close's strikes and rolls, one per line (close_detail)
+    # each order's id and the symbols its fills booked so far (still_booking)
+    booked: tuple[tuple[str, frozenset[str]], ...] = ()
 
 
 def _strikes(strikes) -> str:
@@ -70,7 +72,26 @@ def events_of(position: Position) -> list[TradeEventFacts]:
         else:
             kind = PARTIAL
         orders = ",".join(sorted(str(o.order_id or o.executed_at.isoformat()) for o in event.orders))
+        booked = tuple(
+            (o.order_id, frozenset(leg.symbol for leg in o.legs))
+            for o in event.orders if o.order_id
+        )
         facts.append(TradeEventFacts(f"{kind}:{position.key}:{orders}", kind, position.key,
                                      event.at, event.value,
-                                     close_detail(position) if kind == CLOSE else ""))  # fmt: skip
+                                     close_detail(position) if kind == CLOSE else "",
+                                     booked))  # fmt: skip
     return facts
+
+
+def still_booking(fact: TradeEventFacts, exit_symbols: dict[str, frozenset[str]]) -> bool:
+    """A "partial_close" whose bot exit order closes more legs than its fills have booked
+    yet (#326): TastyTrade can book one whole-trade exit across two syncs, so the first
+    sync sees only some legs closed. It waits for the rest instead of alerting a partial
+    close; a group stop (one MEIC side) or a wing has booked all of its own legs and
+    alerts as before. `exit_symbols` is each bot exit order's legs, by broker order id."""
+    if fact.kind != PARTIAL:
+        return False
+    return any(
+        order_id in exit_symbols and not exit_symbols[order_id] <= symbols
+        for order_id, symbols in fact.booked
+    )

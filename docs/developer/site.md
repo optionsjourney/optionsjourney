@@ -18,23 +18,25 @@ A static site: the Home page and five guide pages (Features, Install, Broker set
 uv run python scripts/build_site.py
 python3 -m http.server 8765 --directory build/site
 ```
-Open http://localhost:8765/install.html. The local server needs the `.html`; on the prod Mac, Caddy serves `/install` too.
+Open http://localhost:8765/install.html. The local server needs the `.html`; on the prod machine, Caddy serves `/install` too.
 
 Tests: `uv run pytest tests/scripts/test_build_site.py`. They check that every page builds, every link and image on the site resolves, the disclaimer is on every page, and no page mentions the app's predecessor by name.
 
 ## How it's deployed
-The site runs on the always-on prod Mac, behind its Cloudflare tunnel (decision 0101). Two LaunchAgents, written by `site install`:
+The site runs on the always-on prod machine, behind its Cloudflare tunnel: since 2026-11-10 that is a Dell running Ubuntu (decision 0128; the prod Mac before, decision 0101). Two jobs, written by `site install`: systemd user units on Linux (`optionsjourney-site.service`, and `optionsjourney-site-update.timer` starting its oneshot every 5 minutes), LaunchAgents on macOS (named below):
 - `com.optionsjourney.site`: Caddy (`site/Caddyfile`: clean URLs, the 404 page, gzip, www to the apex) on `127.0.0.1:8090`, serving `~/.optionsjourney-site/current`. Only the tunnel reaches it.
 - `com.optionsjourney.site-update`: every 5 minutes, `site update` fetches `origin/main` over a read-only deploy key. If main moved, it builds into `~/.optionsjourney-site/builds/<commit>/` and switches `current` to it. A failed build leaves the last good site up. The last three builds are kept.
 
-Both run at login (the prod Mac logs in by itself after a reboot), and Caddy is restarted if it stops. Logs are in `~/Library/Logs/optionsjourney-site/`.
+On Linux both start at boot without a login (lingering is on for the user) and logs are in the journal (`site logs`). On macOS they run at login (the Mac logs in by itself after a reboot) and log to `~/Library/Logs/optionsjourney-site/`. Caddy is restarted if it stops.
 
 Because the site builds from `main`, a guide change shows on the site before it's in a release. Releases follow guide changes closely, so this is accepted (decision 0097).
 
-## Day to day (on the prod Mac)
-`site status`, `site stop`, `site start`, `site restart`, `site update` (build now instead of waiting), `site logs`. `site stop` keeps it stopped through a reboot until `site start`. The 🌐 menu bar item (SwiftBar) shows whether the site answers and has the same buttons.
+## Day to day (on the prod machine)
+`site status`, `site stop`, `site start`, `site restart`, `site update` (build now instead of waiting), `site logs`. `site stop` keeps it stopped through a reboot until `site start`. On macOS the 🌐 menu bar item (SwiftBar) shows whether the site answers and has the same buttons.
 
 ## One-time setup (the author)
+On Linux (the Dell): `sudo apt install caddy` and `sudo systemctl disable --now caddy` (the site runs its own Caddy as your user), uv in `~/.local/bin`, `sudo loginctl enable-linger $USER`. Clone with a read-only deploy key wired by `git -c core.sshCommand="ssh -i ~/.ssh/github_optionsjourney -o IdentitiesOnly=yes" clone git@github.com:jtse9088/optionsjourney.git ~/optionsjourney/optionsjourney-site`, then `git config core.sshCommand` the same in the clone, then `site/deploy/site install`. The tunnel and DNS steps below were done once for the Mac and moved with the tunnel.
+
 On the prod Mac:
 1. `brew install caddy uv`
 2. A read-only deploy key: `ssh-keygen -t ed25519 -N "" -f ~/.ssh/optionsjourney_site_deploy`, and in `~/.ssh/config` a `Host github-optionsjourney` entry (`HostName github.com`, `User git`, that `IdentityFile`, `IdentitiesOnly yes`). Add the public key to this repo's deploy keys, read-only.

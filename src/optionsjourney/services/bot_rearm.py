@@ -325,13 +325,17 @@ def _restore_stop(deps, run_id: int, item: Item) -> None:
     placed = bot_exits.rearm(deps, latest.id, first=True)
     with deps.session_factory() as session:
         after = session.get(BotExit, latest.id)
-        if after.state == "pending":  # Freeze came on meanwhile: not placed, and not later
+        at_open = after.state == "pending" and bool(after.stop_at_open)
+        if after.state == "pending" and not at_open:  # Freeze came on: not placed, nor later
             after.state = "failed"
             bot_exits._log(after, deps, event="not restored: orders are frozen")
             session.commit()
         state, size, last = after.state, after.contracts, (after.log or [{}])[-1]
     item.contracts = size
-    if placed and state in rearm.STOP_PRESENT:
+    if at_open:  # #330: the broker takes no stop now (Tracker2's "deferred" item)
+        item.status = rearm.PLACED
+        item.detail = f"at {trigger}, {bot_exits.AT_OPEN} (no stop until then)"
+    elif placed and state in rearm.STOP_PRESENT:
         item.status = rearm.PLACED
         item.detail = "watched by the app" if state == bot_exits.WATCHING else f"at {trigger}"
     elif state == "expired":

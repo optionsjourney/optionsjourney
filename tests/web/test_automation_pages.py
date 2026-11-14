@@ -649,6 +649,30 @@ def test_an_edit_round_trips_the_exit_settings(app):
     assert bot_store.load(sf(app), bot_id) == before
 
 
+def test_a_dynamic_stop_round_trips_with_a_zero_buffer(app):
+    # #329: Dynamic stop is a fourth closing-order choice; its amount is the buffer (0 is fine)
+    client = app.test_client()
+    data = form(app) | {"stop_co_mode": "dynamic", "stop_co_amount": "0"}
+    assert client.post("/automation/save", data=data, headers=ORIGIN).status_code == 302
+    with sf(app)() as session:
+        bot_id = session.scalar(select(Bot.id))
+    saved = bot_store.load(sf(app), bot_id)
+    assert (saved.stop_co_mode, saved.stop_co_amount) == ("dynamic", Decimal("0"))
+    html = client.get(f"/automation/{bot_id}").get_data(as_text=True)
+    modes = [v for v, _, _ in _options(html, "stop_co_mode")]
+    assert modes == ["off", "both", "tighter", "dynamic"]
+    assert "Dynamic stop" in html and "Buffer $ below the credit" in html
+    again = client.post("/automation/save", data=posted_back(html), headers=ORIGIN)
+    assert again.status_code == 302 and bot_store.load(sf(app), bot_id) == saved
+
+
+def test_the_dynamic_stop_tip_works_an_example_as_a_table(app):
+    html = app.test_client().get("/automation/new").get_data(as_text=True)
+    tip = html[html.index("Advanced closing orders") : html.index("data-closing-order")]
+    for text in ("Dynamic stop", "Long now", "3.30", "4.10", "3.60"):
+        assert text in tip, text
+
+
 def test_an_unreadable_stop_is_named_beside_its_side(app):
     data = form(app) | {"group-0-stop": "9S"}
     r = app.test_client().post("/automation/save", data=data, headers=ORIGIN)
@@ -3301,6 +3325,11 @@ def test_the_stop_box_takes_a_unit_and_a_credit_group_has_its_closing_order(app,
     url = f"/automation/runs/{run_id}/sides/0/closing-order"
     app.test_client().post(url, data={"mode": "tighter", "amount": "0.80"}, headers=ORIGIN)
     assert calls == [(run_id, 0, "tighter", "0.80")]
+    # #329: the switch to a Dynamic stop, its buffer 0 or more
+    assert "dynamic" in [v for v, _, _ in _options(html, "mode")]
+    assert 'name="amount" min="0"' in html
+    app.test_client().post(url, data={"mode": "dynamic", "amount": "0.20"}, headers=ORIGIN)
+    assert calls[-1] == (run_id, 0, "dynamic", "0.20")
 
 
 def test_a_groups_profit_actions_post_the_whole_form(app, monkeypatch):
@@ -4334,3 +4363,105 @@ def test_a_switch_on_with_no_number_is_refused(app):
     assert r.status_code == 400
     assert "Enter how long to keep trying, or switch it off." in body
     assert "Enter the min short width, or switch it off." in body
+
+
+# #328: the loss boost on the form, the bot page and a shared file (Tracker2 168d2088)
+def test_the_form_has_the_boost_switch_and_multiplier(app):
+    html = app.test_client().get("/automation/new").get_data(as_text=True)
+    assert 'name="use_loss_boost"' in html and 'name="loss_boost_multiplier"' in html
+    assert "Boost after a stop" in html and "cut by the cap" in html  # the ⓘ's table
+
+
+def test_saving_the_boost_round_trips(app):
+    bot_id = saved_bot(app, use_loss_boost="on", loss_boost_multiplier="3")
+    bot = bot_store.load(sf(app), bot_id)
+    assert (bot.use_loss_boost, bot.loss_boost_multiplier) == (True, 3)
+    html = app.test_client().get(f"/automation/{bot_id}").get_data(as_text=True)
+    assert 'name="use_loss_boost" checked' in html and 'value="3"' in html
+
+
+def test_a_blank_multiplier_saves_and_reads_2(app):
+    bot_id = saved_bot(app, use_loss_boost="on", loss_boost_multiplier="")
+    bot = bot_store.load(sf(app), bot_id)
+    assert (bot.use_loss_boost, bot.loss_boost_multiplier) == (True, None)
+    html = app.test_client().get(f"/automation/{bot_id}").get_data(as_text=True)
+    assert "Boost ×2 after a stop" in html
+
+
+@pytest.mark.parametrize("typed", ["1", "11", "two"])
+def test_a_multiplier_outside_2_to_10_is_refused(app, typed):
+    data = form(app, use_loss_boost="on", loss_boost_multiplier=typed)
+    r = app.test_client().post("/automation/save", data=data, headers=ORIGIN)
+    assert r.status_code == 400
+    assert "The boost multiplier is a whole number from 2 to 10" in r.get_data(as_text=True)
+    with sf(app)() as session:
+        assert session.scalar(select(Bot.id)) is None
+
+
+def test_the_bot_page_summary_shows_the_boost(app):
+    bot_id = saved_bot(app, use_loss_boost="on", loss_boost_multiplier="3")
+    html = app.test_client().get(f"/automation/{bot_id}").get_data(as_text=True)
+    assert "Boost ×3 after a stop" in html
+
+
+def test_switched_off_the_boost_isnt_shown_on_the_bot_page(app):
+    bot_id = saved_bot(app, loss_boost_multiplier="3")
+    bot = bot_store.load(sf(app), bot_id)
+    assert (bot.use_loss_boost, bot.loss_boost_multiplier) == (False, 3)
+    assert "after a stop</div>" not in app.test_client().get(f"/automation/{bot_id}").get_data(
+        as_text=True
+    )
+
+
+def test_a_shared_bot_file_carries_the_boost_and_its_preview_shows_it(app):
+    bot_id = saved_bot(app, use_loss_boost="on", loss_boost_multiplier="3")
+    text = app.test_client().get(f"/automation/{bot_id}/export").get_data(as_text=True)
+    shared = json.loads(text)["bot"]
+    assert (shared["use_loss_boost"], shared["loss_boost_multiplier"]) == (True, 3)
+    html = (
+        app.test_client()
+        .post("/automation/import/preview", data={"json": text}, headers=ORIGIN)
+        .get_data(as_text=True)
+    )
+    assert "Boost after a stop:</strong> ×3" in html
+
+
+def test_the_run_page_says_when_a_close_runs_after_hours_and_cancels_a_scheduled_one(
+    app, monkeypatch
+):
+    """#330 (decision 0133): off-hours on index options the Manage box says Close goes
+    overnight or is scheduled, with the when-it-works table; a scheduled close shows with
+    its Cancel."""
+    from optionsjourney.bots import after_hours
+    from optionsjourney.db.models import BotScheduledClose
+    from optionsjourney.services import bot_manage
+
+    run_id = _held_run(app)
+    client = app.test_client()
+    monkeypatch.setattr(bot_manage, "close_window",
+                        lambda d, r: after_hours.Window(after_hours.OVERNIGHT))  # fmt: skip
+    html = client.get(f"/automation/runs/{run_id}").get_data(as_text=True)
+    assert 'id="close-when"' in html and "overnight limit orders" in html
+    assert "When you click Close" in html  # the tip's table
+    page = client.post(f"/automation/runs/{run_id}/close-trade", data={"order_type": "limit"},
+                       headers=ORIGIN).get_data(as_text=True)  # fmt: skip
+    assert "overnight limit orders" in page  # the confirm says it too
+    now = datetime(2026, 10, 13, 21, 10, tzinfo=UTC)
+    with sf(app)() as session:
+        row = BotScheduledClose(
+            run_id=run_id, group_position=None, groups=None, quantity=None,
+            order_type="limit", start_at=datetime(2026, 10, 14, 0, 16, tzinfo=UTC),
+            state="scheduled", created_at=now, updated_at=now,
+        )  # fmt: skip
+        session.add(row)
+        session.commit()
+        row_id = row.id
+    html = client.get(f"/automation/runs/{run_id}").get_data(as_text=True)
+    assert 'id="scheduled-close"' in html and "Close entire trade at" in html
+    url = f"/automation/runs/{run_id}/scheduled-close/{row_id}/cancel"
+    assert url in html
+    client.post(url, headers=ORIGIN)
+    html = client.get(f"/automation/runs/{run_id}").get_data(as_text=True)
+    assert "The scheduled close is cancelled" in html and 'id="scheduled-close"' not in html
+    with sf(app)() as session:
+        assert session.get(BotScheduledClose, row_id).state == "cancelled"

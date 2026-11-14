@@ -40,6 +40,21 @@ def test_a_changed_stop_shows_the_bots_stop_in_its_own_style():
     assert manage.stop_text(None) == "none"
 
 
+def test_a_dynamic_stop_is_named_in_the_chips():
+    # #329: the bot's Dynamic stop replaces the side's own style; a $ stop keeps its dollars
+    assert manage.stop_text(SIDE, "dynamic", D("0.2")) == "Dynamic stop (buffer $0.20)"
+    usd = GroupDef(0, "", stop_unit="usd", stop_usd=D("2"))
+    assert manage.stop_text(usd, "dynamic", D("0.2")) == "$2.00 a contract"
+    assert manage.stop_text(SIDE, "dynamic", D("0.2"), watched=True) == "150%"
+    [chip] = manage.chips(SIDE, Override(co_mode="dynamic", co_amount=D("0.2")),
+                          co_mode="tighter", co_amount=D("1"))  # fmt: skip
+    assert (chip.label, chip.title) == (
+        "Dynamic stop (buffer $0.20)",
+        "Stop changed to a Dynamic stop for this trade (bot: 150% with the closing order "
+        "$1.00 (tighter))",
+    )
+
+
 def test_a_changed_target_chip():
     [chip] = manage.chips(SIDE, Override(target_pct=D("25")))
     assert (chip.kind, chip.label, chip.title) == (

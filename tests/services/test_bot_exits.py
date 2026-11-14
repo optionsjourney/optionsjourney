@@ -112,6 +112,82 @@ def test_a_stop_cancelled_outside_the_app_is_rearmed_up_to_three_times(deps, fac
     assert stop.rearms == 3 and stop.state == "failed"
 
 
+# --- #318: a resting exit replaced at the broker is followed (Tracker2 2ecf0784)
+
+
+def replaced_at_broker(deps, row, **changes):
+    """TastyTrade replaces the exit's order with an identical one: the old id reads
+    Cancelled and names the new one. `changes` are made to the new order."""
+    body = next(c[-1] for c in deps.tasty.calls
+                if c[0] in ("place", "replace") and c[-2] == row.broker_order_id)  # fmt: skip
+    new_id = deps.tasty.replace_order("5WX01234", row.broker_order_id, body)
+    old = deps.tasty.orders[row.broker_order_id]
+    deps.tasty.orders[row.broker_order_id] = replace(old, replaced_by=new_id)
+    deps.tasty.orders[new_id] = replace(deps.tasty.orders[new_id], **changes)
+    return new_id
+
+
+def group_exit(factory, kind, position=0):
+    return [e for e in exits(factory, kind) if e.group_position == position][-1]
+
+
+def stop_sends(deps):
+    return [c for c in deps.tasty.calls if c[0] == "place" and c[2]["order-type"] == "Stop"]
+
+
+def test_a_stop_replaced_at_the_broker_is_followed_not_rearmed(deps, factory):
+    live_run(deps, factory)
+    new_id = replaced_at_broker(deps, group_exit(factory, "stop"))
+    sent = len(stop_sends(deps))
+    bot_exits.monitor_pass(deps)
+    stop = group_exit(factory, "stop")
+    assert stop.state == "working" and stop.broker_order_id == new_id and stop.rearms == 0
+    assert len(stop_sends(deps)) == sent  # no second stop
+    assert "following it" in stop.log[-1]["event"]
+    deps.tasty.fill(new_id, D("4.80"))
+    bot_exits.monitor_pass(deps)
+    assert group_exit(factory, "stop").state == "filled"
+
+
+def test_a_target_replaced_at_the_broker_takes_the_new_orders_price(deps, factory):
+    rest_the_target(deps, factory, live_run(deps, factory, target_pct="50"))
+    target = group_exit(factory, "target")
+    assert target.state == "working"
+    new_id = replaced_at_broker(deps, target, price=D("-1.15"))
+    bot_exits.monitor_pass(deps)
+    target = group_exit(factory, "target")
+    assert target.state == "working" and target.broker_order_id == new_id
+    assert target.limit == D("1.15")
+
+
+@pytest.mark.parametrize("how", ["opening", "unreadable"])
+def test_a_replacement_it_cant_vouch_for_needs_you_and_isnt_rearmed(deps, factory, how):
+    run_id = live_run(deps, factory)
+    stop = group_exit(factory, "stop")
+    if how == "opening":
+        new_id = replaced_at_broker(deps, stop)
+        new = deps.tasty.orders[new_id]
+        deps.tasty.orders[new_id] = replace(
+            new, legs=tuple(replace(leg, opening=True) for leg in new.legs)
+        )
+    else:
+        new_id = replaced_at_broker(deps, stop)
+        real_get = deps.tasty.get_order
+
+        def get(account, order_id):
+            if order_id == new_id:
+                raise BrokerError("down")
+            return real_get(account, order_id)
+
+        deps.tasty.get_order = get
+    sent = len(stop_sends(deps))
+    bot_exits.monitor_pass(deps)
+    stop = group_exit(factory, "stop")
+    assert stop.state == "failed" and stop.rearms == 0 and len(stop_sends(deps)) == sent
+    with factory() as session:
+        assert session.get(BotRun, run_id).reason.startswith(bot_entry.NEEDS_YOU)
+
+
 def test_the_monitor_reads_working_exits_without_holding_the_exits_lock(deps, factory):
     live_run(deps, factory)
     seen = []
@@ -5271,3 +5347,74 @@ def test_all_legs_bidless_longs_gives_up_with_a_reason(deps, factory):
         row = session.get(BotExit, close_id)
         assert row.state == "failed" and left_entries(row)
     assert any("no bid" in e.detail for e in seen)
+
+
+# --- #329: a Dynamic stop (credit + the side's long - the buffer) -----------------------
+
+from optionsjourney.bots.exit_math import round_stop  # noqa: E402
+
+
+def dynamic_run(deps, factory, buffer="0.20"):
+    bot_id = make(factory, live=True, stop_co_mode="dynamic", stop_co_amount=D(buffer))
+    run_id = bot_entry.fire(deps, bot_id, "09:47")
+    with factory() as session:
+        run = session.get(BotRun, run_id)
+        fills = {f["symbol"]: D(f["fill_price"]) for f in run.filled_legs}
+        return run_id, run.fill_credit, fills
+
+
+def test_a_dynamic_stop_rests_at_the_credit_plus_the_sides_long_less_the_buffer(deps, factory):
+    run_id, credit, fills = dynamic_run(deps, factory)
+    for stop in exits(factory, "stop"):
+        calc = stops.calc_of(stop.log)
+        long = fills[stop.long_symbol]
+        assert calc["basis"] == "dynamic" and D(calc["long_value"]) == long
+        raw = credit + long - D("0.20")
+        assert stop.state == "working" and stop.trigger == round_stop(stop.short_symbol, raw)[1]
+        assert calc["long_legs"] == [{"symbol": stop.long_symbol, "ratio": 1}]
+    sent = [c[2] for c in deps.tasty.calls if c[0] == "place" and c[2]["order-type"] == "Stop"]
+    assert len(sent) == 2
+
+
+def test_a_dynamic_stop_at_or_below_the_shorts_fill_rests_above_its_ask(deps, factory):
+    # A buffer this big puts the call side's stop below its short's 2.50 fill
+    with_ask = sym(5910, "call")
+    deps.hub.set(with_ask, D("2.55"), D("2.65"), OPEN_TIME)
+    run_id, credit, fills = dynamic_run(deps, factory, buffer="2.60")
+    call = next(s for s in exits(factory, "stop") if s.short_symbol == with_ask)
+    assert call.trigger == D("2.70")  # one tick above the 2.65 ask, not refused for the fill
+    assert stops.calc_of(call.log)["note"] == "raised above the short's ask 2.65"
+    assert call.state == "working"
+    put = next(s for s in exits(factory, "stop") if s.short_symbol != with_ask)
+    fill = fills[put.short_symbol]
+    if credit + fills[put.long_symbol] - D("2.60") <= fill:  # no ask: above its fill
+        assert put.trigger == stops.tick_above(put.short_symbol, fill)
+
+
+def test_a_rearmed_dynamic_stop_keeps_its_latest_level_and_never_fires_at_once(deps, factory):
+    dynamic_run(deps, factory)
+    stop = exits(factory, "stop")[0]
+    with factory() as session:  # the ratchet moved it to 3.00 earlier
+        row = session.get(BotExit, stop.id)
+        row.trigger = D("3.00")
+        session.commit()
+    deps.hub.set(stop.short_symbol, D("3.10"), D("3.20"), OPEN_TIME)  # the ask is through it
+    deps.tasty.cancel_order("5WX01234", stop.broker_order_id)
+    bot_exits.monitor_pass(deps)
+    again = exits(factory, "stop")[0]
+    assert again.state == "working" and again.trigger == D("3.30")  # above the 3.20 ask
+    body = [c[2] for c in deps.tasty.calls if c[0] == "place"][-1]
+    assert body["order-type"] == "Stop" and D(body["stop-trigger"]) == D("3.30")
+    deps.hub.set(stop.short_symbol, D("2.00"), D("2.10"), OPEN_TIME)
+    deps.tasty.cancel_order("5WX01234", again.broker_order_id)
+    bot_exits.monitor_pass(deps)
+    assert exits(factory, "stop")[0].trigger == D("3.30")  # its latest level, not recomputed
+
+
+def test_a_rearmed_stop_that_isnt_dynamic_is_placed_as_before(deps, factory):
+    live_run(deps, factory)
+    stop = exits(factory, "stop")[0]
+    deps.hub.set(stop.short_symbol, D("5.00"), D("5.10"), OPEN_TIME)
+    deps.tasty.cancel_order("5WX01234", stop.broker_order_id)
+    bot_exits.monitor_pass(deps)
+    assert exits(factory, "stop")[0].trigger == stop.trigger

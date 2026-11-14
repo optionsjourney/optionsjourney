@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from tests.core.test_positions import NOV20, OCT16, T0, B, CLOSE, OPEN, S, book_of, opt
 
-from optionsjourney.core.trade_events import events_of
+from optionsjourney.core.trade_events import events_of, still_booking
 
 
 def test_a_meic_side_stopped_then_its_wing_sold_is_partial_then_closed():
@@ -85,3 +85,34 @@ def test_a_stock_trade_has_no_strikes():
 
     [position] = book(shares(BUY, "100", "10", 0), shares(SELL, "100", "12", 1)).positions
     assert events_of(position)[-1].detail == ""
+
+
+def _whole_exit_half_booked():
+    """An iron condor's whole-trade bot exit (order 2) with only its put legs booked."""
+    book = book_of(
+        opt(S, OPEN, "PUT", 5800, order="1"),
+        opt(B, OPEN, "PUT", 5790, order="1"),
+        opt(S, OPEN, "CALL", 6000, order="1"),
+        opt(B, OPEN, "CALL", 6010, order="1"),
+        opt(B, CLOSE, "PUT", 5800, order="2", at=T0 + timedelta(hours=1)),
+        opt(S, CLOSE, "PUT", 5790, order="2", at=T0 + timedelta(hours=1)),
+    )
+    [position] = book.positions
+    return position
+
+
+def test_a_whole_trade_exit_booked_in_part_waits_for_its_other_legs():
+    position = _whole_exit_half_booked()
+    open_, partial = events_of(position)
+    every_leg = frozenset(leg.symbol for leg in position.legs)
+    assert partial.kind == "partial_close"
+    assert still_booking(partial, {"2": every_leg})
+    assert not still_booking(open_, {"1": frozenset()})
+
+
+def test_a_group_stop_that_booked_all_its_legs_is_a_partial_close():
+    position = _whole_exit_half_booked()
+    _, partial = events_of(position)
+    puts = frozenset(leg.symbol for leg in position.legs if leg.option.put_call == "PUT")
+    assert not still_booking(partial, {"2": puts})  # one side's stop: a real partial close
+    assert not still_booking(partial, {})  # your own close, not a bot's

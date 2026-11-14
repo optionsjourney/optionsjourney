@@ -527,3 +527,12 @@ def test_a_whole_trade_bots_dollars_divide_by_the_trades_gcd():
         leg["quantity"] = 2
     group = read(data).bot.groups[0]
     assert (group.stop_usd, group.target_usd) == (D("1.50"), D("0.50"))
+
+
+def test_tracker2s_loss_boost_carries_over():  # #328 (Tracker2 16dad587)
+    data = six_entry_ic()
+    data["bot"] |= {"use_loss_boost": True, "loss_boost_multiplier": 3}
+    bot = read(data).bot
+    assert (bot.use_loss_boost, bot.loss_boost_multiplier) == (True, 3)
+    del data["bot"]["use_loss_boost"], data["bot"]["loss_boost_multiplier"]
+    assert read(data).bot.use_loss_boost is False

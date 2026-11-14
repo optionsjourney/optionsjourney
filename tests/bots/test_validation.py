@@ -348,6 +348,21 @@ def test_the_closing_order_overlay_needs_an_amount_when_on():
     )
 
 
+def test_a_dynamic_stop_needs_a_buffer_of_zero_or_more():
+    # #329: the amount is the buffer below the credit; 0 is a real choice (stop at the credit)
+    assert validate(replace(good(), stop_co_mode="dynamic", stop_co_amount=D("0.20")), {1}) == {}
+    assert validate(replace(good(), stop_co_mode="dynamic", stop_co_amount=D("0")), {1}) == {}
+    missing = validate(replace(good(), stop_co_mode="dynamic"), {1})
+    assert missing["closing_order"] == "Dynamic stop is on: set its buffer, $0 or more."
+    negative = validate(replace(good(), stop_co_mode="dynamic", stop_co_amount=D("-0.10")), {1})
+    assert negative["closing_order"] == "Dynamic stop is on: set its buffer, $0 or more."
+
+
+def test_a_futures_bot_cant_have_a_dynamic_stop():
+    bot = replace(futures_put(), stop_co_mode="dynamic", stop_co_amount=D("0.20"))
+    assert "turn off Dynamic stop" in validate(bot, {1})["futures"]
+
+
 def test_exit_exhaust_mode_must_be_known():
     for mode in EXHAUST_MODES:
         assert (

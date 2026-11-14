@@ -453,3 +453,13 @@ def test_a_file_from_before_the_switches_keeps_its_min_width_on():
     del raw["bot"]["use_min_short_width"]
     back = bot_file.parse(json.dumps(raw)).bot
     assert back.use_min_short_width is True and back.min_short_width == D("20")
+
+
+def test_the_loss_boost_round_trips_through_a_bot_file():  # #328
+    bot = replace(good(), use_loss_boost=True, loss_boost_multiplier=3)
+    back = bot_file.parse(bot_file.dumps(bot, NOW)).bot
+    assert (back.use_loss_boost, back.loss_boost_multiplier) == (True, 3)
+    raw = bot_file.to_file(bot, NOW)
+    del raw["bot"]["use_loss_boost"], raw["bot"]["loss_boost_multiplier"]  # a file from before
+    back = bot_file.parse(json.dumps(raw)).bot
+    assert (back.use_loss_boost, back.loss_boost_multiplier) == (False, None)

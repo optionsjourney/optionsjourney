@@ -466,3 +466,75 @@ def test_paper_target_switched_off_is_not_watched(deps, factory):
     tick(deps, t1)
     tick(deps, t1 + timedelta(seconds=2))
     assert exits(factory) == []
+
+
+# --- #329: a Dynamic stop on paper: placed and ratcheted down as live does --------------
+
+CALL, WING = sym(5900, "call"), sym(5975, "call")
+
+
+def dynamic_condor(deps, factory, at=OPEN_TIME):
+    """A paper iron condor on a Dynamic stop (0.20 buffer): the call side 2.50 / 0.05, the
+    put side 2.40 / 0.40, a 4.45 credit. The put side starts at 4.45 + 0.40 - 0.20 = 4.65,
+    on the 0.10 tick: 4.60."""
+    bot_id = make(factory, stop_co_mode="dynamic", stop_co_amount=D("0.20"))
+    legs = [(CALL, "sell", 0, "2.50"), (WING, "buy", 0, "0.05"),
+            (SHORT, "sell", 1, "2.40"), (LONG, "buy", 1, "0.40")]  # fmt: skip
+    return open_paper(deps, factory, bot_id, legs, at)
+
+
+def moves(factory):
+    return [r for r in exits(factory, kind=("action",)) if r.legs[0].get("stop", {}).get("dynamic")]
+
+
+def test_a_paper_dynamic_stop_moves_down_as_the_long_decays_and_fires_there(deps, factory):
+    dynamic_condor(deps, factory)
+    t1 = OPEN_TIME + timedelta(minutes=2)
+    quote(deps, LONG, "0.10", t1)
+    quote(deps, SHORT, "2.40", t1)
+    tick(deps, t1)
+    [move] = moves(factory)
+    assert move.group == 1 and move.legs[0]["stop"]["trigger"] == "4.30"  # 4.45 + 0.10 - 0.20
+    assert exits(factory) == [] and not [t for t in titles(deps) if "stop" in t]  # quiet
+    tick(deps, t1 + timedelta(seconds=2))
+    assert len(moves(factory)) == 1  # once a minute
+    t2 = t1 + timedelta(minutes=2)
+    quote(deps, LONG, "0.30", t2)  # a long worth more never moves it up
+    quote(deps, SHORT, "4.35", t2)  # past 4.30, under the 4.60 it started at
+    tick(deps, t2)
+    tick(deps, t2 + timedelta(seconds=2))
+    assert len(moves(factory)) == 1
+    [fill] = exits(factory)
+    assert (fill.group, fill.reason) == (1, "stop")
+
+
+def test_a_paper_dynamic_stop_waits_for_fresh_usable_quotes(deps, factory):
+    dynamic_condor(deps, factory)
+    t1 = OPEN_TIME + timedelta(minutes=2)
+    quote(deps, LONG, "0.10", t1 - timedelta(seconds=31))  # stale
+    quote(deps, SHORT, "2.40", t1)
+    tick(deps, t1)
+    assert moves(factory) == []
+    t2 = t1 + timedelta(minutes=1)
+    deps.hub.set(LONG, D("0"), D("0"), t2)  # 0/0: no market, not worth 0
+    quote(deps, SHORT, "2.40", t2)
+    tick(deps, t2)
+    assert moves(factory) == []
+
+
+def test_a_paper_dynamic_stop_below_the_shorts_fill_starts_above_it(deps, factory):
+    # A put spread alone: its credit is under its short's fill, so 2.00 + 0.40 - 0.20 = 2.20
+    # would fire at once; it starts one tick above the 2.40 fill instead
+    bot_id = make_shape(factory, "put_credit_spread", stop=D("100"))
+    bot = bot_store.load(factory, bot_id)
+    _, problems = bot_store.save(factory, replace(bot, stop_co_mode="dynamic",
+                                                  stop_co_amount=D("0.20")), OPEN_TIME)  # fmt: skip
+    assert problems == {}
+    open_paper(deps, factory, bot_id, [(SHORT, "sell", 0, "2.40"), (LONG, "buy", 0, "0.40")])
+    t1 = OPEN_TIME + timedelta(seconds=20)
+    quote(deps, SHORT, "2.40", t1)
+    quote(deps, LONG, "0.40", t1)
+    tick(deps, t1)
+    tick(deps, t1 + timedelta(seconds=2))
+    assert exits(factory) == []
+    assert bot_paper_exits._stop_level(bot_paper_exits._load(deps)[0], 0) == (D("2.45"), True)

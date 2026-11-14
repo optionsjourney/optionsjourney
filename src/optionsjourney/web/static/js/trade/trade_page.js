@@ -18,6 +18,7 @@ import { TRADE_TIPS, TRADE_MORE } from './trade_tips.js';
 import { overnightOffered, sendWarning, acceptedWords } from './trade_ticket.js';
 import { defaultTicket, reviewRequest, reviewBp, graphLegs, alertContracts, confirmLabel, confirmParts, costRows, workingRows, replacePrice,
   newToken, botRequest, pickerRequest, botLists, botSendLabel, futuresBotNote, manageOptions, confirmRequest } from './ticket_core.js';
+import { strikeLegs, strikeChanges, previewKey } from '../pending/model.js';
 
 const ACCOUNT_KEY = 'trade_account';
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -62,6 +63,8 @@ const WORKING_PAGE = 10;
 let workingFilter = 'all', workingShown = WORKING_PAGE;
 const accountName = a => `${a.label} (${a.broker === 'SCHWAB' ? 'Schwab' : 'TT'})`;
 const busy = new Set();   // working order ids with a Cancel or Replace out
+// #321: strikes typed per working order ({key: {leg: value}}) and what the broker last previewed.
+const wStrikes = {}, wPreviewed = {};
 let stats = { sig: '', spot: null, at: 0, value: null };
 // The idea the ticket was opened from: {id, sig}, until its legs change (then it's your own ticket).
 let idea = null;
@@ -488,7 +491,9 @@ async function loadWorking() {
     const r = await fetch(`/api/trade/working?account_id=${encodeURIComponent(a.id)}`);
     const d = await r.json();
     if (d.status !== 'success') throw new Error(`${accountName(a)}: ${d.message || `HTTP ${r.status}`}`);
-    return workingRows(d.orders || []).map(w => ({ ...w, key: `${a.id}:${w.id}`, accountId: a.id, account: accountName(a) }));
+    const orders = d.orders || [];
+    return workingRows(orders).map((w, i) => ({ ...w, key: `${a.id}:${w.id}`, accountId: a.id, account: accountName(a),
+      strikeLegs: strikeLegs(orders[i]) }));
   }));
   if (seq !== workingSeq) return;
   const failed = got.filter(g => g.status === 'rejected').map(g => g.reason.message);
@@ -501,7 +506,7 @@ function renderWorking() {
   const typed = {};
   for (const inp of workingEl.querySelectorAll('[data-act="w-price"][data-edited]')) typed[inp.dataset.id] = inp.value;
   const f = doc.activeElement;
-  const focus = f && workingEl.contains(f) && f.dataset.act ? { act: f.dataset.act, id: f.dataset.id } : null;
+  const focus = f && workingEl.contains(f) && f.dataset.act ? { act: f.dataset.act, id: f.dataset.id, leg: f.dataset.leg } : null;
   const counts = new Map();
   for (const w of working.rows) counts.set(w.accountId, (counts.get(w.accountId) || 0) + 1);
   if (workingFilter !== 'all' && !counts.has(workingFilter)) workingFilter = 'all';
@@ -516,13 +521,19 @@ function renderWorking() {
   const rows = matching.slice(0, workingShown).map(w => {
     const id = esc(w.key);
     const off = busy.has(w.key) ? 'disabled' : '';
+    const typedStrikes = wStrikes[w.key] || {};
+    const strikes = w.canChange ? (w.strikeLegs || []).map(l => `<label class="text-xs text-gray-400">Leg ${l.index + 1}
+        <input type="number" min="0" step="any" data-act="w-strike" data-id="${id}" data-leg="${l.index}" value="${esc(typedStrikes[l.index] ?? l.strike)}" aria-label="Leg ${l.index + 1} strike" class="w-20 px-1 py-0.5 rounded border border-gray-600 bg-transparent text-right"></label>`).join('') : '';
+    const asks = strikes && strikeChanges(w.strikeLegs, typedStrikes);
+    const needsPreview = asks !== '' && (asks === null || Object.keys(asks).length > 0)
+      && wPreviewed[w.key] !== previewKey(asks, replacePrice(w, typed[w.key] ?? w.price));
     const change = w.canChange
-      ? `<input type="number" min="0" step="0.05" data-act="w-price" data-id="${id}" value="${w.price ?? ''}" aria-label="New limit" class="w-20 px-1 py-0.5 rounded border border-gray-600 bg-transparent text-right">
+      ? `${strikes ? `<div class="flex flex-wrap items-center gap-2">${strikes}</div>` : ''}<input type="number" min="0" step="0.05" data-act="w-price" data-id="${id}" value="${w.price ?? ''}" aria-label="New limit" class="w-20 px-1 py-0.5 rounded border border-gray-600 bg-transparent text-right">
           <span class="text-xs text-gray-500">${esc(w.effect || '')}</span>
-          <button type="button" data-act="w-replace" data-id="${id}" class="px-2 py-0.5 rounded border border-gray-600 disabled:opacity-40" ${off}>Replace</button>`
+          ${wGoButton(w, needsPreview)}`
       : `<span class="text-xs text-gray-500">${esc(w.reason || '')}</span>`;
     const controls = w.canChange || w.canCancel
-      ? `<div class="flex items-center gap-2 mt-1">
+      ? `<div class="flex flex-wrap items-center gap-2 mt-1">
           ${change}
           ${w.canCancel ? `<button type="button" data-act="w-cancel" data-id="${id}" class="px-2 py-0.5 rounded border border-gray-600 text-red-400 disabled:opacity-40" ${off}>Cancel</button>` : ''}
         </div>`
@@ -547,19 +558,59 @@ function renderWorking() {
     if (inp) { inp.value = value; inp.dataset.edited = '1'; }
   }
   if (focus) {
-    const el = [...workingEl.querySelectorAll(`[data-act="${focus.act}"]`)].find(e => e.dataset.id === focus.id);
+    const el = [...workingEl.querySelectorAll(`[data-act="${focus.act}"]`)].find(e => e.dataset.id === focus.id && e.dataset.leg === focus.leg);
     if (el) el.focus();
   }
+}
+
+// Replace, or Preview while new strikes haven't been previewed as they stand. `needsPreview`
+// is passed while rendering (the inputs aren't in the page yet), else read from the inputs.
+function wGoButton(w, needsPreview) {
+  if (needsPreview === undefined) { const st = wState(w); needsPreview = st.moved && !st.previewed; }
+  const off = busy.has(w.key) ? 'disabled' : '';
+  const [act, text] = needsPreview ? ['w-preview', 'Preview'] : ['w-replace', 'Replace'];
+  return `<button type="button" data-act="${act}" data-id="${esc(w.key)}" class="px-2 py-0.5 rounded border border-gray-600 disabled:opacity-40" ${off}>${text}</button>`;
+}
+
+// The Replace control's state for one working row: its price, the strikes moved ({} none,
+// null when one isn't a number), and whether the broker previewed exactly these.
+function wState(row) {
+  const inp = [...workingEl.querySelectorAll('[data-act="w-price"]')].find(e => e.dataset.id === row.key);
+  const price = replacePrice(row, inp ? inp.value : '');
+  const changes = strikeChanges(row.strikeLegs || [], wStrikes[row.key]);
+  const moved = changes === null || Object.keys(changes).length > 0;
+  const previewed = !!changes && moved && wPreviewed[row.key] === previewKey(changes, price);
+  return { price, changes, moved, previewed };
 }
 
 async function changeWorking(act, id) {
   const row = working.rows.find(w => w.key === id);
   if (!row || busy.has(id)) return;
   const body = { account_id: row.accountId, order_id: row.id };
-  if (act === 'w-replace') {
-    const inp = [...workingEl.querySelectorAll('[data-act="w-price"]')].find(e => e.dataset.id === id);
-    body.price = replacePrice(row, inp ? inp.value : '');
+  let key = null;
+  if (act === 'w-replace' || act === 'w-preview') {
+    const { price, changes, moved, previewed } = wState(row);
+    body.price = price;
     if (body.price == null) { working.note = { tone: 'error', text: 'Set a limit price above 0.' }; renderWorking(); return; }
+    if (!changes) { working.note = { tone: 'error', text: 'A new strike must be a number above 0.' }; renderWorking(); return; }
+    if (act === 'w-replace' && moved && !previewed) { working.note = { tone: 'error', text: 'Preview the new strikes first.' }; renderWorking(); return; }
+    if (moved) body.strikes = changes;
+    if (act === 'w-preview') { body.preview = true; key = previewKey(changes, price); }
+  }
+  if (act === 'w-preview') {
+    working.note = { tone: 'muted', text: 'Checking with your broker…' };
+    renderWorking();
+    try {
+      const r = await fetch('/api/trade/replace', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      const d = await r.json();
+      if (d.status !== 'success') throw new Error(d.message || `HTTP ${r.status}`);
+      if (d.ok && d.action === 'preview') wPreviewed[id] = key;
+      working.note = { tone: d.ok ? 'ok' : 'error', text: d.message };
+    } catch (err) {
+      working.note = { tone: 'error', text: `Couldn't check the order: ${err.message}` };
+    }
+    renderWorking();
+    return;
   }
   const verb = act === 'w-replace' ? 'replace' : 'cancel';
   busy.add(id);
@@ -576,6 +627,7 @@ async function changeWorking(act, id) {
   busy.delete(id);
   const inp = [...workingEl.querySelectorAll('[data-act="w-price"]')].find(e => e.dataset.id === id);
   if (inp) delete inp.dataset.edited;   // the list reloads with the price as it now stands
+  delete wStrikes[id]; delete wPreviewed[id];   // and the strikes as they now stand
   await loadWorking();
 }
 
@@ -585,13 +637,24 @@ workingEl.addEventListener('change', e => {
   workingShown = WORKING_PAGE;
   renderWorking();
 });
-workingEl.addEventListener('input', e => { if (e.target.dataset.act === 'w-price') e.target.dataset.edited = '1'; });
+workingEl.addEventListener('input', e => {
+  const d = e.target.dataset;
+  if (d.act === 'w-price') d.edited = '1';
+  if (d.act !== 'w-price' && d.act !== 'w-strike') return;
+  if (d.act === 'w-strike') (wStrikes[d.id] ||= {})[d.leg] = e.target.value;
+  // Preview and Replace swap as the inputs move off or back onto what was previewed: only the
+  // button is swapped, so the box being typed in keeps its cursor.
+  const row = working.rows.find(w => w.key === d.id);
+  if (!row || !(row.strikeLegs || []).length) return;
+  const old = [...workingEl.querySelectorAll('[data-act="w-preview"], [data-act="w-replace"]')].find(b => b.dataset.id === d.id);
+  if (old) old.outerHTML = wGoButton(row);
+});
 workingEl.addEventListener('click', async e => {
   const b = e.target.closest('[data-act]');
   if (!b) return;
   if (b.dataset.act === 'w-reload') await loadWorking();
   else if (b.dataset.act === 'w-more') { workingShown += WORKING_PAGE; renderWorking(); }
-  else if (b.dataset.act === 'w-replace' || b.dataset.act === 'w-cancel') await changeWorking(b.dataset.act, b.dataset.id);
+  else if (['w-replace', 'w-cancel', 'w-preview'].includes(b.dataset.act)) await changeWorking(b.dataset.act, b.dataset.id);
 });
 
 async function addAlert() {

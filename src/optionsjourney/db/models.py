@@ -15,6 +15,7 @@ from sqlalchemy import (
     UniqueConstraint,
     and_,
     false,
+    text,
     true,
 )
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -332,7 +333,7 @@ class Bot(Base):
     specific_dates: Mapped[list] = mapped_column(JSON, default=list)
     use_blackout_days: Mapped[bool] = mapped_column(Boolean, default=False)
     blackout_days: Mapped[list] = mapped_column(JSON, default=list)
-    stop_co_mode: Mapped[str] = mapped_column(String(10), default="off")  # 0017: off, both, tighter
+    stop_co_mode: Mapped[str] = mapped_column(String(10), default="off")  # 0017: off, both, tighter, dynamic
     stop_co_amount: Mapped[Decimal | None] = mapped_column(Money())  # $ off the entry credit
     # 0019: market filters (Tracker2's columns). Each applies only while its use_* is
     # ticked; unticking keeps the numbers. Percentages are positive % moves.
@@ -417,6 +418,10 @@ class Bot(Base):
     # #315 (0057): each one's switch; off keeps the number but doesn't use it
     use_min_short_width: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
     use_keep_trying: Mapped[bool] = mapped_column(Boolean, default=True, server_default=true())
+    # #328 (0058): the loss boost: the entry after a stopped trade is loss_boost_multiplier
+    # times the size (null reads 2), still capped by Max per trade (bots/loss_boost.py)
+    use_loss_boost: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    loss_boost_multiplier: Mapped[int | None] = mapped_column(Integer)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime())
     updated_at: Mapped[datetime | None] = mapped_column(UTCDateTime())
 
@@ -649,6 +654,43 @@ class BotExit(Base):
     # 0033 (decision 0048): a stop the app holds on its short (watched on the short's quote)
     # while the group's profit target rests at TastyTrade; false everywhere else
     app_held: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+    # 0059 (#330, decision 0133): a "pending" stop held for the regular session's open
+    # because the broker takes no stop orders now (a TastyTrade index-option trade off-hours);
+    # bot_exits.place_stops_at_open sends it from 09:30:05. False everywhere else.
+    stop_at_open: Mapped[bool] = mapped_column(Boolean, default=False, server_default=false())
+
+
+class BotScheduledClose(Base):
+    """A close you asked for outside every session it can trade in (0059, #330, decision
+    0133): nothing is sent until `start_at`, the next session's open plus the opening
+    pause, when bot_scheduled_closes.fire_due starts it as if you had clicked then.
+    `group_position` set: Close on that group (`quantity` as typed); None: Close entire
+    trade (`groups`: just those groups, one side of a split condor). `state`: scheduled,
+    started, cancelled (by you), skipped (the trade closed first), rescheduled (it came due
+    in another gap and a new one was scheduled) or failed (it couldn't start: `result`
+    says why). One scheduled close per run at a time: a partial unique index on run_id
+    where state is 'scheduled'."""
+
+    __tablename__ = "bot_scheduled_closes"
+    __table_args__ = (
+        Index(
+            "uq_bot_scheduled_closes_one_waiting", "run_id", unique=True,
+            sqlite_where=text("state = 'scheduled'"),
+            postgresql_where=text("state = 'scheduled'"),
+        ),
+    )  # fmt: skip
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("bot_runs.id", ondelete="CASCADE"), index=True)
+    group_position: Mapped[int | None] = mapped_column(Integer)
+    groups: Mapped[list | None] = mapped_column(JSON)
+    quantity: Mapped[str | None] = mapped_column(String(20))
+    order_type: Mapped[str] = mapped_column(String(10))
+    start_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    state: Mapped[str] = mapped_column(String(12))
+    result: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime())
+    updated_at: Mapped[datetime] = mapped_column(UTCDateTime())
 
 
 class BotIntegrityAlert(Base):
@@ -693,7 +735,7 @@ class BotTradeOverride(Base):
     # the bot group's setting on this trade. None: the group's own (bots/overrides.py).
     stop_unit: Mapped[str | None] = mapped_column(String(3))  # "pct" or "usd"
     stop_usd: Mapped[Decimal | None] = mapped_column(Money())
-    co_mode: Mapped[str | None] = mapped_column(String(10))  # off, both, tighter
+    co_mode: Mapped[str | None] = mapped_column(String(10))  # off, both, tighter, dynamic
     co_amount: Mapped[Decimal | None] = mapped_column(Money())
     on_stop_remainder: Mapped[str | None] = mapped_column(String(20))
     remainder_limit: Mapped[Decimal | None] = mapped_column(Money())

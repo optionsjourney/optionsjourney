@@ -126,6 +126,18 @@ export function streamWindow(rows, spot, max = 64) {
   return out;
 }
 
+// #319 (Tracker2 25296420): the ticket's own legs first, so a leg outside the window around
+// spot (deep in the money, another expiration) keeps a live mid instead of the one it had
+// when it was clicked; then the window, to `max` symbols in all.
+export function streamSymbols(tray, rows, spot, max = 64) {
+  const out = [...new Set(tray.legs.map(l => l.stream_symbol).filter(Boolean))];
+  for (const s of streamWindow(rows, spot, max)) {
+    if (out.length >= max) break;
+    if (!out.includes(s)) out.push(s);
+  }
+  return out;
+}
+
 export function bpGate() {
   let seq = 0;
   return { next: () => ++seq, isCurrent: s => s === seq };

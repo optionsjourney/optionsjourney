@@ -5,7 +5,9 @@ cancel and confirm the cancel. Never retried after a refusal; an unclear
 send stops the chase and is left to recovery. Only a real send or replace
 counts: a preview answer placed nothing (the bot went to Preview mid-chase).
 An exit's first order the broker cancels at once is sent again, once, and a
-dead replacement's old order is read again for its fill (decision 0085)."""
+dead replacement's old order is read again for its fill (decision 0085). An
+entry the broker cancels on its own is sent again from fresh quotes, up to
+twice (#317)."""
 
 import logging
 from collections.abc import Callable
@@ -28,6 +30,7 @@ from optionsjourney.trading.orders import (
 
 logger = logging.getLogger(__name__)
 CONFIRM_READS = 3  # a cancel is read back up to 3 times, 1 s apart, before it counts as live
+BROKER_CANCEL_RETRIES = 2  # sends again of an entry the broker cancels on its own (#317)
 
 
 @dataclass
@@ -81,15 +84,31 @@ def _cancelled_at_once(deps, request: orders.Request, found: BrokerOrder) -> boo
     session is open. Nobody here cancels an order without reading it first (a stop
     request is checked before the read), so it was the broker's doing. The caller sends
     it again, once."""
-    symbol = request.order.legs[0].symbol
-    session = session_now(symbol, deps.now().astimezone(MARKET_TZ))
     return (
         found.status is OrderStatus.CANCELLED
         and not _filled_part(found)
         and not found.replaced_by
         and request.order.order_type is not OrderType.MARKET
-        and session in ("regular", "futures")
+        and _session_open(deps, request)
     )
+
+
+def _session_open(deps, request: orders.Request) -> bool:
+    symbol = request.order.legs[0].symbol
+    return session_now(symbol, deps.now().astimezone(MARKET_TZ)) in ("regular", "futures")
+
+
+def _fresh_price(reprice, first: Decimal) -> Decimal:
+    """The entry's starting price again, from fresh quotes; the first one when there's
+    no reprice or it fails (a quote outage never stops the send)."""
+    if reprice is None:
+        return first
+    try:
+        fresh = reprice()
+    except Exception:  # noqa: BLE001 -- keep the first price
+        logger.exception("couldn't reprice the entry; sending it again at its first price")
+        return first
+    return first if fresh is None else fresh
 
 
 def _replaced_fill(client, request: orders.Request, old_id: str | None) -> BrokerOrder | None:
@@ -317,6 +336,7 @@ def chase_entry(
     next_price: Callable[[Decimal, Decimal], Decimal | None],
     on_tranche: Callable[[int, int], int],
     on_fill: Callable[[int, BrokerOrder], None],
+    reprice: Callable[[], Decimal | None] | None = None,
 ) -> Entered:
     """Chase an entry in units (Tracker2's execution.chase_entry). A partly filled
     order is never replaced: it's cancelled, the cancel confirmed, and what filled
@@ -328,7 +348,10 @@ def chase_entry(
     filled without one whole unit end the chase as "uneven": nothing more is
     sent, and that run is left for you to settle. With `plan.window_minutes` (bots slice
     19, entry_window_minutes) the chase also stops once that long has passed since it
-    began, checked after each read as Tracker2 does: cancelled, confirmed, any fill kept."""
+    began, checked after each read as Tracker2 does: cancelled, confirmed, any fill kept.
+    An order the broker cancels on its own with nothing filled (#317, Tracker2 9b49dfea)
+    is sent again from `reprice()`'s fresh starting price (None keeps the first), at
+    most BROKER_CANCEL_RETRIES times, without using up a try."""
     client = next(c for c in deps.clients() if c.broker == request.broker)
     window = plan.window_minutes
     deadline = deps.now() + timedelta(minutes=window) if window else None
@@ -392,8 +415,11 @@ def chase_entry(
     stopped = ""  # why the chase stopped early, when an order was refused
     unconfirmed = "The cancel isn't confirmed. Check your broker."
     uneven = "The entry's legs filled unevenly — settle it at your broker."
+    retries = 0  # sends again after a broker cancel; each one adds a try
+    attempt = -1
     try:
-        for attempt in range(plan.max_tries):
+        while (attempt := attempt + 1) < plan.max_tries + retries:
+            last = attempt == plan.max_tries + retries - 1
             deps.sleep(plan.interval_seconds)
             found = client.get_order(request.account_number, order_id)
             if found.status is OrderStatus.FILLED or _filled_part(found):
@@ -411,7 +437,7 @@ def chase_entry(
                 order_id, size, found = None, size - units, None
                 if not size:
                     return ended("filled")
-                if not working or attempt == plan.max_tries - 1:
+                if not working or last:
                     break  # gone at the broker after a fill, or out of tries
                 if deadline is not None and deps.now() >= deadline:  # before the rest
                     stopped = f"Stopped: the {window}-minute entry window closed."
@@ -443,13 +469,44 @@ def chase_entry(
                     break  # refused, or only previewed: nothing was placed for the rest
                 order_id = result.broker_order_id
                 continue
+            closed = deadline is not None and deps.now() >= deadline
+            if (
+                found.broker_cancelled
+                and retries < BROKER_CANCEL_RETRIES
+                and not closed
+                and _session_open(deps, request)
+            ):
+                # The broker killed it with no reason (Tracker2's run 676: 166 ms after
+                # it arrived, while its twin filled). Sent again from fresh quotes,
+                # through the central check, as a fresh start.
+                retries += 1
+                price = _fresh_price(reprice, first)
+                result = orders.submit(
+                    deps.session_factory,
+                    deps.clients(),
+                    ask(size, price),
+                    now=deps.now(),
+                    notify=deps.notify,
+                )
+                log.append({
+                    "at": deps.now().isoformat(), "price": str(price), "result": result.message,
+                    "event": f"the broker cancelled {order_id} with no reason; sent it again "
+                             f"({retries}/{BROKER_CANCEL_RETRIES})",
+                })  # fmt: skip
+                if not (result.ok and result.action == "send"):
+                    if result.message.startswith(orders.UNCLEAR):
+                        return ended("unclear", message=result.message)
+                    stopped = f"Stopped chasing: {result.message}"
+                    break  # nothing went out: the cancelled order is the chase's last
+                order_id, found = result.broker_order_id, None
+                continue
             if not found.may_be_working:
                 break  # gone at the broker, nothing filled
-            if deadline is not None and deps.now() >= deadline:
+            if closed:
                 stopped = f"Stopped: the {window}-minute entry window closed."
                 log.append({"at": deps.now().isoformat(), "event": "window closed"})
                 break
-            if attempt == plan.max_tries - 1:
+            if last:
                 break
             # A step under the tick would round to the price already out there
             # (Tracker2's execution._concede): step by at least the tick.

@@ -174,7 +174,7 @@ To change a dashboard, adjust the filters: a blue **Save to "…"** button appea
 Every trade in the journal has a small gear (⚙) at the end of its row. In the Compact view it shows when you point at the row or open it. Click it and a panel slides in from the right, over the journal. Close it with **✕**, the **Esc** key, or a click on the dimmed journal beside it. On a phone the panel fills the screen.
 
 What the panel shows depends on the trade:
-- **A bot's trade:** "Manage: " and the bot's name. If a close is working right now, it says so at the top, with **Cancel**. Then what the bot paid or took in, the fill price and the broker's order number; every order, step by step; a box for each side with its open contracts, stop and target at the top, then Stop loss and Profit target side by side, and a red **Close** for that side (the same as on the bot's run page); and this trade's own timed close and watch rules. A bar along the bottom stays in view as you scroll: the risk graph (to plan a roll), **Open full page** for the run page, and the red **Close entire trade** button.
+- **A bot's trade:** "Manage: " and the bot's name. If a close is working right now, it says so at the top, with **Cancel**. Then what the bot paid or took in, the fill price and the broker's order number; every order, step by step; a box for each side with its open contracts, stop and target at the top, then Stop loss and Profit target side by side (with the closing order, where you can also switch the side to a [Dynamic stop](automation.md#dynamic-stop-the-credit-plus-the-sides-bought-leg-moving-down)), and a red **Close** for that side (the same as on the bot's run page); and this trade's own timed close and watch rules. A bar along the bottom stays in view as you scroll: the risk graph (to plan a roll), **Open full page** for the run page, and the red **Close entire trade** button.
 - **One side of a split iron condor:** only that side: its groups, its exits' steps, and **Close this side** instead of Close entire trade. The other side is its own row with its own gear.
 - **A trade with rules from Manage this trade:** its rules, with Change and Remove (see below).
 - **Any other open options trade:** a manual bot or custom rules to give it, and **Hand this trade to a bot…** when that's possible.
@@ -246,6 +246,14 @@ The list refreshes every 30 seconds while the drawer is open, and **↻** refres
 
 ### Changing or cancelling an order
 - **Change price:** type a new price and confirm. The legs and quantity stay the same, and a credit stays a credit. The order goes through the same checks as a new order, including your broker's own check.
+- **Change a strike:** on an order that opens a trade, **Change price** also shows a box for each leg's strike. Type a new strike and press **Preview**: your broker checks the changed order and nothing is sent yet. **Confirm** then sends exactly what was previewed. Change a strike or the price again and you're asked to preview again.
+
+  | You change | What stays the same |
+  |---|---|
+  | A leg's strike, say the 7645 call to 7650 | Its expiration, call or put, buy or sell, and the quantity |
+  | The price, with or without a strike | Credit stays credit, debit stays debit |
+
+  An order that closes a trade, or one on a futures option, has no strike boxes. To change those, cancel the order and make a new one.
 - **Cancel:** asks first, then cancels the order at your broker.
 - After either, the row says **updating…** and the list reloads in a moment.
 

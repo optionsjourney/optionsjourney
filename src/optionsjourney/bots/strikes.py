@@ -238,7 +238,7 @@ def _by_delta(leg: LegDef, chain: Chain) -> tuple[Decimal, Quote2]:
             f"Deltas for the {leg.right}s have the wrong sign (at {wrong[0]:f}); "
             "the chain can't be trusted."
         )
-    if len(known) < DELTA_COVERAGE * len(priced):
+    if not enough_deltas(len(known), len(priced)):
         raise NoData(
             f"Deltas unavailable for the {leg.right}s: {len(known)} of {len(priced)} "
             "strikes have one."
@@ -254,6 +254,29 @@ def _by_delta(leg: LegDef, chain: Chain) -> tuple[Decimal, Quote2]:
         known,
         key=lambda c: (abs(abs(c[1].delta) - target), -_further_out(c[0], leg.right)),
     )
+
+
+def enough_deltas(known: int, priced: int) -> bool:
+    """A side's deltas can be picked from: DELTA_COVERAGE of its priced strikes have one."""
+    return known >= DELTA_COVERAGE * priced
+
+
+def chain_has_deltas(chain: Chain) -> bool:
+    """Both sides' out-of-the-money priced strikes have enough deltas for a delta leg
+    (Tracker2's chain.chain_has_deltas; #327's pre-open check reads it)."""
+    if chain.spot is None:
+        return False
+    for right in ("call", "put"):
+        priced = [
+            quote
+            for (strike, side), quote in chain.quotes.items()
+            if side == right and quote.mid is not None
+            and _out_of_the_money(strike, right, chain.spot)
+        ]  # fmt: skip
+        known = sum(1 for quote in priced if quote.delta is not None)
+        if not priced or not enough_deltas(known, len(priced)):
+            return False
+    return True
 
 
 def _by_spot(leg: LegDef, chain: Chain) -> tuple[Decimal, Quote2]:
@@ -520,6 +543,12 @@ def offset_short(leg: LegDef) -> bool:
     """A sold leg placed by an offset: it may sit in the money (#206, decision 0082), so
     the entry reads the chain's deltas for it (bot_entry._pick) to check it isn't stale."""
     return leg.side is Side.SELL and leg.pick in OFFSET_PICKS
+
+
+def reads_deltas(legs) -> bool:
+    """Whether an entry reads the chain's deltas: a leg picked by delta, or a short placed
+    by an offset (#206: its delta is the in-the-money check; bot_entry._pick)."""
+    return any(leg.pick == "delta" or offset_short(leg) for leg in legs)
 
 
 def _weekly_only(picked: tuple[Picked, ...], root: str, underlying: str = "SPX") -> None:

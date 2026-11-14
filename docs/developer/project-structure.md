@@ -33,7 +33,7 @@ optionsjourney/
 │   ├── bots/                 Bot engine rules: definitions, validation, strike picking, exit math, the schedule,
 │   │                         the floating window, caps, market filters, date lists, the bot file format, integrity checks,
 │   │                         stops the app watches, which exit rests at the broker, matching a trade you opened to a bot, resolving each leg's
-│   │                         expiration, a futures option's series, a manual bot's exit rules (pure)
+│   │                         expiration, a futures option's series, a manual bot's exit rules, the loss boost's rules, the 09:00 market data check's answers (pure)
 │   ├── db/                   Database (plain SQLAlchemy): engine, models.py, migrations/ (Alembic)
 │   ├── services/             Ties the pieces together: syncing, scheduling, live P/L;
 │   │                         updates.py (the daily check, download and install), update_risks.py (what is live when you install)

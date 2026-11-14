@@ -4,6 +4,27 @@ Notable changes to OptionsJourney. The format follows [Keep a Changelog](https:/
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-11-14
+
+Bots that size up after a stop, a stop that follows the bought leg down, closing index-option trades overnight, and a 9:00 check that today's entries can go out.
+
+### Added
+- **Bots:** **Boost after a stop**, a switch under Size and limits with its multiplier (2 to 10, blank is 2). When the bot's last trade before today closed on its stop, today's entries are that many times their usual size (or their buying power). Max contracts per trade still caps it, and you get an alert when an entry is boosted. A Paper bot looks at its paper trades, a Live bot at its live ones. Its ⓘ has a table of examples. It's shown on the bot's page and travels in a shared bot file.
+- **Bots: Dynamic stop.** A fourth choice next to the closing order, for iron condors: each side's stop sits at the whole credit + that side's bought leg − a buffer you set (0.20 to start), so a side stops when it's worth about the whole credit. About once a minute it moves the stop down as the bought leg loses value, never up, on fresh prices only and never to where the sold leg already is. You can also switch an open trade to it from the run page or the journal's panel. Paper bots use it too.
+- **Bots:** a check at 9:00 AM New York time on each trading day that today's entries can be placed. For each underlying an armed bot trades that day, it asks each broker for the listed expirations and, for SPX and XSP, reads an option chain. It alerts only on a problem: "entries will NOT be placed", or "degraded" when a backup broker covers it. When Schwab lists the expirations because TastyTrade couldn't, the run page shows an **Expirations from Schwab** step.
+- **Bots: closing after hours on index options.** For a bot trade on SPX, SPXW, XSP, VIX or RUT options at TastyTrade, **Close** and **Close entire trade** now work in the overnight session (20:15 to 09:25 New York time) with overnight limit orders, never at market; a close not filled by 09:25 stops and the stop comes back. Clicked while those options aren't trading (16:00 to 20:15, 09:25 to 09:30, a weekend), the close is scheduled for when they trade again (20:16 or 09:31), shown on the Manage box with a Cancel. The Manage box says what Close will do, and its ⓘ has a table of when an after-hours close works. Other trades still close only in the regular session.
+- **Bots:** a stop TastyTrade won't take outside the regular session (on those index options) now waits and is placed in the first minute after 09:30, with an alert saying the side has no stop until then; it's tried again at 09:45, then a red alert. Stop changes on those trades wait until 09:30 too, so a stop is never cancelled and left unplaced overnight.
+- **Pending orders and Working orders:** change the strike of a leg on an order of yours that opens a trade. Type the new strike, press **Preview** for your broker's check, then **Confirm** (**Replace** on the Trade page) sends exactly that. The Journal guide has a table of what changes and what stays.
+
+### Fixed
+- **Alerts:** a bot's exit that closes the whole trade alerts **Closed** once. Before, when TastyTrade booked its legs in two goes, a wrong **Partly closed** came first.
+- **Bots:** an entry TastyTrade cancels on its own, with no reason, is sent again from fresh prices, up to twice, instead of the bot missing its trade. An entry you cancel yourself is never sent again.
+- **Bots:** a stop or resting profit target changed in TastyTrade is followed to its new order, instead of being put back (which TastyTrade refuses) or reported as gone.
+- **Trade page:** a ticket leg far from the price, or from another expiration, keeps a live mid. Before, it kept the price it had when you clicked it.
+
+### Security
+- Updated Pillow to 13.0.0 and certifi to 2026.10.23, which fix known security holes. Each release is now checked for known holes in its packages, risky code and leaked keys before it's published.
+
 ## [0.7.0] - 2026-10-28
 
 Paste an order from ThinkorSwim straight into the Trade page, and bots that keep trying for a good entry, with a fallback premium.

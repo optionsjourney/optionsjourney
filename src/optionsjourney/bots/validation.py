@@ -17,6 +17,7 @@ from optionsjourney.bots.definition import (
     EXIT_UNITS,
     FREQUENCIES,
     KEEP_TRYING_MINUTES,
+    LOSS_BOOST,
     MAX_CONTRACTS,
     MAX_DEFAULT_ALERTS,
     MAX_DTE,
@@ -110,6 +111,7 @@ def validate(bot: BotDef, tag_ids: set[int]) -> dict[str, str]:
     _sizing(bot, problems)
     _strike_rules(bot, problems)
     _keep_trying(bot, problems)
+    _loss_boost(bot, problems)
     if underlyings.futures(bot.underlying):
         _futures(bot, problems)
     _floating(bot, problems)
@@ -267,7 +269,8 @@ def _futures(bot: BotDef, problems: dict[str, str]) -> None:
         ("the watch rules", bot.use_delta_exit or bot.use_sl_ratio_exit
          or bot.use_underlying_exit),
         ("the profit actions", any(g.use_profit_actions for g in bot.groups)),
-        ("the closing order", bot.stop_co_mode != "off"),
+        ("the closing order", bot.stop_co_mode not in ("off", "dynamic")),
+        ("Dynamic stop", bot.stop_co_mode == "dynamic"),
         ("the entry window", bot.use_floating_entry),
         ("the market filters", bot.use_vix_level or bot.use_vix_overnight
          or bot.use_vix9d_ratio or bot.use_technicals or bot.use_intraday_move),
@@ -657,6 +660,20 @@ def _keep_trying(bot: BotDef, problems: dict[str, str]) -> None:
         problems["keep_trying"] = f"Keep trying is {low} to {high} minutes, or blank for one try."
 
 
+def _loss_boost(bot: BotDef, problems: dict[str, str]) -> None:
+    """#328 (Tracker2's validate_bot): the boost multiplier is a whole number from 2 to 10,
+    or blank for 2. Checked only while switched on, so a file with the boost off and an
+    odd leftover number still imports."""
+    multiplier = bot.loss_boost_multiplier
+    if not bot.use_loss_boost:
+        return
+    low, high = LOSS_BOOST
+    if multiplier is not None and not low <= multiplier <= high:
+        problems["loss_boost"] = (
+            f"The boost multiplier is a whole number from {low} to {high}, or blank for 2."
+        )
+
+
 def _expiries(bot: BotDef, problems: dict[str, str]) -> None:
     """Slice 14, question 3: in each group no sold leg expires after a bought leg, so
     what's left of a group once its nearer legs expire is only bought options (a
@@ -829,9 +846,16 @@ def _remainder_problem(group: GroupDef, left: int) -> str | None:
 
 def _closing_order(bot: BotDef, problems: dict[str, str]) -> None:
     """validate_stop_loss_co: a known mode, and an amount above $0 while it's on. On
-    a debit fill it is dropped when the trade opens (decision 0048, exit_plan)."""
+    a debit fill it is dropped when the trade opens (decision 0048, exit_plan). Dynamic
+    stop (#329): the amount is its buffer below the credit, $0 or more (0 stops at the
+    credit itself; below 0 would loosen past it)."""
     if bot.stop_co_mode not in CO_MODES:
-        problems["closing_order"] = "Pick Off, Every group or When tighter for the closing order."
+        problems["closing_order"] = (
+            "Pick Off, Every group, When tighter or Dynamic stop for the closing order."
+        )
+    elif bot.stop_co_mode == "dynamic":
+        if bot.stop_co_amount is None or bot.stop_co_amount < 0:
+            problems["closing_order"] = "Dynamic stop is on: set its buffer, $0 or more."
     elif bot.stop_co_mode != "off" and (bot.stop_co_amount is None or bot.stop_co_amount <= 0):
         problems["closing_order"] = "The closing order is on: set its dollar amount, above $0."
 

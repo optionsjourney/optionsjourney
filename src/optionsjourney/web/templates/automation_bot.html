@@ -192,13 +192,28 @@
             </div>
             {{ problem('contracts') }}
             {{ problem('sizing') }}
+            {# #328 (Tracker2's use_loss_boost): the entry after a stopped trade is bigger #}
+            {% set boost_tip %}<p>When the bot's last trade before today closed on its stop, today's entries are this many times their usual size: 2 to 10, blank for 2. It multiplies the contracts, or the buying power for a bot sized by buying power. Max contracts per trade still caps it, and you get an alert when an entry is boosted.</p>
+<table class="tip-table"><thead><tr><th>Usual entry</th><th>Boost</th><th>Max contracts per trade</th><th>Entry after a stop</th></tr></thead><tbody>
+<tr><td>1 contract</td><td>×2</td><td>Auto</td><td>2 contracts</td></tr>
+<tr><td>1 contract</td><td>×3</td><td>2</td><td>2 contracts: cut by the cap</td></tr>
+<tr><td>2 contracts</td><td>×2</td><td>3</td><td>3 contracts</td></tr>
+<tr><td>$2,000 of buying power</td><td>×2</td><td>Auto</td><td>Up to $4,000 of buying power</td></tr>
+<tr><td>Last trade hit its target</td><td>×2</td><td>Any</td><td>The usual size</td></tr>
+</tbody></table>
+<p>A Paper bot looks at its last paper trade, a Live bot at its last live one. A trade sent from the Trade page doesn't count, and a stop later today boosts the next day's entries.</p>{% endset %}
+            <div class="inline-form switch-number section-gap--small">
+                <label class="check"><input type="checkbox" name="use_loss_boost" {{ 'checked' if bot.use_loss_boost }}> {{ named('Boost after a stop', 'loss-boost', boost_tip) }}</label>
+                <label>× <input type="text" name="loss_boost_multiplier" inputmode="numeric" value="{{ typed('loss_boost_multiplier', bot.loss_boost_multiplier) }}" class="narrow" placeholder="2" aria-label="Boost multiplier"></label>
+            </div>
+            {{ problem('loss_boost') }}
             <div class="bot-form__fields section-gap--small" role="group" aria-label="Limits">
-            <label>{{ named('Max contracts per trade', 'per-trade', "The most contracts one entry may open, counted in the largest leg: a butterfly whose middle leg is sold 2 at a time uses 2 for each one you enter. Leave it blank for Auto: the biggest entry the bot makes by itself (its contracts, or an entry time's own number). An entry sized by buying power is cut down to it; blank, the cap is 100 contracts. Entries you start yourself (Trade now, the Trade page, taking over a trade) aren't held to a blank limit, only to the 100-contract cap.") }} <input type="number" class="w-num" name="max_per_trade" min="1" placeholder="Auto: {{ trade_cap(bot) }}" value="{{ bot.max_per_trade if bot.max_per_trade is not none else '' }}"></label>
+            <label>{{ named('Max contracts per trade', 'per-trade', "The most contracts one entry may open, counted in the largest leg: a butterfly whose middle leg is sold 2 at a time uses 2 for each one you enter. Leave it blank for Auto: the biggest entry the bot makes by itself (its contracts, or an entry time's own number; with Boost after a stop on, that times the boost). An entry sized by buying power is cut down to it; blank, the cap is 100 contracts. Entries you start yourself (Trade now, the Trade page, taking over a trade) aren't held to a blank limit, only to the 100-contract cap.") }} <input type="number" class="w-num" name="max_per_trade" min="1" placeholder="Auto: {{ trade_cap(bot) }}" value="{{ bot.max_per_trade if bot.max_per_trade is not none else '' }}"></label>
             <label>{{ named('Max contracts per day', 'per-day', "The most contracts the bot may open in a day, counted the same way. Only opening orders count, not its own stops and closes, and a re-sent rest of a partly filled entry doesn't count twice. An entry that would pass it is skipped, not cut down. Leave it blank for Auto: what the entry times that are on add up to (the entry window: one entry), no more than Most entries per day of them. Blank, entries you start yourself aren't counted against it and have no daily cap. Either way, every order is checked against it just before it's sent, so a misfire can't repeat all day.") }} <input type="number" class="w-num" name="max_per_day" min="1" placeholder="Auto: {{ day_cap(bot) }}" value="{{ bot.max_per_day if bot.max_per_day is not none else '' }}"></label>
             <label>{{ named('Max entries per day', 'entries', "How many entries the bot may take in a day; blank for no limit. An entry still in progress counts, and one split into tranches counts once. Skipped, missed and error runs don't, and Preview order saves no run.") }} <input type="number" class="w-num" name="max_entries_per_day" min="1" placeholder="No limit" value="{{ bot.max_entries_per_day if bot.max_entries_per_day is not none else '' }}"></label>
             <label>{{ named('Max open trades', 'open', "How many of the bot's trades may be open at once; blank for no limit. A trade is open until it expires or every side is closed. With split iron condors each open side counts as 1, so a fresh condor counts as 2. At the limit the entry is skipped.") }} <input type="number" class="w-num" name="max_open_trades" min="1" placeholder="No limit" value="{{ bot.max_open_trades if bot.max_open_trades is not none else '' }}"></label>
             </div>
-            <p class="muted small">Blank contract limits are Auto: per trade follows Contracts per entry, per day is that times the entry times that are on. Blank entries and open trades: no limit.</p>
+            <p class="muted small">Blank contract limits are Auto: per trade follows Contracts per entry (times the boost, with Boost after a stop on), per day is that times the entry times that are on. Blank entries and open trades: no limit.</p>
             {{ problem('limits') }}
             {{ problem('caps') }}
             {# #109 (Tracker2's initTags): tag_picker.js turns the comma box into chips, a menu
@@ -677,13 +692,22 @@
 <tr><td>Off</td><td>Each group uses its own stop.</td></tr>
 <tr><td>Replaces each stop</td><td>Every group's own % stop becomes 4.70.</td></tr>
 <tr><td>Whichever fires first</td><td>Each group keeps its own stop or uses 4.70, whichever is reached first: a side at 4.60 keeps 4.60; a side at 5.40 moves to 4.70.</td></tr>
+<tr><td>Dynamic stop</td><td>Each group's own % stop is replaced: its sold leg stops at the entry credit + its bought leg's value − the buffer you type, so a side stops when it's worth about the whole credit.</td></tr>
 </tbody></table>
+<p><strong>Dynamic stop</strong>, worked through: a condor took in 3.30, a side's bought leg filled at 1.00, buffer 0.20. About once a minute the bot looks at the bought leg's price now and moves the stop down when it's at least a tick lower. It never moves it up.</p>
+<table class="tip-table"><thead><tr><th>Long now</th><th>Sum</th><th>Stop</th></tr></thead><tbody>
+<tr><td>1.00 (its fill)</td><td>3.30 + 1.00 − 0.20</td><td>4.10</td></tr>
+<tr><td>0.50</td><td>3.30 + 0.50 − 0.20</td><td>3.60 (moved down)</td></tr>
+<tr><td>0.90</td><td>3.30 + 0.90 − 0.20</td><td>stays 3.60 (never up)</td></tr>
+<tr><td>0 (worthless)</td><td>3.30 + 0 − 0.20</td><td>3.10 (the lowest it goes)</td></tr>
+</tbody></table>
+<p>It needs fresh prices: without them the stop stays put. It never moves to a price the sold leg is already at or past. A buffer of 0 stops at the credit itself.</p>
 <p>Credit trades only (on a debit fill it's ignored, and you're told). A $ P&amp;L stop ignores it.</p>{% endset %}{{ named('Advanced closing orders (optional)', 'closing-order', co_tip) }}</h3>
         <div class="inline-form" data-closing-order>
             <select name="stop_co_mode" aria-label="Closing order" data-exit="co-mode">
-                {% for value, label in [('off', 'Off'), ('both', 'Replaces each stop'), ('tighter', 'Whichever fires first')] %}<option value="{{ value }}"{% if bot.stop_co_mode == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                {% for value, label in [('off', 'Off'), ('both', 'Replaces each stop'), ('tighter', 'Whichever fires first'), ('dynamic', 'Dynamic stop')] %}<option value="{{ value }}"{% if bot.stop_co_mode == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
             </select>
-            <label data-exit-show="co-amount">$ off the entry credit <input type="text" name="stop_co_amount" inputmode="decimal" value="{{ typed('stop_co_amount', bot.stop_co_amount) }}" class="narrow" aria-label="Closing order amount"></label>
+            <label data-exit-show="co-amount"><span data-exit-show="co-off">$ off the entry credit</span><span data-exit-show="co-buffer">Buffer $ below the credit</span> <input type="text" name="stop_co_amount" inputmode="decimal" value="{{ typed('stop_co_amount', bot.stop_co_amount) }}" class="narrow" aria-label="Closing order amount" data-exit="co-amount"></label>
         </div>
         {% else %}
         <input type="hidden" name="stop_co_mode" value="off">

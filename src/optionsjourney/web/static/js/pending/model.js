@@ -113,3 +113,33 @@ export function rowView(order, mark) {
     actions: { change: r.canChange && order.price != null, cancel: r.canCancel, reason: r.reason },
   };
 }
+
+// #321 (Tracker2 44173488): the legs of an order whose strike can be changed, as
+// [{index, strike}]. Only on an order of yours whose every leg opens and is a listed option
+// (not a futures option); otherwise none. The server checks all of it again.
+export function strikeLegs(order) {
+  if (!order || !order.owner || order.owner.kind !== 'you') return [];
+  if (!order.legs.length || !order.legs.every(l => l.opening === true)) return [];
+  const parts = order.legs.map(l => optionParts(l.symbol));
+  if (parts.some(p => !p)) return [];
+  return parts.map((p, index) => ({ index, strike: p.strike }));
+}
+
+// The strikes typed that differ from the order's, {index: number}; null when one typed isn't
+// a number above 0.
+export function strikeChanges(legs, typed) {
+  const out = {};
+  for (const { index, strike } of legs) {
+    const raw = typed && typed[index];
+    if (raw == null || raw === '' || Number(raw) === strike) continue;
+    const n = Number(raw);
+    if (!(n > 0) || !Number.isFinite(n)) return null;
+    out[index] = n;
+  }
+  return out;
+}
+
+// What a preview was for: Confirm is offered only while the strikes and price are still these.
+export function previewKey(changes, price) {
+  return JSON.stringify([Object.entries(changes || {}).sort(([a], [b]) => a - b), price]);
+}

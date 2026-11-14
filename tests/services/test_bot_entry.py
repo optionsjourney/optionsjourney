@@ -177,6 +177,95 @@ def test_a_paper_entry_is_not_requoted(deps, factory):
     assert calls == []
 
 
+# --- #317: an entry the broker cancels on its own is sent again (Tracker2 9b49dfea)
+
+
+def _killed(deps, how_many=1, then=None, **changes):
+    """The broker cancels the first `how_many` opening sends the moment they arrive, with
+    no reason (broker_cancelled), or as `changes` say. `then()` runs after each kill."""
+    real_place = deps.tasty.place_order
+    left = {"n": how_many}
+
+    def place(account, body):
+        oid = real_place(account, body)
+        if body["legs"][0]["action"].endswith("Open") and left["n"]:
+            left["n"] -= 1
+            o = deps.tasty.orders[oid]
+            legs = tuple(replace(leg, remaining=leg.quantity, fill_price=None) for leg in o.legs)
+            how = {"status": OrderStatus.CANCELLED, "broker_cancelled": True} | changes
+            deps.tasty.orders[oid] = replace(o, legs=legs, **how)
+            if then:
+                then()
+        return oid
+
+    deps.tasty.place_order = place
+
+
+def _entry_sends(deps):
+    return [c for c in deps.tasty.calls
+            if c[0] == "place" and c[2]["legs"][0]["action"].endswith("Open")]  # fmt: skip
+
+
+def test_an_entry_the_broker_cancels_is_sent_again_and_fills(deps, factory):
+    _killed(deps)
+    run = run_of(factory, bot_entry.fire(deps, make(factory, live=True), "09:47"))
+    sends = _entry_sends(deps)
+    assert run.status == "filled" and len(sends) == 2
+    assert run.broker_order_id == sends[1][1]
+    assert any("cancelled 101 with no reason; sent it again (1/2)" in str(e.get("event", ""))
+               for e in run.chase_log)  # fmt: skip
+
+
+def test_the_resend_starts_from_fresh_quotes(deps, factory):
+    quotes = _fair()
+    _tasty_rest(deps, quotes)
+    _killed(deps, then=lambda: quotes.update({IC_PUT: (D("2.95"), D("3.15"))}))
+    run = run_of(factory, bot_entry.fire(deps, make(factory, live=True), "09:47"))
+    first, again = (D(c[2]["price"]) for c in _entry_sends(deps))
+    assert run.status == "filled" and again == first + D("0.55")
+
+
+def test_an_entry_is_sent_again_at_most_twice(deps, factory):
+    _killed(deps, how_many=3)
+    run = run_of(factory, bot_entry.fire(deps, make(factory, live=True), "09:47"))
+    assert run.status == "missed" and len(_entry_sends(deps)) == 3
+
+
+def test_the_resends_do_not_use_up_tries(deps, factory):
+    deps.tasty.entry = "work"
+    _killed(deps, how_many=2)
+    run = run_of(factory, bot_entry.fire(deps, make(factory, live=True), "09:47"))
+    assert run.status == "missed" and len(_entry_sends(deps)) == 3
+    assert len([c for c in deps.tasty.calls if c[0] == "replace"]) == 5  # as without them
+
+
+@pytest.mark.parametrize("changes", [
+    {"broker_cancelled": False},  # cancelled by you, or with a reason
+    {"status": OrderStatus.REJECTED, "broker_cancelled": False},
+])  # fmt: skip
+def test_an_entry_cancelled_any_other_way_is_not_sent_again(deps, factory, changes):
+    _killed(deps, **changes)
+    run = run_of(factory, bot_entry.fire(deps, make(factory, live=True), "09:47"))
+    assert run.status == "missed" and len(_entry_sends(deps)) == 1
+
+
+def test_a_resend_the_central_check_refuses_ends_missed(deps, factory, monkeypatch):
+    _killed(deps)
+    real_submit = orders.submit
+    sends = {"n": 0}
+
+    def submit(*args, **kwargs):
+        sends["n"] += 1
+        if sends["n"] == 2:
+            return orders.Result("refuse", False, "Stop all bots is on.")
+        return real_submit(*args, **kwargs)
+
+    monkeypatch.setattr(orders, "submit", submit)
+    run = run_of(factory, bot_entry.fire(deps, make(factory, live=True), "09:47"))
+    assert run.status == "missed" and len(_entry_sends(deps)) == 1
+    assert "Stop all bots" in (run.reason or "")
+
+
 def test_a_live_run_chases_then_misses(deps, factory):
     deps.tasty.entry = "work"
     run_id = bot_entry.fire(deps, make(factory, live=True), "09:47")
@@ -769,7 +858,7 @@ def test_the_root_is_missed_when_only_a_later_tranche_filled(deps, factory, monk
     # settling straight from a chase outcome where the root filled nothing.
     from optionsjourney.services.bot_chase import Entered
 
-    def chase_entry(deps_, request, first, plan, next_price, on_tranche, on_fill):
+    def chase_entry(deps_, request, first, plan, next_price, on_tranche, on_fill, reprice=None):
         child = on_tranche(2, request.order.quantity)
         legs = tuple(
             BrokerLeg(leg.symbol, leg.side, True, 3, 0, D("1")) for leg in request.order.legs
@@ -2362,3 +2451,107 @@ def test_a_fallback_of_0_means_no_fallback_try(deps, factory):
     _with_fallbacks(factory, bot_id, fallback=D("0"))
     run = run_of(factory, bot_entry.fire(deps, bot_id, "09:47"))
     assert run.status == "skipped" and run.reason == "net credit 4.90 < min 50.00"
+
+
+# --- #328: the loss boost, a bigger next entry after a stopped trade (Tracker2 16dad587)
+
+
+def _stopped_yesterday(factory, bot_id, paper=False):
+    from tests.services.test_bot_loss_boost import past_run
+
+    if paper:
+        return past_run(factory, bot_id, paper=True, fills=(("exit", "stop"),))
+    return past_run(factory, bot_id, exits=(("stop", "filled", None),))
+
+
+def _sent_quantity(deps):
+    return int(places(deps)[0][2]["legs"][0]["quantity"])
+
+
+def test_a_boosted_entry_doubles_after_a_stop_and_says_so(deps, factory):
+    said = []
+    deps.notify = said.append
+    bot_id = make(factory, live=True, max_per_trade=3, use_loss_boost=True)
+    after = _stopped_yesterday(factory, bot_id)
+    run = run_of(factory, bot_entry.fire(deps, bot_id, "09:47"))
+    assert run.status == "filled" and run.contracts == 2 and _sent_quantity(deps) == 2
+    assert {"boost": 2, "after_run": after, "after_day": "2026-10-12"} in run.chase_log
+    boosted = [e for e in said if "boosted ×2 after a stop" in e.title]
+    assert len(boosted) == 1 and not boosted[0].title.startswith("Paper")
+    assert boosted[0].detail == f"Entering 2 contracts: run {after} on 2026-10-12 hit its stop."
+
+
+def test_no_stop_no_boost(deps, factory):
+    said = []
+    deps.notify = said.append
+    bot_id = make(factory, live=True, max_per_trade=3, use_loss_boost=True)
+    run = run_of(factory, bot_entry.fire(deps, bot_id, "09:47"))
+    assert run.contracts == 1 and not any("boost" in e for e in run.chase_log)
+    assert not any("boosted" in e.title for e in said)
+
+
+def test_a_boost_is_capped_by_max_per_trade(deps, factory):
+    said = []
+    deps.notify = said.append
+    bot_id = make(factory, live=True, use_loss_boost=True, loss_boost_multiplier=3)  # max 1
+    _stopped_yesterday(factory, bot_id)
+    run = run_of(factory, bot_entry.fire(deps, bot_id, "09:47"))
+    assert run.contracts == 1 and {"capped": 3, "to": 1} in run.chase_log
+    assert any("(3 cut to 1 by Max contracts per trade)" in e.detail for e in said)
+
+
+def test_with_auto_limits_the_boosted_order_passes_the_order_check(deps, factory):
+    bot_id = make(factory, live=True, max_per_trade=None, max_per_day=None, use_loss_boost=True)
+    _stopped_yesterday(factory, bot_id)
+    run = run_of(factory, bot_entry.fire(deps, bot_id, "09:47"))
+    assert run.status == "filled" and run.contracts == 2 and _sent_quantity(deps) == 2
+
+
+def test_a_paper_bot_is_boosted_after_a_paper_stop(deps, factory):
+    said = []
+    deps.notify = said.append
+    bot_id = make(factory, max_per_trade=3, use_loss_boost=True)
+    _stopped_yesterday(factory, bot_id, paper=True)
+    run = run_of(factory, bot_entry.fire(deps, bot_id, "09:47"))
+    assert run.status == "filled" and run.paper and run.contracts == 2
+    assert any(e.title.startswith("Paper: IC: entry boosted ×2") for e in said)
+
+
+def test_a_buying_power_entry_boosts_its_budget(deps, factory):
+    """600 × 2 = 1200 of buying power; 275 a unit buys 4."""
+    bot_id = _dollars(factory, "600", use_loss_boost=True)
+    _stopped_yesterday(factory, bot_id)
+    run = run_of(factory, bot_entry.fire(deps, bot_id, "09:47"))
+    assert run.contracts == 4 and _sent_quantity(deps) == 4
+    sized = next(e for e in run.chase_log if e.get("sizing") == "buying_power")
+    assert sized["budget"] == "1200.00"
+
+
+def test_preview_order_shows_the_boosted_size(deps, factory):
+    bot_id = make(factory, live=True, max_per_trade=3, use_loss_boost=True)
+    _stopped_yesterday(factory, bot_id)
+    assert bot_entry.preview_order(deps, bot_id).contracts == 2
+
+
+def test_a_failed_boost_lookup_enters_at_the_usual_size(deps, factory, monkeypatch):
+    def broken(*args):
+        raise RuntimeError("no database")
+
+    monkeypatch.setattr(bot_entry.bot_loss_boost, "boost_for", broken)
+    bot_id = make(factory, live=True, max_per_trade=3, use_loss_boost=True)
+    _stopped_yesterday(factory, bot_id)
+    assert run_of(factory, bot_entry.fire(deps, bot_id, "09:47")).contracts == 1
+# --- #327: expirations Schwab listed because TastyTrade couldn't --------------------------
+
+
+def test_expirations_from_the_backup_broker_are_noted_in_the_runs_log(deps, factory):
+    listed = deps.chain.expirations
+    deps.chain.expirations = lambda clients, ticker: listed(clients, ticker) | {"backup": "Schwab"}
+    run = run_of(factory, bot_entry.fire(deps, make(factory), "09:47"))
+    assert run.status == "filled"
+    assert {"expirations_from": "Schwab"} in run.chase_log
+
+
+def test_expirations_from_the_first_broker_add_no_note(deps, factory):
+    run = run_of(factory, bot_entry.fire(deps, make(factory), "09:47"))
+    assert not any("expirations_from" in e for e in run.chase_log)

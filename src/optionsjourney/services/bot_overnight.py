@@ -211,6 +211,12 @@ def _check_account(deps, account: _Account, watched: list) -> list[str]:
             continue
         if stop.state not in bot_exits.STOP_LIVE:
             problems.append(f"{label} has no stop in place (its stop is {stop.state})")
+        elif stop.state == "pending" and stop.stop_at_open:  # #330: held for the open
+            problems.append(
+                f"{label}: its stop isn't at your broker yet: it's placed in the first minute "
+                "after 09:30, when the regular session opens (the broker takes no stops "
+                "before then)"
+            )
         elif stop.state == "pending":  # review 5: written, not at the broker yet
             problems.append(f"{label}: its stop isn't at your broker yet (waiting to be placed)")
         elif stop.state == "working":

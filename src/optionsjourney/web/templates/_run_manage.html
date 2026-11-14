@@ -25,6 +25,25 @@
         </div>
     </div>
     <p class="muted small">Changes here are for this trade only; the bot keeps its own settings. Each one is checked before anything is sent, and a change that can't be made changes nothing.</p>
+    {#- #330 (decision 0133): a close on index options after hours runs overnight or is scheduled -#}
+    {% set after_hours_tip %}<p>SPX, SPXW, XSP, VIX and RUT options at TastyTrade also trade overnight. A close you ask for works like this:</p>
+<table class="tip-table"><thead><tr><th>When you click Close (New York time)</th><th>What happens</th></tr></thead><tbody>
+<tr><td>09:30 to 16:00, the regular session</td><td>Closes now, as always.</td></tr>
+<tr><td>20:15 to 09:25, the overnight session</td><td>Closes now with overnight limit orders, never at market. Not filled by 09:25: it stops and the stop comes back.</td></tr>
+<tr><td>16:00 to 20:15</td><td>Scheduled for 20:16; nothing is sent before then.</td></tr>
+<tr><td>09:25 to 09:30</td><td>Scheduled for 09:31.</td></tr>
+<tr><td>Friday night, the weekend, a holiday</td><td>Scheduled for the next overnight session (Sunday 20:16, or the evening before the next trading day).</td></tr>
+<tr><td>Every option in it has expired</td><td>Refused: there's nothing left to trade.</td></tr>
+<tr><td>Other trades (stocks, ETFs, Schwab, futures)</td><td>Only in the regular session, as before.</td></tr>
+</tbody></table><p>The broker takes no stop orders outside the regular session, so a stop that has to be placed then waits and is placed in the first minute after 09:30. Stop changes wait until 09:30 too.</p>{% endset %}
+    {% if scheduled_close %}
+    <div class="notice notice--warning" id="scheduled-close">
+        <strong>Close scheduled:</strong> {{ scheduled_close.words }}. Nothing is sent before then; the stop and target stay as they are. {{ info('run-scheduled-close', after_hours_tip, 'Closing after hours', more='/help/automation#closing-after-hours') }}
+        <form class="inline-form" method="post" action="{{ url_for('automation.cancel_scheduled_close', run_id=run.id, row_id=scheduled_close.id) }}">{{ next_field }}<button class="button button--quiet button--small" type="submit">Cancel the scheduled close</button></form>
+    </div>
+    {% elif close_when %}
+    <p class="notice notice--quiet small" id="close-when">{{ close_when.words }} {{ info('run-close-when', after_hours_tip, 'Closing after hours', more='/help/automation#closing-after-hours') }}</p>
+    {% endif %}
     <div class="manage-sides">
     {% for side in sides %}
     <div class="manage-side">
@@ -33,7 +52,7 @@
             {% if not side.futures and side.state != 'closed' %}
             <span class="manage-side__levels">
                 <span><span class="muted">Open</span> <strong class="num">{{ side.size }}</strong></span>
-                <span><span class="muted">Stop</span> <strong class="num">{{ 'off' if side.stop_off else (side.stop if side.stop is not none else 'none') }}</strong>{% if side.stop_state == 'pending' %} <span class="muted small">(waiting to be placed)</span>{% elif side.stop_state == 'watching' %} <span class="muted small">(watched by the app)</span>{% endif %}</span>
+                <span><span class="muted">Stop</span> <strong class="num">{{ 'off' if side.stop_off else (side.stop if side.stop is not none else 'none') }}</strong>{% if side.stop_state == 'at_open' %} <span class="muted small">(placed just after 09:30: the broker takes no stops now)</span>{% elif side.stop_state == 'pending' %} <span class="muted small">(waiting to be placed)</span>{% elif side.stop_state == 'watching' %} <span class="muted small">(watched by the app)</span>{% endif %}</span>
                 <span><span class="muted">Target</span> <strong class="num">{{ 'off' if side.target_off else (side.target if side.target is not none else 'none') }}</strong></span>
             </span>
             {% endif %}
@@ -119,13 +138,13 @@
                     <button class="button button--small" type="submit">Change stop</button>
                 </form>
                 {% if side.co_mode %}
-                <span class="manage-field__label">Closing order <span class="muted">($ off the entry credit)</span></span>
+                <span class="manage-field__label">Closing order <span class="muted">($ off the entry credit; for Dynamic stop, the buffer)</span></span>
                 <form class="inline-form" method="post" action="{{ url_for('automation.manage_side', run_id=run.id, position=side.position, action='closing-order') }}">{{ next_field }}
                     <select name="mode" aria-label="Closing order">
-                        {% for value, words in (('off', 'Off'), ('both', 'Replaces each stop'), ('tighter', 'Whichever fires first')) %}<option value="{{ value }}"{% if value == side.co_mode %} selected{% endif %}>{{ words }}</option>{% endfor %}
+                        {% for value, words in (('off', 'Off'), ('both', 'Replaces each stop'), ('tighter', 'Whichever fires first'), ('dynamic', 'Dynamic stop')) %}<option value="{{ value }}"{% if value == side.co_mode %} selected{% endif %}>{{ words }}</option>{% endfor %}
                     </select>
-                    <input type="number" name="amount" min="0.01" step="any" value="{{ side.co_amount if side.co_amount is not none else '' }}" aria-label="$ off the entry credit">
-                    <span class="tip"><button class="button button--small" type="submit" aria-describedby="tip-run-closing-order-{{ side.position }}">Set</button>{{ tip_text('run-closing-order-' ~ side.position, "Gives this trade its own closing order and moves the stop now, after checking it against live prices. The bot keeps its own setting.", more='/help/automation#managing-a-trade') }}</span>
+                    <input type="number" name="amount" min="0" step="any" value="{{ side.co_amount if side.co_amount is not none else '' }}" aria-label="$ off the entry credit, or the Dynamic stop's buffer">
+                    <span class="tip"><button class="button button--small" type="submit" aria-describedby="tip-run-closing-order-{{ side.position }}">Set</button>{{ tip_text('run-closing-order-' ~ side.position, "Gives this trade its own closing order and moves the stop now, after checking it against live prices. The bot keeps its own setting. Dynamic stop: the stop is set once from the bought leg's price now (it may go up), then only moves down. Example: 3.30 credit, bought leg now 0.80, buffer 0.20: the stop goes to 3.90.", more='/help/automation#managing-a-trade') }}</span>
                 </form>
                 {% endif %}
             </div>

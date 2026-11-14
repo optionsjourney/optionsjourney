@@ -29,6 +29,7 @@ They're highlighted in the bell's list and at the top of the Alerts page under *
 When a trade opens, rolls, partly closes or closes, a popup shows at the top right of whatever page you're on, with a chime. That covers every trade in your journal, a bot's or one you placed yourself. It shows once your broker's fill is synced: within seconds for TastyTrade, and at the next sync for Schwab.
 
 - A bot's stop on one side of a trade, then its wing sold, shows **Partly closed** then **Closed**.
+- A bot's exit that closes the whole trade shows only **Closed**, even when your broker books its legs a moment apart.
 - Each popup says the trade, its bot and account, and the cash: what you received or paid for those fills. Click the trade's name to open it in the journal.
 - A **Closed** popup also lists the strikes the trade held when it closed, for example "Strikes: 5800/5790". If the trade was rolled, there's a line for each roll with its day and the strikes it moved from and to, like "Rolled: 2026-09-29 5800 → 5750". The Alerts page shows the same lines.
 - A popup goes away after 20 seconds, even if the page reloads in between (the Journal does when new fills come in). Hovering over it keeps it up, and **×** closes it. At most 5 show at once; the rest are behind a "+N more" link to this page.

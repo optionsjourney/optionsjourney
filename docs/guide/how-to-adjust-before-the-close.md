@@ -18,7 +18,7 @@
 ## Move the stop or the target
 1. **Stop:** under **Stop loss**, type the new stop, pick **%** or **$ a contract**, and press **Preview** to see where it would sit and whether it would fire now. Then press **Change stop**.
 2. **Target:** under **Profit target**, type the % of the credit to keep and press **Change target**.
-3. **Closing order** (only on some groups): pick how it applies, type the dollars off the entry credit and press **Set**. It moves the stop the same way as Change stop.
+3. **Closing order** (only on some groups): pick how it applies, type the dollars off the entry credit and press **Set**. It moves the stop the same way as Change stop. Pick **Dynamic stop** and type a buffer instead to switch the trade to a stop that follows its bought leg down (see [Dynamic stop](automation.md#dynamic-stop-the-credit-plus-the-sides-bought-leg-moving-down)).
 
 **What the app does:** before touching anything it checks the sold option's live price. A stop that would fire at once, or one it can't check because there's no fresh price, is refused and the old stop stays. Otherwise the old stop is cancelled at your broker, the cancel is checked, and the new one is placed: for a second or two the group has no stop. A stop the app watches just changes the level it watches; nothing is sent. A target resting at your broker is cancelled there and placed again at the new price. The journal row shows the change as a chip, for example **Stop 200%**.
 

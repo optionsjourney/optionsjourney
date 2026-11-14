@@ -8,7 +8,8 @@
 // load and every 5 min while the drawer is closed. Polling stops while the tab is hidden.
 
 import { replacePrice } from '../trade/ticket_core.js';
-import { FILTERS, buttonLabel, filterOrders, chipCounts, rowView, asOfText } from './model.js';
+import { FILTERS, buttonLabel, filterOrders, chipCounts, rowView, asOfText,
+  strikeLegs, strikeChanges, previewKey } from './model.js';
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
@@ -110,6 +111,14 @@ export function installPendingDrawer(doc, win) {
 
   const mini = (cls, attrs, text) => `<button type="button" class="mini-btn mini-btn--${cls}" ${attrs}>${text}</button>`;
 
+  // Confirm, or Preview while new strikes haven't been previewed as they stand.
+  function goButton(id, accountId) {
+    const attrs = act => `data-act="${act}" data-id="${esc(id)}" data-account="${esc(accountId)}"`;
+    const { moved, previewed } = editState(id);
+    return !moved || previewed
+      ? mini('blue', attrs('change-confirm'), 'Confirm') : mini('blue', attrs('change-preview'), 'Preview');
+  }
+
   function actionsHtml(v, accountId) {
     const attrs = act => `data-act="${act}" data-id="${esc(v.id)}" data-account="${esc(accountId)}"`;
     if (updating.has(v.id)) return '<span class="pending-reason">updating…</span>';
@@ -119,10 +128,18 @@ export function installPendingDrawer(doc, win) {
         ${mini('gray', attrs('cancel-keep'), 'Keep')}${mini('red', attrs('cancel-confirm'), 'Confirm')}</div>`;
     }
     if (edit && edit.id === v.id && edit.kind === 'change') {
-      return `${note}<div class="pending-row__buttons"><input type="number" min="0" step="0.05" value="${esc(edit.value)}"
+      // #321: a strike box per leg when the strikes can change. New strikes need the broker's
+      // preview first; Confirm is offered only for exactly what it previewed.
+      const legs = strikeLegs(rowByCell(v.id));
+      const boxes = legs.map(l => `<label class="pending-strike">Leg ${l.index + 1}
+          <input type="number" min="0" step="any" value="${esc(edit.strikes[l.index] ?? l.strike)}" data-act="strike"
+          data-leg="${l.index}" data-id="${esc(v.id)}" aria-label="Leg ${l.index + 1} strike" class="pending-row__price"></label>`).join('');
+      const go = goButton(v.id, accountId);
+      return `${note}${boxes ? `<div class="pending-row__buttons">${boxes}</div>` : ''}
+        <div class="pending-row__buttons"><input type="number" min="0" step="0.05" value="${esc(edit.value)}"
           data-act="price" data-id="${esc(v.id)}" aria-label="New limit price" class="pending-row__price">
         <span class="pending-side pending-side--${v.effect === 'debit' ? 'db' : 'cr'}">${v.effect === 'debit' ? 'db' : 'cr'}</span>
-        ${mini('blue', attrs('change-confirm'), 'Confirm')}${mini('gray', attrs('change-keep'), 'Keep')}</div>`;
+        ${go}${mini('gray', attrs('change-keep'), 'Keep')}</div>`;
     }
     const buttons = [
       v.actions.change ? mini('blue', attrs('change'), 'Change price') : '',
@@ -203,15 +220,48 @@ export function installPendingDrawer(doc, win) {
     body.innerHTML = shown.length ? shown.map(section).join('') : '<p class="muted">Nothing pending.</p>';
   }
 
+  // The open Change control's state: its price, the strikes moved ({} when none, null when
+  // one isn't a number), and whether the broker previewed exactly these.
+  function editState(id) {
+    const order = rowByCell(id);
+    const price = order && edit ? replacePrice(rowView(order, null), edit.value) : null;
+    const changes = order && edit ? strikeChanges(strikeLegs(order), edit.strikes) : {};
+    const moved = changes === null || Object.keys(changes).length > 0;
+    const previewed = !!changes && moved && edit.previewed === previewKey(changes, price);
+    return { price, changes, moved, previewed };
+  }
+
+  async function preview(id, accountId) {
+    const { price, changes } = editState(id);
+    if (price == null) { notes[id] = 'Set a limit price above 0.'; draw(); return; }
+    if (!changes) { notes[id] = 'A new strike must be a number above 0.'; draw(); return; }
+    const key = previewKey(changes, price);
+    notes[id] = 'Checking with your broker…';
+    draw();
+    try {
+      const res = await win.fetch(drawer.dataset.replaceUrl, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ account_id: accountId, order_id: id, price, strikes: changes, preview: true }),
+      });
+      const d = await res.json();
+      notes[id] = d.message || '';
+      if (edit && edit.id === id && d.ok && d.action === 'preview') edit.previewed = key;
+    } catch (e) {
+      notes[id] = `Couldn't check the order: ${e.message}`;
+    }
+    draw();
+  }
+
   async function act(kind, id, accountId) {
     const order = rowByCell(id);
     if (!order) return;   // it went away in a reload since the control was opened
     let payload;
     if (kind === 'replace') {
-      const row = rowView(order, null);
-      const price = replacePrice(row, edit && edit.value);
+      const { price, changes, moved, previewed } = editState(id);
       if (price == null) { notes[id] = 'Set a limit price above 0.'; draw(); return; }
+      if (moved && !previewed) { notes[id] = 'Preview the new strikes first.'; draw(); return; }
       payload = { account_id: accountId, order_id: id, price };
+      if (moved) payload.strikes = changes;
     } else {
       payload = { account_id: accountId, order_id: id };
     }
@@ -239,15 +289,31 @@ export function installPendingDrawer(doc, win) {
     const { act: what, id } = b.dataset;
     const accountId = Number(b.dataset.account);
     if (what === 'cancel') edit = { id, kind: 'cancel' };
-    else if (what === 'change') edit = { id, kind: 'change', value: Math.abs(rowByCell(id).price ?? 0).toFixed(2) };
+    else if (what === 'change') {
+      edit = { id, kind: 'change', value: Math.abs(rowByCell(id).price ?? 0).toFixed(2), strikes: {}, previewed: null };
+    }
     else if (what === 'cancel-keep' || what === 'change-keep') edit = null;
     else if (what === 'cancel-confirm') return act('cancel', id, accountId);
     else if (what === 'change-confirm') return act('replace', id, accountId);
+    else if (what === 'change-preview') return preview(id, accountId);
     else return;
     draw();
   });
   body.addEventListener('input', e => {
-    if (e.target.dataset && e.target.dataset.act === 'price' && edit) edit.value = e.target.value;
+    const d = e.target.dataset || {};
+    if (!edit || (d.act !== 'price' && d.act !== 'strike')) return;
+    const before = editState(edit.id);
+    if (d.act === 'price') edit.value = e.target.value;
+    else edit.strikes[d.leg] = e.target.value;
+    // Preview and Confirm swap as the inputs move off or back onto what was previewed.
+    const after = editState(edit.id);
+    // Only the button is swapped, so the box being typed in keeps its cursor.
+    if (before.previewed !== after.previewed || before.moved !== after.moved) {
+      const old = [...body.querySelectorAll('[data-act="change-preview"], [data-act="change-confirm"]')]
+        .find(b => b.dataset.id === edit.id);
+      if (old) old.outerHTML = goButton(edit.id, old.dataset.account);
+      else draw();
+    }
   });
   chipsEl.addEventListener('click', e => {
     const b = e.target.closest('[data-filter]');

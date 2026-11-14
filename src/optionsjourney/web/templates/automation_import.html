@@ -81,6 +81,7 @@
         <li><strong>Entry times (New York):</strong> {% for t in b.entry_times %}{{ t.time }}{% if not t.enabled %} (paused){% endif %}{% if t.label %} "{{ t.label }}"{% endif %}{% if not loop.last %}, {% endif %}{% endfor %}</li>
         <li><strong>How often:</strong> {{ b.frequency | replace('_', ' ') }}{% if b.use_blackout_days %}, with blackout days{% endif %}</li>
         <li><strong>Caps:</strong> {{ b.max_entries_per_day if b.max_entries_per_day is not none else 'no limit on' }} entries a day, {{ b.max_open_trades if b.max_open_trades is not none else 'no limit on' }} open trades at once</li>
+        {% if b.use_loss_boost %}<li><strong>Boost after a stop:</strong> ×{{ b.loss_boost_multiplier or 2 }}: when its last trade before today closed on its stop, today's entries are that many times their size, still capped by Max contracts per trade</li>{% endif %}
         {% set filters = [('VIX level', b.use_vix_level), ('VIX overnight move', b.use_vix_overnight), ('VIX9D/VIX ratio', b.use_vix9d_ratio), ('technical indicators', b.use_technicals), ('intraday movement', b.use_intraday_move), ('premium bounds', b.use_premium_bounds)] %}
         <li><strong>Entry filters:</strong> {% set on = filters | selectattr(1) | map(attribute=0) | list %}{{ on | join(', ') if on else 'none' }}</li>
         {% for label, c in [('Entry chase', b.entry_chase), ('Exit chase', b.exit_chase)] %}

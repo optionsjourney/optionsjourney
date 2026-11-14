@@ -126,9 +126,9 @@ Documentation is a first-class part of this project. A feature isn't done until 
 | [0098](decisions/0098-checking-for-updates.md) | Checking for updates from the menu | Accepted |
 | [0099](decisions/0099-upgrade-backup-falls-back-to-the-default-folder.md) | A backup before an upgrade falls back to the default folder | Accepted |
 | [0100](decisions/0100-demo-mode-runs-the-real-app-on-a-pretend-broker.md) | Demo mode runs the real app on a pretend broker and a made-up market | Accepted |
-| [0101](decisions/0101-the-site-and-demo-run-on-the-prod-mac.md) | The site, and later the demo, run on the prod Mac behind its Cloudflare tunnel | Accepted |
+| [0101](decisions/0101-the-site-and-demo-run-on-the-prod-mac.md) | The site, and later the demo, run on the prod Mac behind its Cloudflare tunnel | Accepted, machine replaced by 0128 |
 | [0102](decisions/0102-demo-seats-a-manager-and-cookie-routing.md) | Demo seats: a seat manager, Caddy routing by cookie, and updates only when seats are empty | Accepted, amended by 0103 |
-| [0103](decisions/0103-demo-user-firewall.md) | The demo user is fenced off from the Mac's other services, and `oj-demo` lives where only root can change it | Accepted |
+| [0103](decisions/0103-demo-user-firewall.md) | The demo user is fenced off from the Mac's other services, and `oj-demo` lives where only root can change it | Accepted, amended by 0126 |
 | [0104](decisions/0104-open-from-other-devices-is-a-settings-switch.md) | Open from other devices is a switch in Settings | Accepted |
 | [0105](decisions/0105-the-bell-opens-recent-alerts.md) | The bell opens a list of recent alerts; its number counts new alerts and problems | Accepted |
 | [0106](decisions/0106-quieter-alerts.md) | Quieter alerts: no daily settled-P/L alert, and sync alerts only for brokers in use | Accepted |
@@ -148,6 +148,17 @@ Documentation is a first-class part of this project. A feature isn't done until 
 | [0120](decisions/0120-only-logged-in-brokers-are-asked.md) | Only brokers you're logged in to are asked | Accepted |
 | [0121](decisions/0121-keep-trying-then-a-fallback-premium.md) | An entry time keeps trying, then tries a fallback premium | Accepted (its blank-means-off replaced by 0122) |
 | [0122](decisions/0122-switches-for-min-width-and-keep-trying.md) | Min short width and Keep trying have on/off switches | Accepted |
+| [0123](decisions/0123-entry-chase-resends-an-entry-the-broker-cancels.md) | The entry chase sends an entry again, up to twice, when the broker cancels it on its own | Accepted |
+| [0124](decisions/0124-exits-follow-an-order-replaced-at-the-broker.md) | A stop or target replaced at the broker is followed, not put back | Accepted |
+| [0125](decisions/0125-change-a-pending-orders-strike.md) | A pending order of yours can have an opening leg's strike changed, after a preview | Accepted |
+| [0126](decisions/0126-the-demo-firewall-turns-on-at-boot-or-the-demo-stays-off.md) | The demo's firewall turns itself on at boot, and the demo stays off without it | Accepted |
+| [0127](decisions/0127-a-release-runs-security-checks-first.md) | A release runs security checks first, and a failed check stops it | Accepted |
+| [0128](decisions/0128-the-site-runs-on-the-linux-prod-box.md) | The site runs on the Linux prod box (systemd user units); the demo is off until it moves there | Accepted |
+| [0129](decisions/0129-the-demo-runs-on-the-linux-prod-box.md) | The demo runs on the Linux prod box: systemd system units, an nftables fence for `ojdemo`, and no start without it | Accepted |
+| [0130](decisions/0130-a-0900-check-that-todays-entries-can-be-placed.md) | A 09:00 check that today's entries can be placed, and a note when Schwab lists the expirations | Accepted |
+| [0131](decisions/0131-a-dynamic-stop-follows-the-sides-long-down.md) | A Dynamic stop rests at the credit plus the side's long less a buffer, and only moves down | Accepted |
+| [0132](decisions/0132-the-loss-boost.md) | The loss boost: a bot can size up the entries after its last trade hit a stop (paper for paper, live for live); Auto limits make room, typed limits still cap | Accepted |
+| [0133](decisions/0133-after-hours-closes-on-index-options.md) | A close on index options at TastyTrade works in the overnight session, one asked for in a gap is scheduled, and a stop the broker won't take waits for 09:30 | Accepted |
 
 ## Writing a new decision
 

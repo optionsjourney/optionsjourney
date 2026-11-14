@@ -77,12 +77,15 @@ def stop_text(group: GroupDef | None, co_mode: str = "off", co_amount=None,
     """The bot side's stop in words: "150%", "150% of the entry credit", "50% of the
     entry price" (a group the app watches, bots slice 13), "$2.00 a contract" (with
     "(watched by the app)" on a watched group), "closing order $0.80", or "none"; with
-    the closing-order overlay when the bot has one on (never on a watched group)."""
+    the closing-order overlay when the bot has one on (never on a watched group), or
+    "Dynamic stop (buffer $0.20)" in its place (#329)."""
     if group is None or group.stop_value is None:
         return "none"
     if group.stop_unit == "usd":
         text = f"{_money(group.stop_usd)} a contract"
         return f"{text} (watched by the app)" if watched else text
+    if co_mode == "dynamic" and co_amount is not None and not watched:
+        return f"Dynamic stop (buffer {_money(co_amount)})"  # #329: it replaces the style
     if group.stop_basis == "group_entry":
         return f"{_num(group.stop_pct)}% of the entry price"
     if group.stop_basis == "closing_order":
@@ -227,10 +230,13 @@ def _style_chips(group, override: Override, co_mode, co_amount, watched) -> list
         mine = (override.co_mode, override.co_amount if override.co_mode != "off" else None)
         own = (co_mode, co_amount if co_mode != "off" else None)
         if mine != own:
-            label = "Closing order off"
-            if override.co_mode != "off":
+            label, title = "Closing order off", "Closing order changed for this trade"
+            if override.co_mode == "dynamic":  # #329
+                label = f"Dynamic stop (buffer {_money(override.co_amount)})"
+                title = "Stop changed to a Dynamic stop for this trade"
+            elif override.co_mode != "off":
                 label = f"Closing order {_money(override.co_amount)} ({override.co_mode})"
-            out.append(Chip("stop", label, f"Closing order changed for this trade (bot: {bots})"))
+            out.append(Chip("stop", label, f"{title} (bot: {bots})"))
     return out
 
 
@@ -257,6 +263,18 @@ def read_usd(text: str, what: str):
         return None, f"The {what} must be a dollar amount."
     if not value.is_finite() or not USD_RANGE[0] <= value <= USD_RANGE[1]:
         return None, f"The {what} must be a dollar amount above $0, up to {_money(USD_RANGE[1])}."
+    return value, None
+
+
+def read_buffer(text: str):
+    """(the Dynamic stop's buffer typed, None) or (None, why not): $0 or more (#329: 0 stops
+    at the credit itself), up to the $ stop's top."""
+    try:
+        value = Decimal(str(text).strip().lstrip("$"))
+    except InvalidOperation, ValueError:
+        return None, "The buffer must be a dollar amount."
+    if not value.is_finite() or not 0 <= value <= USD_RANGE[1]:
+        return None, f"The buffer must be a dollar amount from $0 up to {_money(USD_RANGE[1])}."
     return value, None
 
 

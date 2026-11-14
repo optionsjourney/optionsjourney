@@ -230,3 +230,57 @@ def test_a_pairing_whose_stop_ended_up_watched_is_said():
                           "doesn't run on this trade.",)  # fmt: skip
     resting = exit_plan.plan_group(replace(paired, broker_exit="stop"), ONE, True, "tastytrade")
     assert exit_plan.with_pairing(resting, paired, {1: "Put side"}) == resting
+
+
+# --- Dynamic stop (#329) --------------------------------------------------------------
+
+PUT_LEGS = [{"symbol": S, "side": "sell", "ratio": 1, "group": 0},
+            {"symbol": L, "side": "buy", "ratio": 1, "group": 0}]  # fmt: skip
+# Imported bots keep each short and its long in their own groups, paired by close on stop
+SPLIT = [{"symbol": S, "side": "sell", "ratio": 1, "group": 0},
+         {"symbol": L, "side": "buy", "ratio": 1, "group": 1}]  # fmt: skip
+
+
+def test_the_long_is_the_groups_own_wing_else_the_group_it_closes_on_a_stop():
+    assert exit_plan.long_legs(PUT_LEGS, group()) == ((GroupLeg(L, Side.BUY, 1),), None)
+    paired = group(close_on_stop=1)
+    assert exit_plan.long_legs(SPLIT, paired) == ((GroupLeg(L, Side.BUY, 1),), 1)
+    assert exit_plan.long_legs(SPLIT, group()) == ((), None)  # nothing paired: worth 0
+
+
+def test_a_dynamic_stop_prices_the_long_at_its_fill():
+    plan = exit_plan.plan_group(group("target", stop="95"), ONE, True, "tastytrade")
+    fills = {S: D("2.90"), L: D("1.10")}
+    calc = exit_plan.stop_for(plan, PUT_SPREAD, fills, D("3.30"), "dynamic", D("0.20"),
+                              run_legs=PUT_LEGS)  # fmt: skip
+    assert (calc.basis, calc.trigger, calc.long_value) == ("dynamic", D("4.20"), D("1.10"))
+    assert calc.as_log()["stop_calc"]["long_legs"] == [{"symbol": L, "ratio": 1}]
+
+
+def test_a_dynamic_stop_with_no_long_counts_it_at_zero_and_says_so():
+    plan = exit_plan.plan_group(group("stop", stop="95"), (Side.SELL,), True, "tastytrade")
+    legs = (GroupLeg(S, Side.SELL, 1),)
+    calc = exit_plan.stop_for(plan, legs, {S: D("2.90"), L: D("1.10")}, D("3.30"), "dynamic",
+                              D("0.20"), run_legs=SPLIT)  # fmt: skip
+    assert (calc.trigger, calc.long_value) == (D("3.10"), D("0"))
+    assert "no long" in calc.note
+    paired = exit_plan.plan_group(group("stop", stop="95", close_on_stop=1), (Side.SELL,), True,
+                                  "tastytrade")  # fmt: skip
+    calc = exit_plan.stop_for(paired, legs, {S: D("2.90"), L: D("1.10")}, D("3.30"), "dynamic",
+                              D("0.20"), run_legs=SPLIT)  # fmt: skip
+    assert (calc.trigger, calc.as_log()["stop_calc"]["long_group"]) == (D("4.20"), 1)
+
+
+def test_a_debit_fill_ignores_a_dynamic_stop_and_says_so():
+    _, notes = exit_plan.read_against_fill(group(stop_basis="group_entry"), False, "dynamic")
+    assert notes == ("Opened for a debit; Dynamic stop works only on a credit trade's stop on "
+                     "its short, so it's ignored.",)  # fmt: skip
+
+
+def test_a_group_watched_on_its_pnl_keeps_its_own_stop_under_a_dynamic_stop():
+    plan = exit_plan.plan_group(group("stop", stop_basis="group_entry"), TWO, True, "tastytrade")
+    legs = (GroupLeg(S, Side.SELL, 1), GroupLeg(C2, Side.SELL, 1), GroupLeg(L, Side.BUY, 1),
+            GroupLeg(C1, Side.BUY, 1))  # fmt: skip
+    fills = {S: D("2.90"), C2: D("2.50"), L: D("1.10"), C1: D("1.00")}
+    calc = exit_plan.stop_for(plan, legs, fills, D("3.30"), "dynamic", D("0.20"))
+    assert calc.basis == "group_entry"

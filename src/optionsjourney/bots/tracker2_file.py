@@ -32,6 +32,7 @@ _SAME = (
     "use_underlying_exit", "underlying_up_pct", "underlying_down_pct", "use_default_alerts",
     "default_alerts", "default_alerts_in_app_only", "use_floating_entry", "floating_start",
     "floating_end", "use_exact_dte", "move_conflicted_strikes",
+    "use_loss_boost", "loss_boost_multiplier",  # #328 (Tracker2 16dad587)
 )  # fmt: skip
 _RENAMED = {
     "max_open_positions": "max_open_trades",

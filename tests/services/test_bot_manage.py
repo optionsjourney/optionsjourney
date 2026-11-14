@@ -560,7 +560,9 @@ def test_no_close_outside_the_session_or_under_freeze(deps, factory):
     run_id = trade(deps, factory)
     at(deps, "16:30")
     out = bot_manage.close_part(deps, run_id, 0, "1")
-    assert not out.ok and "market is open" in out.message
+    # #330: a TastyTrade index trade off-hours is read by its window; this 0DTE condor's
+    # options stopped trading at 16:00, so nothing is left to trade (or to schedule)
+    assert not out.ok and "expired" in out.message
     at(deps, "11:00")
     orders.set_switch(factory, "freeze", True)
     out = bot_manage.close_part(deps, run_id, 0, "1")
@@ -1714,8 +1716,9 @@ def test_a_market_close_still_working_after_three_reads_is_unclear(deps, factory
 
 def test_a_market_close_after_the_session_sends_nothing(deps, factory, monkeypatch):
     run_id = one_leg_market(deps, factory)
-    answers = iter([True])
-    monkeypatch.setattr(bot_exits, "_session_open", lambda deps: next(answers, False))
+    # #330: the refusal before the claim reads the after-hours window, not _session_open;
+    # the market send's own check is the one that sees the session over
+    monkeypatch.setattr(bot_exits, "_session_open", lambda deps: False)
     assert bot_manage.close_part(deps, run_id, 0, "1", "market").ok
     assert [c for c in placed(deps, "Market")] == []
     [close] = rows(factory, "close", 0)
@@ -2598,3 +2601,97 @@ def test_the_panel_counts_a_one_leg_group_in_contracts(deps, factory):
         bot = bot_store.load(factory, session.get(BotRun, spread).bot_id)
     (side,) = bot_manage.sides(factory, spread, bot)
     assert (side.size, side.unit) == (2, "unit")
+
+
+# --- #329: switching a trade to a Dynamic stop from the run page ------------------------
+
+
+def _dynamic_numbers(factory, side=0):
+    stop = rows(factory, "stop", side)[0]
+    calc = _calc(stop)
+    return stop, D(calc["entry_credit"])
+
+
+def _round(symbol, raw):
+    from optionsjourney.bots.exit_math import round_stop
+
+    return round_stop(symbol, raw)[1]
+
+
+def test_switching_a_trade_to_a_dynamic_stop_resets_it_from_the_longs_live_mid(deps, factory):
+    """Tracker2's drawer switch: the stop is re-set ONCE from the long's live mid; it may
+    loosen (a deliberate switch); then the ratchet owns it."""
+    run_id = trade(deps, factory)
+    old, credit = _dynamic_numbers(factory)
+    at(deps, "11:00")
+    quotes(deps, factory, "11:00", short_mid="0.60", long_mid="1.00")
+    out = bot_manage.set_closing_order(deps, run_id, 0, "dynamic", "0.20")
+    assert out.ok, out.message
+    stop = rows(factory, "stop", 0)[0]
+    want = _round(old.short_symbol, credit + D("1.00") - D("0.20"))
+    assert want > old.trigger  # a deliberate switch may loosen
+    assert stop.trigger == want and stop.broker_order_id != old.broker_order_id
+    calc = _calc(stop)
+    assert (calc["basis"], calc["long_value"], calc["co_amount"]) == ("dynamic", "1.00", "0.20")
+    saved = override(factory, run_id, 0)
+    assert (saved.co_mode, saved.co_amount) == ("dynamic", D("0.20"))
+
+
+def test_a_dynamic_stop_needs_a_fresh_long_quote_and_a_short_not_through_it(deps, factory):
+    run_id = trade(deps, factory)
+    old, credit = _dynamic_numbers(factory)
+    at(deps, "11:00")
+    deps.hub.set(old.short_symbol, D("0.55"), D("0.65"), ny("11:00"))  # no long quote at all
+    out = bot_manage.set_closing_order(deps, run_id, 0, "dynamic", "0.20")
+    assert not out.ok and "no fresh price for the long" in out.message
+    assert "Nothing was changed" in out.message
+    deps.hub.set(old.long_symbol, D("0"), D("0"), ny("11:00"))  # 0/0: no market
+    assert not bot_manage.set_closing_order(deps, run_id, 0, "dynamic", "0.20").ok
+    through = str(credit + D("0.50"))  # the short's mid is past the level the switch sets
+    quotes(deps, factory, "11:00", short_mid=through, long_mid="0.30")
+    out = bot_manage.set_closing_order(deps, run_id, 0, "dynamic", "0.20")
+    assert not out.ok and "fire at once" in out.message
+    assert [c[0] for c in deps.tasty.calls].count("cancel") == 0
+    stop = rows(factory, "stop", 0)[0]
+    assert (stop.state, stop.broker_order_id) == ("working", old.broker_order_id)
+    assert override(factory, run_id, 0) is None
+
+
+def test_saving_an_unchanged_dynamic_stop_never_loosens_it(deps, factory):
+    """1a87ccec: re-saving a Dynamic side with the same buffer leaves its resting
+    (ratcheted) stop alone; only a switch or a new buffer re-sets it from the live long."""
+    run_id = trade(deps, factory)
+    at(deps, "11:00")
+    quotes(deps, factory, "11:00", short_mid="0.60", long_mid="1.00")
+    assert bot_manage.set_closing_order(deps, run_id, 0, "dynamic", "0.20").ok
+    moved = rows(factory, "stop", 0)[0]
+    with factory() as session:  # the ratchet has since moved it down
+        row = session.get(BotExit, moved.id)
+        row.trigger = moved.trigger - D("0.50")
+        session.commit()
+    sent = len(deps.tasty.calls)
+    out = bot_manage.set_closing_order(deps, run_id, 0, "dynamic", "0.2")
+    assert out.ok and "already" in out.message, out.message
+    assert rows(factory, "stop", 0)[0].trigger == moved.trigger - D("0.50")
+    assert deps.tasty.calls[sent:] == []
+    # A new buffer is a deliberate change: re-set from the live long
+    out = bot_manage.set_closing_order(deps, run_id, 0, "dynamic", "0")
+    assert out.ok, out.message
+    _, credit = _dynamic_numbers(factory)
+    stop = rows(factory, "stop", 0)[0]
+    assert stop.trigger == _round(stop.short_symbol, credit + D("1.00"))
+    assert override(factory, run_id, 0).co_amount == D("0")
+
+
+def test_a_dynamic_buffer_is_zero_or_more_and_switching_back_resets_the_stop(deps, factory):
+    run_id = trade(deps, factory)
+    old, credit = _dynamic_numbers(factory)
+    at(deps, "11:00")
+    quotes(deps, factory, "11:00", short_mid="0.60", long_mid="1.00")
+    assert not bot_manage.set_closing_order(deps, run_id, 0, "dynamic", "-0.10").ok
+    assert not bot_manage.set_closing_order(deps, run_id, 0, "dynamic", "").ok
+    assert bot_manage.set_closing_order(deps, run_id, 0, "dynamic", "0.20").ok
+    out = bot_manage.set_closing_order(deps, run_id, 0, "off", "")
+    assert out.ok, out.message
+    stop = rows(factory, "stop", 0)[0]
+    assert stop.trigger == old.trigger and _calc(stop)["basis"] != "dynamic"

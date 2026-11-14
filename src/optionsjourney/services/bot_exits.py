@@ -10,7 +10,10 @@ order on a contract): the watch loop fires it on two fresh passes,
 cancelling the stop first. A stop
 that disappears is re-placed, up to 3 times a side a day. Every order goes
 through the order path; while Freeze is on, nothing is sent, and a stop
-refused for it waits as "pending" until Freeze is off.
+refused for it waits as "pending" until Freeze is off. A stop of a TastyTrade trade on
+Cboe index options outside the regular session (the broker refuses every stop then) waits
+as "pending" with `stop_at_open` set, and goes at 09:30:05 (#330, decision 0133:
+hold_for_open, place_stops_at_open).
 
 A run's exits follow the run: its account and its live/preview setting from
 when it fired, not the bot's current ones. Only a real send, replace or cancel
@@ -25,6 +28,7 @@ from decimal import Decimal
 from sqlalchemy import select, update
 
 from optionsjourney.bots import (
+    after_hours,
     exit_math,
     exit_plan,
     futures,
@@ -100,6 +104,37 @@ WATCHED_STOP_BY = "stop"
 # A side's current stop: at the broker ("working"), waiting to be placed ("pending"), or
 # watched by the app ("watching").
 STOP_LIVE = ("working", "pending", WATCHING)
+# #330 (decision 0133): a stop the broker won't take now, written "pending" with
+# stop_at_open set; place_stops_at_open sends it from 09:30:05, and again from 09:45 if
+# the open refused it. The monitor's pending placement leaves it alone until then.
+HELD_FOR_OPEN = "held for the open: the broker takes no stop orders outside the regular session"
+# Placed by the 30 s monitor pass from 09:30:05, so within about a minute of the open
+AT_OPEN = "placed in the first minute after 09:30 ET, when the regular session opens"
+REFUSED_AT_OPEN = "refused at the open; tried again from 09:45"
+
+
+def stops_wait(deps, broker: str, symbols) -> bool:
+    """Whether a stop for these legs must be held for the open now (after_hours)."""
+    return after_hours.stops_refused(broker, symbols, deps.now())
+
+
+def held_for_open(session_factory, stop_id: int | None) -> bool:
+    """The stop row is waiting for the regular session's open (HELD_FOR_OPEN)."""
+    if stop_id is None:
+        return False
+    with session_factory() as session:
+        row = session.get(BotExit, stop_id)
+        return row is not None and row.state == "pending" and bool(row.stop_at_open)
+
+
+def _hold_for_open(deps, exit_id: int, **logged) -> None:
+    """Write the stop "pending" for the open, with nothing at the broker (it isn't a
+    re-arm and doesn't count toward the 3 a day)."""
+    with deps.session_factory() as session:
+        row = session.get(BotExit, exit_id)
+        row.state, row.broker_order_id, row.stop_at_open = "pending", None, True
+        _log(row, deps, event=HELD_FOR_OPEN, **logged)
+        session.commit()
 
 
 def broker_name(run) -> str:
@@ -367,13 +402,16 @@ def place_revived(deps, stop_id: int, trigger) -> tuple[bool, str]:
     placed = rearm(deps, stop_id, first=True)
     with deps.session_factory() as session:
         stop = session.get(BotExit, stop_id)
-        if stop.state == "pending":
+        at_open = stop.state == "pending" and bool(stop.stop_at_open)
+        if stop.state == "pending" and not at_open:
             stop.state = "failed"
             _log(stop, deps, event="not placed: orders are frozen")
             session.commit()
         state = stop.state
     if placed:
         return True, f"stop {old} → {trigger}"
+    if at_open:  # #330: the broker takes no stops now; it goes at the open
+        return True, f"stop {old} → {trigger}, {AT_OPEN} (no stop until then)"
     if state == "expired":
         return True, "stop not needed: the side's position is gone"
     return False, (
@@ -503,6 +541,39 @@ def app_watches(row: BotExit) -> bool:
     return bool(row.watched) or holds_short(row)
 
 
+def is_dynamic(row: BotExit) -> bool:
+    """A stop whose latest arithmetic is a Dynamic stop (#329): the ratchet owns it. Any
+    other rule that moved it since (a profit or time action, your change) owns it now."""
+    calc = stops.calc_of(row.log)
+    return bool(calc) and calc.get("basis") == stops.DYNAMIC
+
+
+def dynamic_floor(deps, exit_id: int, short: str, trigger: Decimal) -> Decimal:
+    """`trigger`, or for a Dynamic stop at or below the short's fresh ask (with no ask: its
+    fill) the first tick above that, written on the row with why (exits._place_stop_loss's
+    automatic dynamic placement, 1a87ccec: held at a ratcheted level, or priced from the
+    long's fill, it must never be refused, nor rest where it fires at once). Any other stop
+    is returned as it is."""
+    with deps.session_factory() as session:
+        row = session.get(BotExit, exit_id)
+        if row is None or not is_dynamic(row):
+            return trigger
+        calc = stops.calc_of(row.log)
+        fill = calc.get("short_fill")
+    ask = _fresh_ask(deps, short)
+    floor, what = (ask, "ask") if ask is not None else (fill and Decimal(fill), "fill")
+    if floor is None or trigger > floor:
+        return trigger
+    raised = stops.tick_above(short, floor)
+    with deps.session_factory() as session:
+        row = session.get(BotExit, exit_id)
+        row.trigger = raised
+        _log(row, deps, event=f"raised above the short's {what} {floor}",
+             **{"stop_calc": stops.raised(calc, raised, floor, what)})  # fmt: skip
+        session.commit()
+    return raised
+
+
 def _fill_of(fills: dict, symbol: str) -> Decimal | None:
     fill = fills.get(symbol)
     return Decimal(fill["fill_price"]) if fill and fill.get("fill_price") is not None else None
@@ -608,7 +679,7 @@ def place_protections(deps, run_id: int, live_check: bool = False) -> None:
                 stop = BotExit(kind="stop", state="placing", log=[], app_held=by_app, **base)
                 log = {"at": now.isoformat(), "stop": f"{plan.group.stop_value:f}"}
                 calc = exit_plan.stop_for(plan, own, fills, entry_credit, bot.stop_co_mode,
-                                          bot.stop_co_amount)  # fmt: skip
+                                          bot.stop_co_amount, legs)  # fmt: skip
                 levels[position][0] = calc
                 if calc is not None:
                     log |= calc.as_log()
@@ -682,12 +753,20 @@ def place_protections(deps, run_id: int, live_check: bool = False) -> None:
     # Each leg as the run holds it: the run's contracts x the leg's own bot ratio.
     wanted = {leg["symbol"]: contracts * leg["ratio"] for leg in legs}
     shown = _legs_show(deps, run, wanted)
-    failed = held = 0
+    failed = held = at_open = 0
+    # #330: a TastyTrade trade on index options filled outside the regular session (a
+    # resting overnight entry): the broker takes no stop now, so each resting stop is held
+    # for the open
+    wait_open = stops_wait(deps, run.broker, [leg["symbol"] for leg in legs])
     # Every stop of this run is the app's (every group watched on its P&L, or held on its
     # short while its target rests): nothing waits on the legs showing at the broker.
     app_only = (watching > 0 or bool(stop_rows)) and all(row[5] for row in stop_rows)
     for exit_id, anchor, units, trigger, name, by_app in stop_rows:
         app = by_app
+        if not live_check and trigger is not None and anchor is not None:
+            # A Dynamic stop (#329) at or below the short's ask (else its fill) would fire
+            # the moment it's placed: it rests one tick above it instead
+            trigger = dynamic_floor(deps, exit_id, anchor.symbol, trigger)
         live = live_check and trigger is not None and anchor is not None
         problem = _through(deps, anchor.symbol, trigger) if live else None
         if trigger is None or anchor is None or (not shown and not app):
@@ -700,6 +779,9 @@ def place_protections(deps, run_id: int, live_check: bool = False) -> None:
             # nothing goes to the broker, before or after the legs show. Its close is sized
             # to what's held when it fires.
             state, message, order_id = WATCHING, watched_short(run), None
+        elif wait_open:
+            state, message, order_id = "pending", HELD_FOR_OPEN, None
+            at_open += 1
         else:
             result = orders.submit(
                 deps.session_factory,
@@ -714,10 +796,11 @@ def place_protections(deps, run_id: int, live_check: bool = False) -> None:
             else:
                 state, order_id = ("pending" if _held_for_freeze(result) else "failed"), None
         failed += state == "failed" and shown and trigger is not None
-        held += state == "pending"
+        held += state == "pending" and message != HELD_FOR_OPEN
         with deps.session_factory() as session:
             stop = session.get(BotExit, exit_id)
             stop.state, stop.broker_order_id = state, order_id
+            stop.stop_at_open = message == HELD_FOR_OPEN
             stop.log = [*stop.log, {"at": now.isoformat(), "result": message}]
             session.commit()
     with deps.session_factory() as session:
@@ -811,6 +894,15 @@ def place_protections(deps, run_id: int, live_check: bool = False) -> None:
         )
         _alert(deps, f"{bot.name}: a stop was not placed", detail, bot.id, run_id=run_id)
         bot_entry.update_run(deps, run_id, reason=f"{bot_entry.NEEDS_YOU}: {detail}")
+    if at_open:
+        _alert(
+            deps,
+            f"{bot.name}: stop placed after 09:30",
+            "The broker takes no stop orders outside the regular session, so the stop "
+            f"will be {AT_OPEN}. Until then this trade has no stop at the broker.",
+            bot.id,
+            run_id=run_id,
+        )
     if held:
         _alert(
             deps,
@@ -975,6 +1067,10 @@ def _send_target(deps, bot, run: _Run, legs, units: int, limit: Decimal, shown: 
                       time_in_force=TimeInForce.GTC)  # fmt: skip
         tables = orders.tick_tables(deps.session_factory, deps.clients(), probe, deps.now())
         order = _resting_target(bot, run, legs, units, limit, tables)
+        if stops_wait(deps, run.broker, [leg.symbol for leg in legs]):
+            # #330 (Tracker2's exit_tif_choice overnight): off-hours, a TastyTrade index
+            # target rests GTC Ext Overnight, so it works overnight and in the day alike
+            order = replace(order, time_in_force=TimeInForce.GTC_OVERNIGHT)
     except Exception as e:  # noqa: BLE001 -- an OrderError (rounds to 0) or a bad table
         logger.exception("couldn't price run %s's profit target", run.id)
         return "failed", None, None, f"not sent: it can't be priced ({e})"
@@ -1546,6 +1642,7 @@ def monitor_pass(deps) -> None:
             for r in session.scalars(
                 select(BotExit).where(BotExit.kind == "stop", BotExit.state == "pending")
             )
+            if not r.stop_at_open  # #330: held for the open, placed by place_stops_at_open
         ]
         pending_targets = list(
             session.scalars(
@@ -1587,6 +1684,7 @@ def monitor_pass(deps) -> None:
                     rearm(deps, exit_id, first=True)  # the position check, then the send
         except Exception:  # noqa: BLE001 -- one exit never stops the others
             logger.exception("couldn't place pending bot stop %s", exit_id)
+    place_stops_at_open(deps)  # #330: from 09:30:05, the stops held for the open
     for exit_id in pending_targets:  # bots slice 17: a futures target Freeze held back
         try:
             with EXITS_LOCK:
@@ -1600,6 +1698,84 @@ def monitor_pass(deps) -> None:
                     _sell_left_wing(deps, exit_id)  # it re-reads the row: still left
             except Exception:  # noqa: BLE001 -- one exit never stops the others
                 logger.exception("couldn't sell left wing %s", exit_id)
+
+
+def place_stops_at_open(deps) -> int:
+    """#330 (decision 0133; Tracker2's 09:30:05 place_pre_open_protections job and its
+    09:45 and startup retries): each stop held for the open, placed once the regular
+    session is on from 09:30:05, by rearm(first=True), sized to what's held short then. The
+    monitor runs it every 30 s, and at startup, never while Freeze is on (monitor_pass
+    returns first), so a stop Freeze holds stays held until Freeze is off.
+
+    A stop the open refuses (rearm alerts it) is held once more and tried again from 09:45;
+    refused again, it's left "failed" and an UNPROTECTED alert says so. A side that's
+    closing or closed never gets one: a claim marks the held stop cancelled, and rearm
+    finds nothing held. Returns how many were placed. Never raises."""
+    if not after_hours.stops_due(deps.now()):
+        return 0
+    with deps.session_factory() as session:
+        due = [
+            (r.id, refused_since_held(r.log))
+            for r in session.scalars(
+                select(BotExit).where(
+                    BotExit.kind == "stop", BotExit.state == "pending",
+                    BotExit.stop_at_open.is_(True),
+                )
+            )
+        ]  # fmt: skip
+    placed = 0
+    for exit_id, retried in due:
+        if retried and not after_hours.retry_due(deps.now()):
+            continue
+        try:
+            with EXITS_LOCK:
+                if held_for_open(deps.session_factory, exit_id):
+                    placed += _place_at_open(deps, exit_id, retried)
+        except Exception:  # noqa: BLE001 -- one stop never stops the others
+            logger.exception("couldn't place stop %s at the open", exit_id)
+    return placed
+
+
+def refused_since_held(log) -> bool:
+    """Whether the open already refused this hold: a REFUSED_AT_OPEN entry after the latest
+    HELD_FOR_OPEN, so an earlier morning's refusal never counts against a new hold."""
+    refused = False
+    for entry in log or ():
+        event = entry.get("event") if isinstance(entry, dict) else None
+        if event == HELD_FOR_OPEN:
+            refused = False
+        elif event == REFUSED_AT_OPEN:
+            refused = True
+    return refused
+
+
+def _place_at_open(deps, exit_id: int, retried: bool) -> int:
+    """One held stop at the open (place_stops_at_open, EXITS_LOCK held): 1 if placed."""
+    ok = rearm(deps, exit_id, first=True)
+    with deps.session_factory() as session:
+        row = session.get(BotExit, exit_id)
+        state, run_id = row.state, row.run_id
+        name, bot_id = _stop_name(row), session.get(BotRun, run_id).bot_id
+        bot_name = session.get(Bot, bot_id).name
+        if state != "pending":
+            row.stop_at_open = False
+        if state == "failed" and not retried:
+            row.state, row.stop_at_open = "pending", True  # once more, from 09:45
+            _log(row, deps, event=REFUSED_AT_OPEN)
+        session.commit()
+    if ok and state in ("working", WATCHING):
+        _alert(deps, f"{bot_name}: stop placed at the open",
+               f"The stop on {name} held overnight is placed now.", bot_id,
+               run_id=run_id, routine=True)  # fmt: skip
+        return 1
+    if state == "failed" and retried:
+        _alert(
+            deps, f"{bot_name}: UNPROTECTED, stop not placed at the open",
+            f"The stop on {name} held for the open was refused after 09:30 and again from "
+            "09:45. That side has NO stop. Set one from the run page, or close it.",
+            bot_id, run_id=run_id,
+        )  # fmt: skip
+    return 0
 
 
 def _still_pending_stop(deps, exit_id: int) -> bool:
@@ -1708,6 +1884,17 @@ class _Seen:
     order_id: str
     log_len: int
     found: BrokerOrder
+    successor: BrokerOrder | None = None  # #318: the order that replaced it, read too
+
+
+def _replaced_unfilled(found: BrokerOrder) -> bool:
+    """#318: gone at the broker with nothing filled, naming the order that replaced it
+    (TastyTrade has no Replaced status: the old id reads Cancelled)."""
+    return (
+        bool(found.replaced_by)
+        and not found.may_be_working
+        and all(leg.remaining == leg.quantity for leg in found.legs)
+    )
 
 
 def _check(deps, exit_id: int) -> None:
@@ -1732,8 +1919,16 @@ def _read_working(deps, exit_id: int) -> _Seen | None:
         account = run_row.account_number or bot.account_number
         broker = run_row.broker or bot.broker
         order_id, log_len = row.broker_order_id, len(row.log or [])
-    found = _client(deps, broker).get_order(account, order_id)
-    return _Seen(exit_id, order_id, log_len, found)
+    client = _client(deps, broker)
+    found = client.get_order(account, order_id)
+    successor = None
+    if _replaced_unfilled(found):
+        try:
+            successor = client.get_order(account, found.replaced_by)
+        except Exception:  # noqa: BLE001 -- can't tell what rests: left to you
+            logger.exception("couldn't read order %s replacing exit %s's order %s",
+                             found.replaced_by, exit_id, order_id)  # fmt: skip
+    return _Seen(exit_id, order_id, log_len, found, successor)
 
 
 def _apply_check(deps, seen: _Seen) -> None:
@@ -1801,6 +1996,10 @@ def _apply_check(deps, seen: _Seen) -> None:
                 _log(row, deps, event="not changed: the change was cut off; the target still rests")
                 session.commit()  # bots slice 21: a stale marker is cleared once read working
             return
+        changing = bool(row.log) and row.log[-1].get("event") == CHANGING_TARGET
+        if row.kind in ("stop", "target") and _replaced_unfilled(found) and not changing:
+            _follow_replaced(deps, session, row, bot, seen)
+            return
         if row.kind == "target":  # bots slice 17: a resting futures target
             loaded = bot_store.load(deps.session_factory, bot.id)
             if not _cut_off_change(deps, row, loaded, found):  # slice 21
@@ -1827,6 +2026,51 @@ def _apply_check(deps, seen: _Seen) -> None:
                     "Check your broker.",
                     bot.id,
                 )
+
+
+def _closes_row(row: BotExit, found: BrokerOrder) -> bool:
+    """The order closes this exit's own legs: every leg a closing one, on its symbols."""
+    mine = {plain(leg.symbol) for leg in exit_math.row_legs(row)}
+    return bool(found.legs) and all(
+        not leg.opening and plain(leg.symbol) in mine for leg in found.legs
+    )
+
+
+def _follow_replaced(deps, session, row: BotExit, bot, seen: _Seen) -> None:
+    """#318 (Tracker2 2ecf0784): a resting stop or target replaced at the broker by
+    another order. Taken for a cancel, a stop would be armed again and TastyTrade would
+    refuse the second closing order, while the new one went untracked. The row follows
+    the new order when it closes the same legs (a target takes its price; a stop keeps
+    its trigger, which the order doesn't show), and the next pass reads it like any
+    other. One it can't read or match is never placed again: Needs you."""
+    old_id, new_id, new = seen.order_id, seen.found.replaced_by, seen.successor
+    what = "stop" if row.kind == "stop" else "profit target"
+    name = _group_name(bot_store.load(deps.session_factory, bot.id), row.group_position)
+    if new is None or not _closes_row(row, new):
+        why = "couldn't be read" if new is None else "doesn't close this group's legs"
+        row.state = "failed"
+        _log(row, deps, event=f"replaced at the broker by order {new_id}, which {why}")
+        session.commit()
+        detail = (
+            f"{name}: its {what} (order {old_id}) was replaced at your broker by order "
+            f"{new_id}, which {why}. The app won't place another {what} on this group. "
+            "Check your broker."
+        )
+        _alert(deps, f"{bot.name}: {what} replaced at your broker: check it", detail, bot.id,
+               run_id=row.run_id)  # fmt: skip
+        bot_entry.update_run(deps, row.run_id, reason=f"{bot_entry.NEEDS_YOU}: {detail}")
+        return
+    row.broker_order_id = new_id
+    if row.kind == "target" and new.price is not None:
+        row.limit = -new.price  # the order is priced at -limit (_send_target)
+    _log(row, deps, event=f"replaced at the broker by order {new_id}; following it",
+         replaced_order_id=old_id)  # fmt: skip
+    session.commit()
+    _alert(
+        deps, f"{bot.name}: {what} replaced at your broker",
+        f"{name}: its {what} (order {old_id}) was replaced at your broker by order {new_id}. "
+        "The bot follows the new one.", bot.id, run_id=row.run_id, routine=True,
+    )  # fmt: skip
 
 
 @dataclass
@@ -2694,6 +2938,7 @@ def rearm(deps, exit_id: int, first: bool = False) -> bool:
         short = anchor.symbol
         group_watched = bool(row.watched)
         app_held = bool(row.app_held)
+        symbols = [leg.symbol for leg in exit_legs(row)] or [short]
         session.commit()
     if group_watched:
         # A group the app watches on its P&L has no short to rest on: it's watched again
@@ -2728,6 +2973,14 @@ def rearm(deps, exit_id: int, first: bool = False) -> bool:
             session.commit()
         return False
     size = min(units * anchor.ratio, held)  # units x the anchor's ratio, never past what's held
+    if stops_wait(deps, run.broker, symbols):
+        # #330: TastyTrade refuses every stop on an index option outside the regular
+        # session: held for the open, never sent to be refused (nor counted as a re-arm)
+        _hold_for_open(deps, exit_id, size=size)
+        return False
+    # A Dynamic stop (#329) re-placed at its latest (ratcheted) level: rested one tick above
+    # the short's fresh ask (else its fill) when that level would fire at once (1a87ccec)
+    trigger = dynamic_floor(deps, exit_id, short, trigger)
     result = orders.submit(
         deps.session_factory,
         deps.clients(),
@@ -2744,6 +2997,7 @@ def rearm(deps, exit_id: int, first: bool = False) -> bool:
         if placed:
             row.broker_order_id = result.broker_order_id
             row.contracts = units
+            row.stop_at_open = False
         elif waits:
             row.broker_order_id = None  # the old order is gone: nothing of it is live
         _log(row, deps, event="placed" if first else "re-armed", size=size, result=result.message)
@@ -3508,6 +3762,8 @@ def _place_pending(deps, stop_id, old, trigger) -> tuple[bool, str]:
             session.commit()
     if after == "expired":
         return True, "stop not needed: the side's position is gone"
+    if after == "pending" and held_for_open(deps.session_factory, stop_id):
+        return True, f"stop {old} → {trigger}, {AT_OPEN} (no stop until then)"
     if after == "pending" and _frozen(deps):
         return True, f"stop {old} → {trigger}, placed when Freeze is off"
     return False, (
@@ -3836,7 +4092,8 @@ def fire_timed(deps, run_id: int, position: int, note: str) -> int | None:
 def fire_close(deps, run_id: int, position: int, quantity: int, open_size: int,
                by: str | None = None, then_stop: dict | None = None,
                detail: str | None = None, order_type: str | None = None,
-               wait: bool = False, floor: Decimal | None = None) -> int | None:  # fmt: skip
+               wait: bool = False, floor: Decimal | None = None,
+               overnight: bool = False) -> int | None:  # fmt: skip
     """A close of `quantity` contracts of one side that you asked for (bots slice 6;
     manual_close.begin_manual_close): claimed under the lock exactly as a timed close
     (its target and stop pulled, one closing order per side), then closed on its own
@@ -3853,7 +4110,12 @@ def fire_close(deps, run_id: int, position: int, quantity: int, open_size: int,
     Bots slice 18: `order_type` "market" (manual_close.MARKET) sends a one-leg group's
     close at market once its stop's cancel is confirmed (_market_close); `wait` runs the
     close on this thread and returns once it has ended (Close entire trade's job closes
-    one group after another)."""
+    one group after another).
+
+    #330 (decision 0133): `overnight`, a close you asked for in Cboe's overnight session on
+    a TastyTrade index-option trade (bot_manage decides, by after_hours.close_window): its
+    chase sends GTC Ext Overnight limits only, stops at 09:25, and never goes to market or
+    legs out (close_group)."""
     note = f"a close of {quantity} for the {by}" if by else f"a close of {quantity} you asked for"
     extra = {"by": by} if by else {}
     if then_stop:
@@ -3864,6 +4126,8 @@ def fire_close(deps, run_id: int, position: int, quantity: int, open_size: int,
         extra["order_type"] = MARKET
     if floor is not None:  # bots slice 21: a paired close's "sold at a limit" price
         extra["floor"] = f"{floor:f}"
+    if overnight:
+        extra["session"] = OVERNIGHT
     with EXITS_LOCK:
         claim = _claim_side(
             deps, run_id, position, "close", note, contracts=quantity, open=open_size, **extra,
@@ -3879,6 +4143,7 @@ def fire_close(deps, run_id: int, position: int, quantity: int, open_size: int,
 
 
 MARKET = "market"  # manual_close.MARKET
+OVERNIGHT = "overnight"  # #330: a close's first log entry, "session": chased overnight
 
 
 def _start_claimed(deps, run_id: int, claim) -> int:
@@ -4358,6 +4623,7 @@ def close_group(deps, exit_id, run_id, bot_id, stop_id, progress) -> None:
         market = bool(row.log) and row.log[0].get("order_type") == MARKET  # bots slice 18
         raw_floor = row.log[0].get("floor") if row.log else None  # bots slice 21
         floor = Decimal(raw_floor) if raw_floor else None
+        overnight = bool(row.log) and row.log[0].get("session") == OVERNIGHT  # #330
         app_watched = bool(row.watched)
         held_short = bool(row.app_held)
         stop_order = session.get(BotExit, stop_id).broker_order_id if stop_id else None
@@ -4368,6 +4634,13 @@ def close_group(deps, exit_id, run_id, bot_id, stop_id, progress) -> None:
     close = _Close(exit_id, stop_id, run, bot, legs, units, entry, progress=progress, kind=kind,
                    by=by, group=name or f"Group {position + 1}", watched=app_watched,
                    app_held=held_short, side_sign=side_sign)  # fmt: skip
+    if overnight and not _overnight_now(deps, close):
+        # #330: claimed in the overnight session, started after it ended (09:25): nothing
+        # has been sent, so the stop and target go back as they were (Tracker2's "session
+        # ended before the close started")
+        return _not_started(deps, close, "the overnight session ended before it started")
+    if overnight and market:
+        return _not_started(deps, close, after_hours.MARKET_OVERNIGHT)
     if stop_order:
         progress["cancel_sent"] = True
         cancelled = orders.cancel(
@@ -4446,11 +4719,17 @@ def close_group(deps, exit_id, run_id, bot_id, stop_id, progress) -> None:
         price = exit_math.close_price(legs, limit, close.sign)  # the target's own value
     if _asked(deps, exit_id):  # Cancel was pressed before anything was sent
         return _cancelled(deps, close)
-    order = Order(_closing_legs(legs), close.units, False, price=price)
+    # #330: overnight, every order of the chase (its send and each replace) is a GTC Ext
+    # Overnight limit; the replaces keep the order's time in force
+    tif = TimeInForce.GTC_OVERNIGHT if overnight else TimeInForce.DAY
+    order = Order(_closing_legs(legs), close.units, False, price=price, time_in_force=tif)
 
     def should_stop() -> bool:
         # A timed close (or one you asked for) never chases past the session's close
         # (exit_chase's market_is_closed); a target close keeps slice 3's chase as it was.
+        # An overnight close stops when the overnight session ends at 09:25.
+        if overnight:
+            return _asked(deps, exit_id) or not _overnight_now(deps, close)
         return _asked(deps, exit_id) or (kind in _PULLED_BY and not _session_open(deps))
 
     step = _chase_step(order, legs)
@@ -4471,6 +4750,12 @@ def close_group(deps, exit_id, run_id, bot_id, stop_id, progress) -> None:
         return _closed(deps, close, price)
     if outcome.status == "unclear":
         return _unclear(deps, close, f"The close for {close.name} may still be working")
+    if overnight:  # #330: never at market, never a natural stage or a leg-out overnight
+        if outcome.status == "stopped" and not _asked(deps, exit_id):
+            return _give_up(deps, close, "the overnight session ended at 09:25")
+        if outcome.status == "stopped" or _asked(deps, exit_id):
+            return _cancelled(deps, close)
+        return _give_up(deps, close, f"{outcome.status} after its last overnight try")
     if outcome.status == "stopped" and kind in _PULLED_BY and not _asked(deps, exit_id):
         return _give_up(deps, close, "the session ended")  # the stop goes back (or expires)
     if outcome.status == "stopped" or _asked(deps, exit_id):
@@ -4753,6 +5038,8 @@ def _refused(deps, close: _Close, way: dict, event: str, said: str) -> None:
         tail = ""
     elif back:
         tail = " Its stop is back."
+    elif held_for_open(deps.session_factory, close.stop_id):
+        tail = f" Its stop will be {AT_OPEN}; until then {close.name} has no stop."
     else:
         tail = f" Its stop couldn't be put back, so {close.name} may have no stop."
     tail += f" Its profit target is {again}." if again else ""
@@ -5324,11 +5611,12 @@ def _give_up(deps, close: _Close, why: str) -> None:
     if close.kind == "timed":
         put_back, again = _target_then_stop(deps, close, close.units - close.units_done(),
                                             put_stop)  # fmt: skip
-        stop = (
-            "the stop was put back for what's still open"
-            if put_back
-            else "the stop couldn't be put back"
-        )
+        if put_back:
+            stop = "the stop was put back for what's still open"
+        elif held_for_open(deps.session_factory, close.stop_id):
+            stop = f"the stop will be {AT_OPEN}"
+        else:
+            stop = "the stop couldn't be put back"
         target = f" and its profit target is {again}" if again else ""
         _alert(
             deps,
@@ -5344,6 +5632,11 @@ def _give_up(deps, close: _Close, why: str) -> None:
         detail = (
             f"The close for {close.name} didn't fully fill ({why}); "
             "the stop was put back for what's still open. Check your broker."
+        )
+    elif held_for_open(deps.session_factory, close.stop_id):
+        detail = (
+            f"The close for {close.name} didn't fully fill ({why}); the stop will be "
+            f"{AT_OPEN}, and until then that side has no stop. Check your broker."
         )
     else:
         detail = (
@@ -5422,11 +5715,12 @@ def _cancelled(deps, close: _Close) -> None:
             return rearm(deps, close.stop_id) if close.stop_id is not None else False
 
     put_back, again = _target_then_stop(deps, close, close.units - close.units_done(), put_stop)
-    tail = (
-        "the stop is back for what's still open."
-        if put_back
-        else f"the stop couldn't be put back. {close.name} may have no stop. Check your broker."
-    )
+    if put_back:
+        tail = "the stop is back for what's still open."
+    elif held_for_open(deps.session_factory, close.stop_id):
+        tail = f"the stop will be {AT_OPEN}; until then {close.name} has no stop."
+    else:
+        tail = f"the stop couldn't be put back. {close.name} may have no stop. Check your broker."
     if again:
         tail += f" Its profit target is {again}."
     _alert(
@@ -5472,11 +5766,12 @@ def _rest_words(deps, close: _Close, put_back, again: str, left) -> str:
             return "the stop is off for this side, so what's left has no stop"
         return "nothing is left to protect" if not left else "this side has no stop"
     size = f"the {left}" if left is not None else "what's"
-    stop = (
-        f"the stop is back for {size} still open"
-        if put_back
-        else "the stop couldn't be put back: that side may have no stop"
-    )
+    if put_back:
+        stop = f"the stop is back for {size} still open"
+    elif held_for_open(deps.session_factory, close.stop_id):
+        stop = f"the stop will be {AT_OPEN} (the broker takes no stops now): no stop until then"
+    else:
+        stop = "the stop couldn't be put back: that side may have no stop"
     return stop + (f" and its profit target is {again}" if again else "")
 
 
@@ -5681,6 +5976,52 @@ def _close_ended(deps, close: _Close, state: str, event: str, why: str | None) -
         close.bot.id,
         run_id=close.run.id,
     )
+
+
+def _overnight_now(deps, close: _Close) -> bool:
+    """#330: the close's legs are in Cboe's overnight session now (after_hours)."""
+    symbols = [leg.symbol for leg in close.legs]
+    return after_hours.close_window(close.run.broker, symbols, deps.now()).overnight
+
+
+def _not_started(deps, close: _Close, why: str) -> None:
+    """#330: an overnight close you asked for that never sent anything (the session ended
+    between its claim and its start): the target it pulled goes back, then the stop (one
+    still at the broker is working again; one that wasn't sent is placed again, or held
+    for the open), and you're told nothing was sent."""
+    _end(deps, close, "failed", f"not started: {why}")
+    put_back, again = _target_then_stop(deps, close, None, lambda: _unsent_stop_back(deps, close))
+    if put_back is None:
+        stop = ""
+    elif put_back:
+        stop = " Its stop is back."
+    elif held_for_open(deps.session_factory, close.stop_id):
+        stop = f" Its stop will be {AT_OPEN}; until then {close.name} has no stop."
+    else:
+        stop = f" Its stop couldn't be put back, so {close.name} may have no stop."
+    stop += f" Its profit target is {again}." if again else ""
+    _alert(
+        deps, f"{close.bot.name}: close not started",
+        f"The {close.noun} on {close.name} didn't start: {why}. Nothing was sent.{stop} "
+        "Close it again when the market is open.", close.bot.id, run_id=close.run.id,
+    )  # fmt: skip
+
+
+def _unsent_stop_back(deps, close: _Close) -> bool | None:
+    """The stop a claim pulled when its cancel was never sent: still at the broker, it's
+    working again; one that was never sent (held, or watched by the app) goes through
+    rearm(first=True)."""
+    if close.stop_id is None:
+        return None
+    with EXITS_LOCK:
+        with deps.session_factory() as session:
+            stop = session.get(BotExit, close.stop_id)
+            if stop.broker_order_id:
+                stop.state = "working"
+                _log(stop, deps, event="the close never started; still working")
+                session.commit()
+                return True
+        return rearm(deps, close.stop_id, first=True)
 
 
 def _session_open(deps) -> bool:

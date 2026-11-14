@@ -85,8 +85,9 @@ def read_against_fill(
                 )
                 group = replace(group, stop_pct=None)
     if not credit and co_mode != "off" and group.stop_value is not None:
+        what = "Dynamic stop" if co_mode == stops.DYNAMIC else "the closing order"
         notes.append(
-            "Opened for a debit; the closing order works only on a credit trade's stop on its "
+            f"Opened for a debit; {what} works only on a credit trade's stop on its "
             "short, so it's ignored."
         )
     return group, tuple(notes)
@@ -111,6 +112,45 @@ def plan_group(
     return GroupPlan(read, on_short, "target" if has_target else None, stop_on, fallback, notes)
 
 
+def long_legs(
+    run_legs: Iterable[Mapping], group: GroupDef
+) -> tuple[tuple[exit_math.GroupLeg, ...], int | None]:
+    """(the legs a Dynamic stop prices as the side's long, the group they're in when it
+    isn't `group` itself): the group's own bought legs (this app's condor keeps each wing
+    with its short), else the bought legs of the group it closes after a stop (close on
+    stop: Tracker2's on_stop_close_group_id, how imported bots pair a short with its long),
+    else none (the long counts 0). Per unit of their own group."""
+    own, _ = exit_math.group_legs(run_legs, group.position)
+    bought = tuple(leg for leg in own if leg.side is Side.BUY)
+    if bought or group.close_on_stop is None:
+        return bought, None
+    paired, _ = exit_math.group_legs(run_legs, group.close_on_stop)
+    bought = tuple(leg for leg in paired if leg.side is Side.BUY)
+    return bought, (group.close_on_stop if bought else None)
+
+
+NO_LONG = "no long paired with this side: counted at 0"
+
+
+def dynamic_long(
+    run_legs: Iterable[Mapping], group: GroupDef, prices: Mapping[str, Decimal],
+    own: Sequence[exit_math.GroupLeg] = (),
+) -> dict:  # fmt: skip
+    """The long's part of a Dynamic stop for stops.stop_calc: its value at `prices` (the
+    fills at placement; a missing price counts 0), its legs and group, and a note when
+    there's none. `own`: the group's legs, when `run_legs` isn't given (they're its own)."""
+    bought, position = long_legs(run_legs, group) if run_legs else (
+        tuple(leg for leg in own if leg.side is Side.BUY), None
+    )  # fmt: skip
+    value = sum((prices.get(leg.symbol, Decimal(0)) * leg.ratio for leg in bought), Decimal(0))
+    return {
+        "long_value": value,
+        "long_legs": tuple((leg.symbol, leg.ratio) for leg in bought),
+        "long_group": position,
+        "note": None if bought else NO_LONG,
+    }
+
+
 def stop_for(
     plan: GroupPlan,
     legs: Sequence[exit_math.GroupLeg],
@@ -118,11 +158,14 @@ def stop_for(
     entry_credit: Decimal | None,
     co_mode: str,
     co_amount: Decimal | None,
+    run_legs: Sequence[Mapping] = (),
 ) -> stops.StopCalc | None:
     """The group's stop on this fill, or None (no stop, or its short has no fill): on the
     short (stops.stop_calc, resting or watched there) when `plan.on_short`, else a P&L
     level the app watches (stops.watched_calc). `fills`: symbol -> price per contract
-    (the fills, or the mids for a preview); `entry_credit`: the whole trade's per unit."""
+    (the fills, or the mids for a preview); `entry_credit`: the whole trade's per unit.
+    A Dynamic stop (#329) prices the side's long (dynamic_long) at `fills`; `run_legs`
+    (the whole run's) finds a long kept in another group."""
     if plan.stop_on is None:
         return None
     entry = exit_math.group_entry(legs, fills)
@@ -131,9 +174,10 @@ def stop_for(
         fill = fills.get(anchor.symbol) if anchor is not None else None
         if fill is None:
             return None
+        long = dynamic_long(run_legs, plan.group, fills, legs) if co_mode == stops.DYNAMIC else {}
         return stops.stop_calc(
             plan.group, co_mode, co_amount, anchor.symbol, fill, entry_credit,
-            ratio=anchor.ratio, group_entry=entry,
+            ratio=anchor.ratio, group_entry=entry, **long,
         )  # fmt: skip
     return None if entry is None else stops.watched_calc(plan.group, entry)
 
@@ -229,7 +273,8 @@ def group_lines(
             continue
         plan = plan_group(group, (leg.side for leg in legs), credit, bot.broker, bot.stop_co_mode)
         plan = with_pairing(plan, group, names)
-        calc = stop_for(plan, legs, mids, price, bot.stop_co_mode, bot.stop_co_amount)
+        calc = stop_for(plan, legs, mids, price, bot.stop_co_mode, bot.stop_co_amount,
+                        run_legs)  # fmt: skip
         limit, problem = target_for(plan, legs, mids)
         lines.append(group_words(group.name, plan, calc, limit, problem, broker))
     return lines

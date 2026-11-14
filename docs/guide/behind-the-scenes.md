@@ -8,6 +8,7 @@ The short version: it reads your trades from your brokers, watches your open tra
 | Time | What happens |
 |---|---|
 | 9:15 AM | **Keep awake** starts, if you use the menu bar icon and have it on. The computer won't go to sleep. |
+| 9:00 AM | The **market data check**: for each stock or index an armed bot trades today, the app checks your brokers can give what its entries need (the list of expirations, and for SPX and XSP an option chain). You only hear about it if something's wrong. See [The check at 9:00](automation.md#the-check-at-900-can-todays-entries-be-placed). |
 | 9:20 AM | The **pre-open check**: every trade your bots held overnight is compared with your broker's records. |
 | All day | The app's **consistency checks** run on every 30-second pass and tell you about anything that doesn't add up. **Bots' entry times** are checked every 10 seconds. **Profit targets and stops the app is watching** are checked every 2 seconds. **Orders at your broker** (resting entries, exits, timed closes) are checked every 30 seconds. **Your own price alerts** are checked every 15 seconds. |
 | 3:50 PM | The **expiry warning** for bots holding options that can be exercised early into expiration. At 12:50 PM on half days. |

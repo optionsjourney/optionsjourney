@@ -8,7 +8,7 @@
     <div data-pending-backdrop class="drawer__backdrop opacity-0"></div>
     <div data-pending-panel class="drawer__panel drawer__panel--side drawer__panel--wide drawer__panel--surface translate-x-full">
         <div class="slim-drawer__head">
-            <h3 id="pending-title" class="slim-drawer__title">Pending orders {{ info('pending-orders', "Every order still waiting at your broker, in every account. You can change or cancel the orders you sent from the app; others are changed where they came from.", 'pending orders', more='/help/journal#pending-orders') }}</h3>
+            <h3 id="pending-title" class="slim-drawer__title">Pending orders {{ info('pending-orders', "Every order still waiting at your broker, in every account. You can change or cancel the orders you sent from the app: the price, and on an order that opens a trade, a leg's strike (previewed by your broker first). Others are changed where they came from.", 'pending orders', more='/help/journal#pending-orders') }}</h3>
             <span id="pending-status" class="slim-drawer__status" aria-live="polite"></span>
             <button data-pending-refresh type="button" class="slim-drawer__refresh" title="Refresh" aria-label="Refresh">↻</button>
             <button data-pending-close type="button" class="slim-drawer__close" title="Close" aria-label="Close">✕</button>

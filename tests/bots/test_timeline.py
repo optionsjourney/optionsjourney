@@ -314,6 +314,25 @@ def test_untimed_notes_after_a_lead_entry_keep_their_place():
     ]  # fmt: skip
 
 
+def test_a_boosted_entry_says_why():  # #328
+    log = [
+        {"boost": 2, "after_run": 41, "after_day": "2026-10-12"}, {"capped": 2, "to": 1},
+        {"at": AT.format(1), "price": "1.00", "result": "Sent."},
+    ]  # fmt: skip
+    steps = timeline.order_timeline(run(log), [])
+    assert events(steps) == ["Boosted after a stop", "Capped", "Placed"]
+    assert steps[0].note == "×2: run 41 (2026-10-12) hit its stop"
+def test_expirations_from_the_backup_broker_have_their_own_step():
+    # #327: Schwab listed them because TastyTrade couldn't
+    from optionsjourney.bots import timeline
+
+    assert timeline._entry_event({"expirations_from": "Schwab"}, None, False, False) == (
+        "Expirations from Schwab",
+        None,
+        "TastyTrade couldn't list them; Schwab's list was used",
+    )
+
+
 def test_a_paired_rows_kind_names_the_stop_that_started_it():
     row = exit_row(kind="paired", log=[{"by": "Call side's stop"}])
     assert timeline.kind_label(row) == "paired close (after Call side's stop)"

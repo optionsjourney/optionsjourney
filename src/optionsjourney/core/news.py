@@ -59,7 +59,7 @@ def yahoo_headlines(xml_text: str, now_s: float, days: int = DAYS) -> list[dict]
     """Yahoo Finance's per-ticker RSS feed as the panel's items: the last `days` days,
     newest first. Items with no readable date are left out. Bad XML raises ValueError."""
     try:
-        root = ET.fromstring(xml_text)
+        root = ET.fromstring(xml_text)  # expat 2.4.1+ stops entity bombs  # nosec B314
     except ET.ParseError as e:
         raise ValueError(f"Yahoo Finance sent something that isn't a feed ({e})") from e
     oldest = now_s - days * 86400

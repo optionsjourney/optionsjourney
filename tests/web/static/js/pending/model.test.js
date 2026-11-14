@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buttonLabel, filterOrders, chipCounts, rowView, legView, asOfText, statusText, moneyParts } from '../../../../../src/optionsjourney/web/static/js/pending/model.js';
+import * as M from '../../../../../src/optionsjourney/web/static/js/pending/model.js';
 
 const leg = { symbol: 'SPXW  261023C07645000', side: 'sell', opening: true, quantity: 1, remaining: 1 };
 const OUTSIDE = 'Placed outside the app. Change or cancel it at your broker.';
@@ -104,4 +105,28 @@ test('asOfText reads the listing time in New York', () => {
   assert.equal(asOfText('2026-10-23T14:42:10+00:00'), 'as of 10:42');
   assert.equal(asOfText('nonsense'), '');
   assert.equal(asOfText(null), '');
+});
+
+test('strikeLegs: only your all-opening option orders', () => {
+  const leg = { symbol: 'SPXW  261023C07645000', side: 'sell', opening: true };
+  const mine = { owner: { kind: 'you' }, legs: [leg, { ...leg, symbol: 'SPXW  261023C07650000', side: 'buy' }] };
+  assert.deepEqual(M.strikeLegs(mine), [{ index: 0, strike: 7645 }, { index: 1, strike: 7650 }]);
+  assert.deepEqual(M.strikeLegs({ ...mine, owner: { kind: 'bot' } }), []);
+  assert.deepEqual(M.strikeLegs({ ...mine, legs: [{ ...leg, opening: false }] }), []);
+  assert.deepEqual(M.strikeLegs({ ...mine, legs: [{ ...leg, symbol: './ESZ6 EW2Z6 261218P7000' }] }), []);
+});
+
+test('strikeChanges keeps only moved strikes; a bad one is null', () => {
+  const legs = [{ index: 0, strike: 7645 }, { index: 1, strike: 7650 }];
+  assert.deepEqual(M.strikeChanges(legs, {}), {});
+  assert.deepEqual(M.strikeChanges(legs, { 0: '7645', 1: '7655' }), { 1: 7655 });
+  assert.equal(M.strikeChanges(legs, { 0: '0' }), null);
+  assert.equal(M.strikeChanges(legs, { 0: 'abc' }), null);
+});
+
+test('previewKey changes with any strike or the price', () => {
+  const k = M.previewKey({ 0: 7650 }, 1.25);
+  assert.equal(M.previewKey({ 0: 7650 }, 1.25), k);
+  assert.notEqual(M.previewKey({ 0: 7655 }, 1.25), k);
+  assert.notEqual(M.previewKey({ 0: 7650 }, 1.3), k);
 });

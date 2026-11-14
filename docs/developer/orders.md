@@ -99,6 +99,13 @@ The app never guesses whether an order reached the broker.
 - **The banners** (`_trading_banners.html`) show on every page while a switch is on, each with a link to the order log. Settings links to it too (in the Brokers section), and so does every order alert.
 - **Order log** (`/orders`): newest first, the latest 200 rows (`PAGE_SIZE`), filterable by account, origin and action, with **Clear** on unclear rows.
 
+## Overnight orders (#330, decision 0133)
+`TimeInForce.GTC_OVERNIGHT` ("GTC Ext Overnight" at TastyTrade) is a limit that works in Cboe's overnight session (20:15–09:25) and in the regular session. Rule 2 refuses it for anything but TastyTrade Cboe index options, and `trading/schwab.py` refuses it outright. Besides your own Trade page tickets, the app sends it in two places, both through `submit()`/`replace()` like every other order (so Freeze, the bot's preview or live, the closing-order coverage check and the trading guard all apply):
+- the chase of a close you ask for overnight on a capable bot trade (`bot_exits.close_group`, every send and replace);
+- a resting profit target placed off-hours on such a trade (`bot_exits._send_target`).
+
+Stops are never sent off-hours for those trades: TastyTrade refuses every stop outside the regular session, so they're held for the 09:30 open ([bots.md](bots.md#after-hours-on-index-options-330-decision-0133)). A scheduled close sends nothing until it starts, and then goes through the same path as your click.
+
 ## Gateway mode
 The trading guard sits underneath, unchanged: place, replace and cancel are refused at the HTTP layer, while previews pass ([broker-credentials.md](broker-credentials.md)).
 

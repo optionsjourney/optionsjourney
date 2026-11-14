@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
-from optionsjourney.bots import stops
+from optionsjourney.bots import loss_boost, stops
 from optionsjourney.core.market import MARKET_TZ
 from optionsjourney.core.symbols import parse_occ
 
@@ -198,12 +198,21 @@ def _entry_event(step: dict, previous: str | None, preview_run: bool, units_left
         note = (f"${step.get('allocation')} at worst {step.get('worst')} "
                 f"({step.get('unit_cost')} a contract): {step.get('contracts')}")  # fmt: skip
         return "Sized by dollars", None, note
+    if "boost" in step and "after_run" in step:  # #328
+        return "Boosted after a stop", None, loss_boost.words(step)
     if "capped" in step:
         return "Capped", None, f"{step.get('capped')} cut to {step.get('to')} by Max per trade"
     if "strikes" in step:
         return "Strikes moved", None, _plain(step["strikes"])
     if "expirations" in step:
         return "Expirations moved", None, _plain(step["expirations"])
+    if "expirations_from" in step:  # #327: the backup broker listed them
+        who = _plain(step["expirations_from"])
+        return (
+            f"Expirations from {who}",
+            None,
+            f"TastyTrade couldn't list them; {who}'s list was used",
+        )
     if "event" in step:
         event = str(step["event"])
         named = EVENTS.get(event, event[:1].upper() + event[1:])
